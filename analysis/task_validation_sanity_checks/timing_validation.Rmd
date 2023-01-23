@@ -1,0 +1,286 @@
+---
+title: "BCI Validation"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+
+## plotting helpers ##
+ggthemr("solarized")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+
+```{r load-data}
+# game data #
+bci_game_data <- read_csv(path(here(),
+                                 '../pacman_parse/cleaned_pacman_game_BCITest.csv'), col_types = cols(X1 = col_double(),
+                                                                                              subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double(),
+                                                                                              final_score = col_double()
+                                                                                            ))
+
+irvine_game_data <- read_csv(path(here(),
+                                 '../pacman_parse/cleaned_pacman_game_IR101.csv'), col_types = cols(X1 = col_double(),
+                                                                                              subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double(),
+                                                                                              final_score = col_double()
+                                                                                            ))
+```
+
+
+```{r beahvioral-prep}
+
+
+# clean Biscuits #
+ir_game_data_clean <- irvine_game_data %>%
+  # ungrouped timing variables
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  ## grouped by trial variables
+  group_by(subject, Trial) %>%
+  # biscuit location
+  mutate(Biscuit1 = if_else(Biscuit1 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 12, if_else(Biscuit1 == FALSE & first(UserLocation) > 80, first(UserLocation) -12, 1111)))  %>%
+  mutate(Biscuit2 = if_else(Biscuit2 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 22, if_else(Biscuit2 == FALSE & first(UserLocation) > 80, first(UserLocation) -22, 1111)))  %>%
+  mutate(Biscuit3 = if_else(Biscuit3 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 32, if_else(Biscuit3 == FALSE & first(UserLocation) > 80, first(UserLocation) -32, 1111)))  %>%
+  mutate(Biscuit4 = if_else(Biscuit4 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 42, if_else(Biscuit4 == FALSE & first(UserLocation) > 80, first(UserLocation) -42, 1111)))  %>%
+  mutate(Biscuit5 = if_else(Biscuit5 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 52, if_else(Biscuit5 == FALSE & first(UserLocation) > 80, first(UserLocation) -52, 1111)))  %>%
+  # trial timing information
+  mutate(Trial = if_else(Trial == "Trial_1", Trial, if_else(Time == first(Time), "ITI", Trial))) %>%
+  mutate_cond(Trial == "ITI", GhostLocation = NA, UserLocation = NA, Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, Attack = NA, Chase = NA, Eaten = NA, TrialType = NA) %>%
+  mutate(trial_time = if_else(Trial == "ITI", 999, Time - first(Time))) %>%
+  mutate(trial_flip = 1:n()) %>%
+  mutate(time_lag = c(FALSE, diff(trial_time))) %>%
+  mutate(trial_end = as.numeric(c(diff(trial_numeric) > 0, FALSE))) %>%
+  # trial grouping variables
+  mutate(reward_groups = if_else(TrialType %in% c(1, 5, 9, 13), 2, if_else(TrialType %in% c(2, 6, 10, 14), 3, if_else(TrialType %in% c(3, 7, 11, 15), 1, if_else(TrialType %in% c(4, 8, 12, 16), 4, 99))))) %>%
+  mutate(ghost_start_dir = if_else(TrialType >16, "no_ghost", 
+                                   if_else(TrialType <= 4 | TrialType >= 13, "away", "towards"))) %>%
+  mutate(rewards_direction_groups = paste0(reward_groups, "_", ghost_start_dir)) %>%
+  mutate(attack_chase_bob = if_else(Attack == T, "Attack", if_else(Chase == T, "Chase", "Bob"))) %>%
+  ungroup()
+
+
+
+# clean Biscuits #
+bci_game_data_clean <- bci_game_data %>%
+  # ungrouped timing variables
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  ## grouped by trial variables
+  group_by(subject, Trial) %>%
+  # biscuit location
+  mutate(Biscuit1 = if_else(Biscuit1 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 12, if_else(Biscuit1 == FALSE & first(UserLocation) > 80, first(UserLocation) -12, 1111)))  %>%
+  mutate(Biscuit2 = if_else(Biscuit2 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 22, if_else(Biscuit2 == FALSE & first(UserLocation) > 80, first(UserLocation) -22, 1111)))  %>%
+  mutate(Biscuit3 = if_else(Biscuit3 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 32, if_else(Biscuit3 == FALSE & first(UserLocation) > 80, first(UserLocation) -32, 1111)))  %>%
+  mutate(Biscuit4 = if_else(Biscuit4 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 42, if_else(Biscuit4 == FALSE & first(UserLocation) > 80, first(UserLocation) -42, 1111)))  %>%
+  mutate(Biscuit5 = if_else(Biscuit5 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 52, if_else(Biscuit5 == FALSE & first(UserLocation) > 80, first(UserLocation) -52, 1111)))  %>%
+  # trial timing information
+  mutate(Trial = if_else(Trial == "Trial_1", Trial, if_else(Time == first(Time), "ITI", Trial))) %>%
+  mutate_cond(Trial == "ITI", GhostLocation = NA, UserLocation = NA, Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, Attack = NA, Chase = NA, Eaten = NA, TrialType = NA) %>%
+  mutate(trial_time = if_else(Trial == "ITI", 999, Time - first(Time))) %>%
+  mutate(trial_flip = 1:n()) %>%
+  mutate(time_lag = c(FALSE, diff(trial_time))) %>%
+  mutate(trial_end = as.numeric(c(diff(trial_numeric) > 0, FALSE))) %>%
+  # trial grouping variables
+  mutate(reward_groups = if_else(TrialType %in% c(1, 5, 9, 13), 2, if_else(TrialType %in% c(2, 6, 10, 14), 3, if_else(TrialType %in% c(3, 7, 11, 15), 1, if_else(TrialType %in% c(4, 8, 12, 16), 4, 99))))) %>%
+  mutate(ghost_start_dir = if_else(TrialType >16, "no_ghost", 
+                                   if_else(TrialType <= 4 | TrialType >= 13, "away", "towards"))) %>%
+  mutate(rewards_direction_groups = paste0(reward_groups, "_", ghost_start_dir)) %>%
+  mutate(attack_chase_bob = if_else(Attack == T, "Attack", if_else(Chase == T, "Chase", "Bob"))) %>%
+  ungroup()
+ 
+```
+
+```{r}
+
+pilot_game_data %>%
+  filter(subject %in% sample(subject, 10)) %>%
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  # filter(trial_numeric < 5) %>%
+  ggplot(., aes(x = Time, y = time_step)) + 
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+pilot_game_data %>%
+  filter(subject == "Subject_8") %>%
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  # filter(trial_numeric < 5) %>%
+  ggplot(., aes(x = Time, y = time_step)) + 
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+irvine_game_data %>%
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  mutate(mod_20 = trial_numeric %% 20) %>%
+  mutate(pause_trial = if_else(mod_20 == 1, 1, 0)) %>%
+  mutate(diff_lives = c(diff(Lives), 0)) %>%
+  group_by(Trial) %>%
+  mutate(died_this_trial = if_else(min(diff_lives) == -1, 1, 0)) %>%
+  mutate(lost_three_lives = if_else(max(diff_lives) == 2, 1, 0)) %>%
+  mutate(longer_iti = if_else(died_this_trial == 1, "Died", if_else(pause_trial == 1, "Pause", if_else(lost_three_lives == 1, "newgame", "a")))) %>%
+  filter(Time < 600) %>%
+  ggplot(., aes(x = Time, y = time_step)) + 
+  geom_point(size = 3, aes(color = factor(longer_iti))) +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+
+# look at 56 and 81
+ pilot_game_data %>%
+  # filter(subject %in% sample(subject, 10)) %>%
+  filter(subject == "Subject_81") %>%
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  mutate(mod_20 = trial_numeric %% 20) %>%
+  mutate(pause_trial = if_else(mod_20 == 1, 1, 0)) %>%
+  mutate(diff_lives = c(diff(Lives), 0)) %>%
+  group_by(subject, Trial) %>%
+  mutate(died_this_trial = if_else(min(diff_lives) == -1, 1, 0)) %>%
+  mutate(lost_three_lives = if_else(max(diff_lives) == 2, 1, 0)) %>%
+  mutate(longer_iti = if_else(died_this_trial == 1, "Died", if_else(pause_trial == 1, "Pause", if_else(lost_three_lives == 1, "newgame", "a")))) %>%
+  filter(Time < 600) %>%
+  ggplot(., aes(x = Time, y = time_step)) + 
+  geom_point(size = 3, aes(color = factor(longer_iti))) +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) 
+  # facet_wrap(~subject)
+
+
+
+
+weird_trials <- irvine_game_data %>%
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  filter(time_step >5) %>%
+  pull(trial_numeric)
+
+tmp <- irvine_game_data %>%
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  mutate(diff_lives = c(diff(Lives), 0)) %>%
+  group_by(Trial) %>%
+  mutate(died_this_trial = if_else(min(diff_lives) == -1, 1, 0)) %>%
+  filter(trial_numeric %in% c(3, 4, 5))
+
+tmp <- bci_game_data %>%
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  mutate(diff_lives = c(diff(Lives), 0)) %>%
+  group_by(Trial) %>%
+  mutate(died_this_trial = if_else(min(diff_lives) == -1, 1, 0)) %>%
+  filter(trial_numeric %in% c(3, 4, 5))
+
+
+bci_game_data %>%
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  mutate(mod_20 = trial_numeric %% 20) %>%
+  mutate(pause_trial = if_else(mod_20 == 1, 1, 0)) %>%
+  mutate(diff_lives = c(diff(Lives), 0)) %>%
+  group_by(Trial) %>%
+  mutate(died_this_trial = if_else(min(diff_lives) == -1, 1, 0)) %>%
+  mutate(lost_three_lives = if_else(max(diff_lives) == 2, 1, 0)) %>%
+  mutate(longer_iti = if_else(died_this_trial == 1, "Died", if_else(pause_trial == 1, "Pause", if_else(lost_three_lives == 1, "newgame", "a")))) %>%
+  # filter(trial_numeric %in% c(7, 8, 9)) %>%
+  ggplot(., aes(x = Time, y = time_step)) + 
+  geom_point(size = 3, aes(color = factor(longer_iti))) +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"))
+```

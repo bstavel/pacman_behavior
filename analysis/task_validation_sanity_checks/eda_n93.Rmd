@@ -1,0 +1,734 @@
+---
+title: "Preliminary Behavioral Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+
+```{r load-data}
+# game data #
+pilot_game_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_pacman_200_trial_n69.csv'), col_types = cols(X1 = col_double(),
+                                                                                              subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double(),
+                                                                                              final_score = col_double()))
+
+# behavioral data#
+pilot_behave_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_behave_data_200_trial_n69.csv'), col_types = cols())
+
+# metadata / IDs #
+pacman_ids <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_ids_200_trial_n69.csv'))
+
+# merge with ids to confirm parsing worked #
+pilot_behave_data_clean <- merge.data.frame(pilot_behave_data, pacman_ids, by = c("subject", "ID"))
+
+```
+
+
+```{r beahvioral-prep}
+
+# clean Biscuits #
+pilot_game_data_clean <- pilot_game_data %>%
+  # ungrouped timing variables
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  ## grouped by trial variables
+  group_by(subject, Trial) %>%
+  mutate(start_location = first(UserLocation))
+
+
+## IMPORTANT NOTES ##
+# subject 84 and trial 48 somehow managed to press before trial began-- manually need to change startlocation to 63 and starting direction
+# subject 70 on trial 127 also pressed, true start was 57
+
+
+# clean Biscuits #
+pilot_game_data_clean <- pilot_game_data %>%
+  # ungrouped timing variables
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  ## grouped by trial variables
+  group_by(subject, Trial) %>%
+  mutate(jittered_start_location = first(UserLocation)) %>%
+  mutate(base_start_location = if_else(TrialType %in% c(16, 8), 30,
+                                       if_else(TrialType %in% c(19, 15, 14, 7, 6), 50,
+                                               if_else(TrialType %in% c(20, 13, 5), 70,
+                                                   if_else(TrialType %in% c(17, 12, 4), 110,
+                                                       if_else(TrialType %in% c(18, 11, 10, 3, 2), 130,
+                                                               if_else(TrialType %in% c(9, 1), 150, 999))))))) %>%
+  # biscuit location
+  mutate(Biscuit1 = if_else(Biscuit1 == FALSE & base_start_location <= 80,  base_start_location + 12, 
+                            if_else(Biscuit1 == FALSE & base_start_location > 80, base_start_location -12, 1111)))  %>%
+  mutate(Biscuit2 = if_else(Biscuit2 == FALSE & base_start_location <= 80,  base_start_location + 22, 
+                            if_else(Biscuit2 == FALSE & base_start_location > 80, base_start_location -22, 1111)))  %>%
+  mutate(Biscuit3 = if_else(Biscuit3 == FALSE & base_start_location <= 80,  base_start_location + 32, 
+                            if_else(Biscuit3 == FALSE & base_start_location > 80, base_start_location -32, 1111)))  %>%
+  mutate(Biscuit4 = if_else(Biscuit4 == FALSE & base_start_location <= 80,  base_start_location + 42, 
+                            if_else(Biscuit4 == FALSE & base_start_location > 80, base_start_location -42, 1111)))  %>%
+  mutate(Biscuit5 = if_else(Biscuit5 == FALSE & base_start_location <= 80,  base_start_location + 52, 
+                            if_else(Biscuit5 == FALSE & base_start_location > 80, base_start_location -52, 1111)))  %>%
+  # trial timing information
+  mutate(Trial = if_else(Trial == "Trial_1", Trial, if_else(Time == first(Time), "ITI", Trial))) %>%
+  mutate_cond(Trial == "ITI", 
+              GhostLocation = NA, UserLocation = NA, 
+              Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, 
+              Attack = NA, Chase = NA, Eaten = NA, TrialType = NA) %>%
+  mutate(trial_time = if_else(Trial == "ITI", 999, Time - first(Time))) %>%
+  mutate(trial_flip = 1:n()) %>%
+  mutate(time_lag = c(FALSE, diff(trial_time))) %>%
+  mutate(trial_end = as.numeric(c(diff(trial_numeric) > 0, FALSE))) %>%
+  mutate(trial_length = max(trial_time)) %>%
+  # trial grouping variables
+  mutate(reward_groups = if_else(TrialType %in% c(1, 5, 9, 13), 2, 
+                                 if_else(TrialType %in% c(2, 6, 10, 14), 3, 
+                                         if_else(TrialType %in% c(3, 7, 11, 15), 1, 
+                                                 if_else(TrialType %in% c(4, 8, 12, 16), 4, 99))))) %>%
+  mutate(ghost_start_dir = if_else(TrialType > 16, "no_ghost", 
+                                   if_else(TrialType <= 4 | TrialType >= 13, "away", "towards"))) %>%
+  mutate(rewards_direction_groups = paste0(reward_groups, "_", ghost_start_dir)) %>%
+  mutate(attack_chase_bob = if_else(Attack == T, "Attack", if_else(Chase == T, "Chase", "Bob"))) %>%
+  ungroup() %>%
+  group_by(subject) %>%
+  arrange(subject, trial_numeric) %>%
+  mutate(life_change = as.numeric(c(diff(Score) < 0, FALSE))) %>%
+  group_by(subject, Trial) %>%
+  mutate(died = sum(life_change)) %>%
+  select(-life_change) %>%
+  ungroup()
+
+# get rid of paused trials #
+paused_trials <- pilot_game_data_clean %>%
+  filter(time_step > 1 & trial_flip != 1 & Trial != "ITI") %>%
+  ungroup() %>%
+  mutate(trial_ids = paste0(subject, "_", trial_numeric)) %>%
+  pull(trial_ids) %>%
+  unique()
+
+pilot_game_data_clean <- pilot_game_data_clean %>%
+  ungroup() %>%
+   mutate(trial_ids = paste0(subject, "_", trial_numeric)) %>%
+  filter(!trial_ids %in% paused_trials)
+ 
+pilot_game_data_distance <- pilot_game_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(!is.na(GhostLocation)) %>%
+  filter(died == 0) %>%
+  group_by(subject, Trial) %>%
+  # user movement and distance measures
+  mutate(distance_to_ghost = abs(GhostLocation - UserLocation)) %>%
+  mutate(min_distance = min(distance_to_ghost)) %>%
+  mutate(towards_ghost = if_else(Direction == 2 & GhostLocation < UserLocation, "Towards", 
+                                 if_else(Direction == 11 & GhostLocation > UserLocation, "Towards",
+                                         if_else(Direction == 4, "Still", "Away")))) %>%
+  mutate(away_choice_tmp = c(0, diff(factor(towards_ghost)))) %>%
+  mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_ghost == "Away") | 
+                                  (away_choice_tmp == -1 & towards_ghost == "Away"), distance_to_ghost, 0)) %>%
+  select(-away_choice_tmp) %>%
+  mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
+  mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
+  ungroup()
+
+```
+
+
+```{r game-level-variables}
+
+
+pilot_game_data_death <- pilot_game_data_clean %>%
+  group_by(subject) %>%
+  filter(!is.na(Score)) %>%
+  mutate(death_check = as.numeric(c(FALSE, diff(Score) < 0))) %>%
+  mutate(deaths = sum(death_check)) %>%
+  mutate(max_trial = max(trial_numeric)) %>%
+  group_by(subject, Trial) %>%
+  mutate(max_score = max(Score, na.rm = T)) %>%
+  group_by(subject) %>%
+  mutate(average_score = mean(max_score)) %>%
+  mutate(max_time = max(Time)) %>%
+  select(subject, max_trial, deaths, average_score, final_score, max_time) %>%
+  distinct()
+
+pilot_game_data_death %>%
+  kable() %>%
+  kable_styling()
+
+
+```
+
+```{r distance, warning=F}
+
+
+# by subject hist of distance #
+pilot_game_data_distance %>%
+  filter(Trial != "ITI") %>%
+  ggplot(., aes(x = distance_to_ghost, fill = subject)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  geom_histogram(binwidth = 10, alpha = .7) 
+
+
+# number of turns #
+pilot_game_data_distance %>%
+  select(subject, trial_numeric, number_of_runs) %>%
+  distinct() %>%
+  ggplot(., aes(x = subject, fill = factor(number_of_runs))) +
+  theme(panel.background = element_rect(fill = "white")) +
+  geom_bar() +
+  scale_fill_viridis(discrete = T, direction = -1) 
+
+
+# last away #
+pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, last_away) %>%
+  distinct() %>%
+  filter(subject %in% sample(subject, 20)) %>%
+  ggplot(., aes(x = subject, y = last_away)) +
+  # geom_point(alpha = .3) +
+  # geom_violin() +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  ylab("Distance to Ghost") + xlab("Subjects") +
+  theme(panel.background = element_rect(fill = "white"), axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  ggtitle("Subject Variability in Turning Distance")
+
+# min distance #
+pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, min_distance) %>%
+  distinct() %>%
+  filter(subject %in% sample(subject, 20)) %>%
+  ggplot(., aes(x = subject, y = min_distance)) +
+  # geom_point(alpha = .3) +
+  # geom_violin() +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  theme(panel.background = element_rect(fill = "white"), axis.text.x = element_blank(), axis.ticks.x = element_blank()) 
+
+# min distance by reward
+pilot_game_data_distance %>%
+  select(reward_groups, min_distance, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x = factor(reward_groups), y = min_distance, fill = factor(reward_groups))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, nrow = 1) +
+  # scale_color_manual(values = c( "#E4635C", "#5BA6D6","#DBC5F6")) +
+  scale_fill_manual(values =getPalette(16))
+
+# min distance by reward
+pilot_game_data_distance %>%
+  select(Lives, min_distance, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x = factor(Lives), y = min_distance, fill = factor(Lives))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, nrow = 1) +
+  # scale_color_manual(values = c( "#E4635C", "#5BA6D6","#DBC5F6")) +
+  scale_fill_manual(values =getPalette(16))
+
+
+
+```
+
+```{r anxiety}
+# calculate anxiety
+reverse_score <- c(5, 4, 3, 2, 1)
+pilot_behave_data_anx <- pilot_behave_data_clean %>%
+  mutate(across(starts_with("O"), ~as.numeric(gsub(" +.*", "", .x)))) %>%
+  mutate(oasis_total = O1 + O2 + O3 + O4 +O5) %>%
+  mutate(across(starts_with("MASQ_"), ~as.numeric(factor(.x, levels = c("None at all", "A little", "A moderate amount", "A great deal", "A lot"))  ))) %>%
+  mutate(masq_aa = MASQ_13 + MASQ_37 + MASQ_24 + MASQ_19 + MASQ_6 + MASQ_30 + MASQ_42 + MASQ_44 + MASQ_28 + MASQ_46) %>%
+  mutate(masq_ad = MASQ_25 + MASQ_50 + reverse_score[MASQ_10] + reverse_score[MASQ_52] + reverse_score[MASQ_47] + reverse_score[MASQ_39] + reverse_score[MASQ_27] + reverse_score[MASQ_22]) %>%
+  mutate(masq_gd = MASQ_54 + MASQ_26 + MASQ_14 + MASQ_12 + MASQ_36 + MASQ_9 + MASQ_21 + MASQ_5) 
+
+# merge with game level and trial level data
+pilot_behave_data_anx <- full_join(pilot_game_data_death, pilot_behave_data_anx)
+pilot_game_data_anx <- full_join(pilot_game_data_distance, pilot_behave_data_anx,  by = c("subject"))
+
+pilot_game_data_anx <- pilot_game_data_anx %>%
+  filter(number_of_runs > 0)
+
+
+# Models #
+pilot_game_data_anx_model <- pilot_game_data_anx %>%
+  # filter(ProlificGroup >= 3) %>%
+  group_by(subject) %>%
+  mutate(average_min_distance = median(min_distance)) %>%
+  mutate(average_last_away = median(last_away)) %>%
+  select(subject, oasis_total, masq_aa, masq_ad, masq_gd, average_min_distance, average_last_away, starts_with("MASQ"), starts_with("O")) %>%
+  distinct() %>%
+  ungroup() %>%
+  filter(complete.cases(.))
+
+anx_prolific_group_df <- pilot_game_data_anx %>%
+  group_by(subject) %>%
+  mutate(average_min_distance = mean(min_distance)) %>%
+  mutate(average_last_away = mean(last_away)) %>%
+  select(subject, ProlificGroup, oasis_total, masq_aa, masq_ad, masq_gd, average_min_distance, average_last_away, starts_with("pilot"), starts_with("MASQ"), starts_with("O")) %>%
+  distinct() %>%
+  ungroup() 
+
+```
+
+```{r game-level-anx-plots}
+
+# game level plots
+pilot_behave_data_anx %>%
+  ggplot(., aes(x = oasis_total, y = final_score)) +
+  geom_point(size = 3) + 
+  geom_smooth(method = "lm") +
+  ylim(300, 1300) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Final Score")
+
+
+pilot_behave_data_anx %>%
+  ggplot(., aes(x = oasis_total, y = deaths)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Deaths")
+
+```
+
+```{r anx-models}
+
+print("oasis")
+effectsize(lm(oasis_total ~ average_last_away, pilot_game_data_anx_model))
+effectsize(lm(oasis_total ~ average_min_distance, pilot_game_data_anx_model))
+print("anxious arousal")
+effectsize(lm(masq_aa ~ average_last_away, pilot_game_data_anx_model))
+effectsize(lm(masq_aa ~ average_min_distance, pilot_game_data_anx_model))
+print("anhedonic depression")
+effectsize(lm(masq_ad ~ average_last_away, pilot_game_data_anx_model))
+effectsize(lm(masq_ad ~ average_min_distance, pilot_game_data_anx_model))
+print("general distress")
+effectsize(lm(masq_gd ~ average_last_away, pilot_game_data_anx_model))
+effectsize(lm(masq_gd ~ average_min_distance, pilot_game_data_anx_model))
+
+summary(lm(masq_ad ~ average_last_away, pilot_game_data_anx_model))
+summary(lm(masq_gd ~ average_last_away, pilot_game_data_anx_model))
+```
+
+```{r anx-plots}
+
+## Anxiety PLots ##
+pilot_game_data_anx_model %>%
+  ggplot(., aes(x = oasis_total, y = average_min_distance)) +
+  geom_point(size = 4) + 
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Min Distance")
+
+
+a <- pilot_game_data_anx_model %>%
+  ggplot(., aes(x = oasis_total, y = average_last_away)) +
+  geom_point(size = 4, color = "#A41A30") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Last Away ~ Oasis")
+
+
+b <- pilot_game_data_anx_model %>%
+  ggplot(., aes(x = masq_ad, y = average_last_away)) +
+  geom_point(size = 4, color = "#EDB034") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Last Away ~ Anhedonia Depression")
+
+c <- pilot_game_data_anx_model %>%
+  ggplot(., aes(x = masq_gd, y = average_last_away)) +
+  geom_point(size = 4, color = "#6FAC47") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Last Away ~ General Distress")
+
+
+plot(arrangeGrob(grobs = list(a,b,c), nrow = 1, ncol = 3))
+
+```
+
+```{r anxiety-differences in play}
+
+pilot_game_data_anx_model %>%
+  mutate(anx_group = if_else(oasis_total >= 8, "anx", "control")) %>%
+  ggplot(., aes(x = average_last_away, fill = anx_group)) +
+  geom_density(binwidth = 1, alpha = .7, color = 'black') + 
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_y_continuous(labels = percent_format()) 
+
+
+pilot_game_data_anx %>%
+  mutate(anx_group = if_else(oasis_total >= 8, "anx", "control")) %>%
+  select(anx_group, subject, Trial, trial_length) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_length, fill = anx_group)) +
+  geom_density(binwidth = .5, alpha = .7, color = 'black') + 
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_y_continuous(labels = percent_format()) 
+
+
+
+
+```
+
+```{r time-moving}
+
+time_moving_symp_df <- pilot_game_data_anx %>%
+  filter(Direction != 4) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(time_moving = n()) %>%
+  group_by(subject) %>%
+  mutate(median_time_moving = median(time_moving)) %>%
+  mutate(mean_time_moving = mean(time_moving)) %>%
+  ungroup() %>%
+  select(subject, median_time_moving, mean_time_moving, oasis_total, masq_aa, masq_ad, masq_gd) %>%
+  distinct()
+
+time_moving_symp_df %>%
+  ggplot(., aes(x = median_time_moving, y = oasis_total)) +
+  geom_point(size = 4, color = "#EDB034") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Med Time ~ Oasis")
+
+time_moving_symp_df%>%
+  ggplot(., aes(x = median_time_moving, y = masq_aa)) +
+  geom_point(size = 4, color = "#EDB034") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Med Time ~ Anx Arousla")
+
+time_moving_symp_df %>%
+  select(subject, median_time_moving, oasis_total, masq_aa, masq_ad, masq_gd) %>%
+  distinct() %>%
+  ggplot(., aes(x = median_time_moving, y = masq_gd)) +
+  geom_point(size = 4, color = "#EDB034") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Med Time ~ General Distress")
+
+
+time_moving_symp_df %>%
+  ggplot(., aes(x = median_time_moving, y = masq_ad)) +
+  geom_point(size = 4, color = "#EDB034") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Med Time ~ Anhedonia")
+
+
+print("oasis")
+effectsize(lm(oasis_total ~ median_time_moving, time_moving_symp_df))
+effectsize(lm(oasis_total ~ mean_time_moving, time_moving_symp_df))
+print("anxious arousal")
+effectsize(lm(masq_aa ~ median_time_moving, time_moving_symp_df))
+effectsize(lm(masq_aa ~ mean_time_moving, time_moving_symp_df))
+print("anhedonic depression")
+effectsize(lm(masq_ad ~ median_time_moving, time_moving_symp_df))
+effectsize(lm(masq_ad ~ mean_time_moving, time_moving_symp_df))
+print("general distress")
+effectsize(lm(masq_gd ~ median_time_moving, time_moving_symp_df))
+effectsize(lm(masq_gd ~ mean_time_moving, time_moving_symp_df))
+
+
+```
+
+
+
+```{r experiental-anxiety-game-play}
+anx_prolific_group_df %>%
+   mutate(exper_anxe = if_else(!is.na(pilot_6_1) & !is.na(pilot_6_2), "Both", 
+                              if_else(!is.na(pilot_6_1), "Close to Ghost", 
+                                      if_else(!is.na(pilot_6_2), "Ghost Chase", "Neither")))) %>%
+  ggplot(., aes(x = average_last_away, fill = exper_anxe)) +
+  geom_density(binwidth = 2, alpha = .7, color = 'black') + 
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_y_continuous(labels = percent_format()) 
+
+anx_prolific_group_df %>%
+   mutate(exper_anxe = if_else(!is.na(pilot_6_1) & !is.na(pilot_6_2), "Both", 
+                              if_else(!is.na(pilot_6_1), "Close to Ghost", 
+                                      if_else(!is.na(pilot_6_2), "Ghost Chase", "Neither")))) %>%
+  ggplot(., aes(x = average_last_away, fill = exper_anxe)) +
+  geom_histogram(binwidth = 2, alpha = .7, color = 'black') + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~exper_anxe, scales = 'free')
+
+
+anx_prolific_group_df %>%
+  mutate(exper_anxe = if_else(!is.na(pilot_6_1) & !is.na(pilot_6_2), "Both", 
+                              if_else(!is.na(pilot_6_1), "Close to Ghost", 
+                                      if_else(!is.na(pilot_6_2), "Ghost Chase", "Neither")))) %>%
+  mutate(anx_group = if_else(oasis_total >= 8, "anx", "control")) %>%
+  ggplot(., aes(x = oasis_total, color = exper_anxe, fill = exper_anxe, y = average_last_away)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm",  color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+  
+
+```
+
+```{r differences-between-prolific-runs}
+
+
+# any difference in how they played the game? #
+anx_prolific_group_df %>%
+  ggplot(., aes(x= factor(ProlificGroup), y = average_min_distance, fill = factor(ProlificGroup))) +
+  geom_jitter(color = "grey", alpha =  .5) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+# difference in anxiety score? #
+anx_prolific_group_df %>%
+  ggplot(., aes(x= factor(ProlificGroup), y = oasis_total, fill = factor(ProlificGroup))) +
+  geom_jitter(color = "grey", alpha =  .5) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+anx_prolific_group_df %>%
+  ggplot(., aes(x= factor(ProlificGroup), y = masq_ad, fill = factor(ProlificGroup))) +
+  geom_jitter(color = "grey", alpha =  .5) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+anx_prolific_group_df %>%
+  ggplot(., aes(x= factor(ProlificGroup), y = masq_gd, fill = factor(ProlificGroup))) +
+  geom_jitter(color = "grey", alpha =  .5) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+anx_prolific_group_df %>%
+  filter(ProlificGroup %in% c(2, 4)) %>%
+  ggplot(., aes(y= average_last_away, x = masq_gd, group = factor(ProlificGroup))) +
+  geom_point(size = 3, aes(color = factor(ProlificGroup))) +
+  geom_smooth(method = "lm", color = 'black', aes(fill = factor(ProlificGroup))) +
+  labs(x = "General Distress", y= "Turnaround Distance", color = "Prolific Sample", fill = "Prolific Sample") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Relationship between Distress and Turnaround Distance \n across prolific runs")
+
+anx_prolific_group_df %>%
+  filter(ProlificGroup %in% c(2, 4)) %>%
+  ggplot(., aes(x= average_min_distance, y = masq_ad, group = factor(ProlificGroup))) +
+  geom_point(size = 3, aes(color = factor(ProlificGroup))) +
+  geom_smooth(method = "lm", aes(fill = factor(ProlificGroup))) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+anx_prolific_group_df %>%
+  filter(ProlificGroup %in% c(2, 4)) %>%
+  ggplot(., aes(x= average_min_distance, y = masq_aa, group = factor(ProlificGroup))) +
+  geom_point(size = 3, aes(color = factor(ProlificGroup))) +
+  geom_smooth(method = "lm", aes(fill = factor(ProlificGroup))) +
+  theme(panel.background = element_rect(fill = "white"))
+
+anx_prolific_group_df %>%
+  filter(ProlificGroup %in% c(2, 4)) %>%
+  filter(oasis_total >= 8) %>%
+  ggplot(., aes(x= average_min_distance, y = oasis_total, group = factor(ProlificGroup))) +
+  geom_point(size = 3, aes(color = factor(ProlificGroup))) +
+  geom_smooth(method = "lm", aes(fill = factor(ProlificGroup))) +
+  theme(panel.background = element_rect(fill = "white"))
+
+anx_prolific_group_df %>% 
+  ggplot(., aes(x = oasis_total)) +
+  geom_histogram(binwidth = 1) +
+  geom_vline(xintercept = 8, color = "black")
+
+anx_prolific_group_df %>%
+  filter(ProlificGroup %in% c(2, 4)) %>%
+  mutate(anx_group = if_else(oasis_total >= 8, "anx", "control")) %>%
+  ggplot(., aes(x= anx_group, y = average_min_distance, fill = anx_group)) +
+  geom_jitter(size = 3, color = "grey") +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+anx_prolific_group_df %>%
+  filter(ProlificGroup %in% c(2, 4)) %>%
+  mutate(anx_group = if_else(oasis_total >= 8, "anx", "control")) %>%
+  ggplot(., aes(x= anx_group, y = average_last_away, fill = anx_group)) +
+  geom_jitter(size = 3, color = "grey") +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+```{r correlations-between-anx-measures}
+
+high_oasis_subs <- pilot_game_data_anx_model %>%
+  filter(oasis_total > mean(oasis_total)) %>%
+  pull(subject) %>%
+  unique()
+
+
+general_cor_mat <- pilot_game_data_anx_model %>%
+  ungroup() %>%
+  select(average_last_away, average_min_distance, masq_aa, masq_ad, masq_gd, oasis_total) 
+
+masq_mat <- pilot_game_data_anx_model %>%
+  ungroup() %>%
+  select(average_last_away, average_min_distance,starts_with("MASQ_")) 
+
+
+ggcorrplot(cor(general_cor_mat),
+             lab = T,
+             type = "full",
+             colors = wes_palette("Zissou1", 3, type = "continuous"))
+
+
+ggcorrplot(cor(masq_mat),
+             lab = F,
+             type = "full",
+             colors = wes_palette("Zissou1", 3, type = "continuous"))
+
+
+
+
+```
+
+
+```{r phenom}
+
+pilot_behave_data_clean %>%
+  select(starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  mutate(experienced = if_else(experienced == "Click to write Choice 7", "Anger", 
+                              if_else(experienced == "Click to write Choice 8", "Suspense", 
+                                      if_else(experienced == "Click to write Choice 9", "Frusteration", experienced)))) %>%
+  mutate(emotion_count = if_else(!is.na(experienced), 1, 0)) %>%
+  filter(emotion_count == 1) %>%
+  filter(!experienced %in% c("fear", "It was fun", "i have a phobia of ghosts now")) %>%
+  mutate(experienced = factor(experienced)) %>%
+  mutate(experienced = factor(experienced, levels = c(levels(experienced), "Boredom"), labels = c(levels(experienced), "Boredom"))) %>%
+  add_count(experienced) %>%
+  select(experienced, n) %>%
+  distinct() %>%
+  ggplot(., aes(x = experienced, y = 100 *n/69, fill = experienced)) +
+  geom_col() +
+  # geom_bar(stat = "identity", width = 2) +
+  # coord_polar("y", start = 0) +
+  xlab("") + ylab("Percent of Prolific Participants") + labs(fill = "") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") + 
+        # axis.ticks = element_blank(), axis.text = element_blank()) +
+        # panel.grid.major=element_blank(), axis.line=element_blank()) +
+  ggtitle("What did you experience when the ghost was close to catching you?", subtitle = "") +
+  # scale_x_discrete(drop = FALSE) +
+  scale_fill_manual(values = getPalette(12))
+
+
+pilot_behave_data_clean %>%
+  select(starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  mutate(experienced = if_else(experienced == "Click to write Choice 7", "Anger", 
+                              if_else(experienced == "Click to write Choice 8", "Suspense", 
+                                      if_else(experienced == "Click to write Choice 9", "Frusteration", experienced)))) %>%
+  mutate(emotion_count = if_else(!is.na(experienced), 1, 0)) %>%
+  filter(emotion_count == 1) %>%
+  filter(!experienced %in% c("fear", "It was fun", "i have a phobia of ghosts now")) %>%
+  mutate(experienced = factor(experienced)) %>%
+  mutate(experienced = factor(experienced, levels = c(levels(experienced), "Boredom"), labels = c(levels(experienced), "Boredom"))) %>%
+  add_count(experienced) %>%
+  select(experienced, n) %>%
+  distinct() %>%
+  ggplot(., aes(x =experienced, y =n, fill = experienced)) +
+  geom_col() +
+  xlab("") +
+  ylab("Number of Participants") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  ggtitle("What did you experience when the ghost was close to catching you?", subtitle = "n = 69") +
+  scale_fill_manual(values = getPalette(12))
+  
+
+
+```
+

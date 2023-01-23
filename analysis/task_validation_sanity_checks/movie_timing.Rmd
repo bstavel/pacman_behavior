@@ -1,0 +1,124 @@
+---
+title: "movie timing confirmation"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+
+## plotting helpers ##
+ggthemr("solarized")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+```{r load-data}
+# game data #
+pilot_game_data <- read_csv('../../pacman_parse/cleaned_video_game_60fps.csv', col_types = cols())
+
+```
+
+
+```{r clean-up}
+# clean Biscuits #
+pilot_game_data_clean <- pilot_game_data %>%
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  group_by(Trial) %>%
+  mutate(Trial = if_else(Trial == "Trial_1", Trial, if_else(Time == first(Time), "ITI", Trial))) %>%
+  mutate_cond(Trial == "ITI", GhostLocation = NA, UserLocation = NA, Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, Attack = NA, Chase = NA, Eaten = NA, TrialType = NA) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  mutate(trial_time = if_else(Trial == "ITI", 999, Time - first(Time))) %>%
+  group_by(subject) %>%
+  mutate(lagging_time = Time - 18.7733) %>%
+  mutate(time_lag = c(FALSE, diff(lagging_time))) %>%
+  mutate(trial_end = as.numeric(c(diff(trial_numeric) > 0, FALSE))) %>%
+  mutate(ghost_location_true = if_else(GhostLocation %% 10 == 0,  GhostLocation, GhostLocation + (10 - GhostLocation %% 10))) %>%
+  mutate(user_location_true = if_else(UserLocation %% 10 == 0, UserLocation, UserLocation + (10 - UserLocation %% 10)))
+
+
+pilot_game_data_clean %>%
+  ggplot(., aes(x = time_step)) +
+  geom_histogram(binwidth = .001, alpha = .3, fill = "blue", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0.05, .075)
+
+
+pilot_game_data_clean %>%
+  filter(trial_numeric < 5) %>%
+  group_by(Trial) %>%
+  mutate(biscuit1_line = if_else(Biscuit3 == TRUE, trial_time, 0)) %>%
+  mutate(biscuit1_line = if_else(biscuit1_line != 0, min(biscuit1_line[biscuit1_line != 0]), 0)) %>%
+  ggplot(., aes(x = trial_time, y = time_step, color = Trial)) +
+  geom_point() +
+  geom_line() + 
+  geom_vline(aes(xintercept = biscuit1_line, color = Trial)) +
+  ylim(0.05, .08) +
+  theme(panel.background = element_rect(fill = "white")) 
+
+```
+
+```{r}
+
+console_timing <- read_csv('../pacman_frame_flip.csv')
+
+diff(console_timing$`1.6269E+12`)
+
+```
+

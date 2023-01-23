@@ -1,0 +1,677 @@
+---
+title: "200 Trial Pilot"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+
+## plotting helpers ##
+ggthemr("solarized")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+
+```{r load-data}
+# game data #
+pilot_game_data <- read_csv('../../pacman_parse/cleaned_pilot_200_trials_7_25_2021.csv', col_types = cols(X1 = col_double(),
+                                                                                              subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double(),
+                                                                                              final_score = col_double()
+                                                                                            ))
+pilot_game_data <- read_csv('../../pacman_parse/cleaned_pacman_200_trial_n37.csv', col_types = cols())
+
+# behave data #
+pilot_behave_data_200 <- read_csv('../../pacman_parse/cleaned_behave_data_200_trial_n38.csv', col_types = cols())
+
+# combine two pilots #
+# pilot_behave_data <- rbind(pilot_behave_data_20, pilot_behave_data_200 %>% select(-comp_7))
+```
+
+
+```{r beahvioral-prep}
+
+# clean Biscuits #
+pilot_game_data_clean <- pilot_game_data %>%
+  # ungrouped timing variables
+  mutate(time_step = c(FALSE, diff(Time))) %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  ## grouped by trial variables
+  group_by(subject, Trial) %>%
+  # biscuit location
+  mutate(Biscuit1 = if_else(Biscuit1 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 12, if_else(Biscuit1 == FALSE & first(UserLocation) > 80, first(UserLocation) -12, 1111)))  %>%
+  mutate(Biscuit2 = if_else(Biscuit2 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 22, if_else(Biscuit2 == FALSE & first(UserLocation) > 80, first(UserLocation) -22, 1111)))  %>%
+  mutate(Biscuit3 = if_else(Biscuit3 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 32, if_else(Biscuit3 == FALSE & first(UserLocation) > 80, first(UserLocation) -32, 1111)))  %>%
+  mutate(Biscuit4 = if_else(Biscuit4 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 42, if_else(Biscuit4 == FALSE & first(UserLocation) > 80, first(UserLocation) -42, 1111)))  %>%
+  mutate(Biscuit5 = if_else(Biscuit5 == FALSE & first(UserLocation) <= 80,  first(UserLocation) + 52, if_else(Biscuit5 == FALSE & first(UserLocation) > 80, first(UserLocation) -52, 1111)))  %>%
+  # trial timing information
+  mutate(Trial = if_else(Trial == "Trial_1", Trial, if_else(Time == first(Time), "ITI", Trial))) %>%
+  mutate_cond(Trial == "ITI", GhostLocation = NA, UserLocation = NA, Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, Attack = NA, Chase = NA, Eaten = NA, TrialType = NA) %>%
+  mutate(trial_time = if_else(Trial == "ITI", 999, Time - first(Time))) %>%
+  mutate(trial_flip = 1:n()) %>%
+  mutate(time_lag = c(FALSE, diff(trial_time))) %>%
+  mutate(trial_end = as.numeric(c(diff(trial_numeric) > 0, FALSE))) %>%
+  # trial grouping variables
+  mutate(reward_groups = if_else(TrialType %in% c(1, 5, 9, 13), 2, if_else(TrialType %in% c(2, 6, 10, 14), 3, if_else(TrialType %in% c(3, 7, 11, 15), 1, if_else(TrialType %in% c(4, 8, 12, 16), 4, 99))))) %>%
+  mutate(ghost_start_dir = if_else(TrialType >16, "no_ghost", 
+                                   if_else(TrialType <= 4 | TrialType >= 13, "away", "towards"))) %>%
+  mutate(rewards_direction_groups = paste0(reward_groups, "_", ghost_start_dir)) %>%
+  mutate(attack_chase_bob = if_else(Attack == T, "Attack", if_else(Chase == T, "Chase", "Bob"))) %>%
+  ungroup()
+ 
+pilot_game_data_distance <- pilot_game_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(!is.na(GhostLocation)) %>%
+  group_by(subject, Trial) %>%
+  # user movement and distance measures
+  mutate(distance_to_ghost = abs(GhostLocation - UserLocation)) %>%
+  mutate(min_distance = min(distance_to_ghost)) %>%
+  mutate(towards_ghost = if_else(Direction == 2 & GhostLocation < UserLocation, "Towards", 
+                                 if_else(Direction == 11 & GhostLocation > UserLocation, "Towards",
+                                         if_else(Direction == 4, "Still", "Away")))) %>%
+  mutate(away_choice_tmp = c(0, diff(factor(towards_ghost)))) %>%
+  mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_ghost == "Away") | 
+                                  (away_choice_tmp == -1 & towards_ghost == "Away"), distance_to_ghost, 0)) %>%
+  select(-away_choice_tmp) %>%
+  mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
+  mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
+  ungroup()
+
+```
+
+
+```{r game-level-variables}
+
+
+pilot_game_data_death <- pilot_game_data_clean %>%
+  group_by(subject) %>%
+  filter(!is.na(Score)) %>%
+  mutate(death_check = as.numeric(c(FALSE, diff(Score) < 0))) %>%
+  mutate(deaths = sum(death_check)) %>%
+  mutate(max_trial = max(trial_numeric)) %>%
+  group_by(subject, Trial) %>%
+  mutate(max_score = max(Score, na.rm = T)) %>%
+  group_by(subject) %>%
+  mutate(average_score = mean(max_score)) %>%
+  mutate(max_time = max(Time)) %>%
+  select(subject, max_trial, deaths, average_score, final_score, max_time) %>%
+  distinct()
+
+pilot_game_data_death %>%
+  kable() %>%
+  kable_styling()
+
+
+```
+
+
+```{r distance, warning=F}
+
+
+# by subject hist of distance #
+pilot_game_data_distance %>%
+  filter(Trial != "ITI") %>%
+  ggplot(., aes(x = distance_to_ghost, fill = subject)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  geom_histogram(binwidth = 10, alpha = .7) 
+
+
+# number of turns #
+pilot_game_data_distance %>%
+  select(subject, trial_numeric, number_of_runs) %>%
+  distinct() %>%
+  ggplot(., aes(x = subject, fill = factor(number_of_runs))) +
+  theme(panel.background = element_rect(fill = "white")) +
+  geom_bar() +
+  scale_fill_viridis(discrete = T, direction = -1)
+
+
+# last away #
+pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, last_away) %>%
+  distinct() %>%
+  ggplot(., aes(x = subject, y = last_away)) +
+  # geom_point(alpha = .3) +
+  # geom_violin() +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"), axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+# min distance #
+pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, min_distance) %>%
+  distinct() %>%
+  ggplot(., aes(x = subject, y = min_distance)) +
+  # geom_point(alpha = .3) +
+  # geom_violin() +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+# min distance by reward
+pilot_game_data_distance %>%
+  select(reward_groups, min_distance, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x = factor(reward_groups), y = min_distance, fill = factor(reward_groups))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, nrow = 1) +
+  # scale_color_manual(values = c( "#E4635C", "#5BA6D6","#DBC5F6")) +
+  scale_fill_manual(values =getPalette(16))
+
+# min distance by reward
+pilot_game_data_distance %>%
+  select(Lives, min_distance, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x = factor(Lives), y = min_distance, fill = factor(Lives))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, nrow = 1) +
+  # scale_color_manual(values = c( "#E4635C", "#5BA6D6","#DBC5F6")) +
+  scale_fill_manual(values =getPalette(16))
+
+
+
+```
+
+```{r anxiety}
+# calculate anxiety
+reverse_score <- c(5, 4, 3, 2, 1)
+pilot_behave_data_200_anx <- pilot_behave_data_200 %>%
+  mutate(across(starts_with("O"), ~as.numeric(gsub(" +.*", "", .x)))) %>%
+  mutate(oasis_total = O1 + O2 + O3 + O4 +O5) %>%
+  mutate(across(starts_with("MASQ_"), ~as.numeric(factor(.x, levels = c("None at all", "A little", "A moderate amount", "A great deal", "A lot"))  ))) %>%
+  mutate(masq_aa = MASQ_13 + MASQ_37 + MASQ_24 + MASQ_19 + MASQ_6 + MASQ_30 + MASQ_42 + MASQ_44 + MASQ_28 + MASQ_46) %>%
+  mutate(masq_ad = MASQ_25 + MASQ_50 + reverse_score[MASQ_10] + reverse_score[MASQ_52] + reverse_score[MASQ_47] + reverse_score[MASQ_39] + reverse_score[MASQ_27] + reverse_score[MASQ_22]) %>%
+  mutate(masq_gd = MASQ_54 + MASQ_26 + MASQ_14 + MASQ_12 + MASQ_36 + MASQ_9 + MASQ_21 + MASQ_5) 
+
+# merge with game level and trial level data
+pilot_behave_data_200_anx <- full_join(pilot_game_data_death, pilot_behave_data_200_anx)
+pilot_game_data_anx <- full_join(pilot_game_data_distance, pilot_behave_data_200_anx,  by = c("subject"))
+
+pilot_game_data_anx <- pilot_game_data_anx %>%
+  filter(number_of_runs > 0)
+
+# game level plots
+pilot_behave_data_200_anx %>%
+  ggplot(., aes(x = oasis_total, y = final_score)) +
+  geom_point(size = 3) + 
+  geom_smooth(method = "lm") +
+  ylim(300, 1300) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Final Score")
+
+
+pilot_behave_data_200_anx %>%
+  ggplot(., aes(x = oasis_total, y = deaths)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Deaths")
+
+# Models #
+pilot_game_data_anx_model <- pilot_game_data_anx %>%
+  group_by(subject) %>%
+  mutate(average_min_distance = median(min_distance)) %>%
+  mutate(average_last_away = median(last_away)) %>%
+  select(subject, oasis_total, masq_aa, masq_ad, masq_gd, average_min_distance, average_last_away, starts_with("MASQ"), starts_with("O")) %>%
+  distinct() %>%
+  ungroup() %>%
+  filter(complete.cases(.))
+
+# trial level plots
+pilot_game_data_anx_model %>%
+  ggplot(., aes(x = oasis_total, y = average_min_distance)) +
+  geom_point(size = 4) + 
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Min Distance")
+
+
+a <- pilot_game_data_anx_model %>%
+  ggplot(., aes(x = oasis_total, y = average_last_away)) +
+  geom_point(size = 4, color = "#A41A30") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Last Away ~ Oasis")
+
+
+b <- pilot_game_data_anx_model %>%
+  ggplot(., aes(x = masq_ad, y = average_last_away)) +
+  geom_point(size = 4, color = "#EDB034") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Last Away ~ Anhedonia Depression")
+
+c<- pilot_game_data_anx_model %>%
+  ggplot(., aes(x = masq_ad, y = average_last_away)) +
+  geom_point(size = 4, color = "#6FAC47") + 
+  geom_smooth(method = "lm", fill = "grey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Last Away ~ General Distress")
+
+
+
+high_oasis_subs <- pilot_game_data_anx_model %>%
+  filter(oasis_total > mean(oasis_total)) %>%
+  pull(subject) %>%
+  unique()
+
+
+general_cor_mat <- pilot_game_data_anx_model %>%
+  ungroup() %>%
+  select(average_last_away, average_min_distance, masq_aa, masq_ad, masq_gd, oasis_total) 
+
+masq_mat <- pilot_game_data_anx_model %>%
+  ungroup() %>%
+  select(average_last_away, average_min_distance,starts_with("MASQ_")) 
+
+
+ggcorrplot(cor(general_cor_mat),
+             lab = T,
+             type = "full",
+             colors = wes_palette("Zissou1", 3, type = "continuous"))
+
+
+ggcorrplot(cor(masq_mat),
+             lab = F,
+             type = "full",
+             colors = wes_palette("Zissou1", 3, type = "continuous"))
+
+
+plot(arrangeGrob(grobs = list(a,b,c), nrow = 1, ncol = 3))
+
+print("oasis")
+effectsize(lm(oasis_total ~ average_last_away, pilot_game_data_anx_model))
+effectsize(lm(oasis_total ~ average_min_distance, pilot_game_data_anx_model))
+print("anxious arousal")
+effectsize(lm(masq_aa ~ average_last_away, pilot_game_data_anx_model))
+effectsize(lm(masq_aa ~ average_min_distance, pilot_game_data_anx_model))
+print("anhedonic depression")
+effectsize(lm(masq_ad ~ average_last_away, pilot_game_data_anx_model))
+effectsize(lm(masq_ad ~ average_min_distance, pilot_game_data_anx_model))
+print("general distress")
+effectsize(lm(masq_gd ~ average_last_away, pilot_game_data_anx_model))
+effectsize(lm(masq_gd ~ average_min_distance, pilot_game_data_anx_model))
+
+  
+  
+```
+
+```{r high-anx-sub-eda}
+
+pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  filter(subject %in% all_of(high_oasis_subs)) %>%
+  # distinct #
+  select(trial_numeric, subject, last_away) %>%
+  distinct() %>%
+  mutate(subject = gsub("Pilot_", "", subject)) %>%
+  ggplot(., aes(x = subject, y = last_away)) +
+  # geom_point(alpha = .3) +
+  # geom_violin() +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  geom_hline(aes(yintercept = mean(median(last_away, na.rm = T))), color = "black", size = 2) +
+  theme(panel.background = element_rect(fill = "white"), axis.ticks.x = element_blank())
+
+pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  filter(subject %in% all_of(high_oasis_subs)) %>%
+  filter()
+
+```
+
+```{r anxiety-by-path-fda}
+library(refund)
+library(fda)
+
+fda_data <- pilot_game_data_anx %>%
+  filter(Trial == "Trial_12") %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(trial_step = 1:n()) %>%
+  ungroup() %>%
+  dplyr::select(subject, Trial, trial_step, distance_to_ghost, masq_gd) %>%
+  pivot_wider(id_cols = c(subject, Trial, masq_gd), 
+              names_from = trial_step, values_from = distance_to_ghost, 
+              values_fill = NA) %>%
+  filter(!is.na(masq_gd))
+
+fda_y_df <- fda_data %>%
+  dplyr::select(-subject, -Trial, -masq_gd)
+
+fda_y <- as.matrix(fda_y_df[, 1:25])
+
+myData <- data.frame(fda_y = fda_y)
+myData$masq_gd <- fda_data$masq_gd
+
+fit <- pffr(fda_y ~ masq_gd, data = myData)
+yhat <- predict(fit, newdata = myData)
+Rsq_t <- 1-colSums((fda_y - yhat)^2) / colSums((fda_y - colMeans(fda_y))^2)
+mean(Rsq_t)
+
+
+matplot(1:25, t(fda_y), type='l', lty = 1, 
+        col='light grey', ylab="fitted", xlab="time")
+matlines(1:25, t(yhat), type='l', lty = 1)
+
+
+coef <- coef(fit)
+beta0.hat <- coef$smterms$`Intercept(yindex)`$coef
+beta1.hat <- coef$smterms$`X(yindex)`$coef
+
+matplot(1:25, t(fda_y), type='l', lty = 1, col='light grey', 
+         ylab=expression(paste(beta[0](t))), xlab="time")
+lines(beta0.hat$yindex.vec, beta0.hat$value, type='l', lwd=2)
+
+```
+
+
+
+```{r vanilla-regressions}
+
+
+game_data_regressions <- pilot_game_data_distance %>%
+  filter(number_of_runs == 1) %>%
+  group_by(subject, Trial) %>%
+   mutate(ghost_dir = if_else(GhostLocation > UserLocation & c(0, diff(GhostLocation)) < 0, "towards", 
+                       if_else(GhostLocation < UserLocation & c(0, diff(GhostLocation)) > 0, "towards", "away"))) %>%
+  mutate(ghost_dir = replace(ghost_dir, 1, first(ghost_start_dir))) %>%
+  mutate(ghost_dir = factor(ghost_dir, levels = c("towards", "away"))) %>%
+  filter(towards_ghost != "Still") %>%
+  mutate(turnaway_event = if_else(away_choice > 0, 1, 0)) %>%
+  mutate(dist_to_B5 = if_else(Biscuit5 == 1111, 0, abs(Biscuit5 - UserLocation))) %>%
+  mutate(dist_to_B4 = if_else(Biscuit4 == 1111, 0, abs(Biscuit4 - UserLocation))) %>%
+  mutate(dist_to_B3 = if_else(Biscuit3 == 1111, 0, abs(Biscuit3 - UserLocation))) %>%
+  mutate(dist_to_B2 = if_else(Biscuit2 == 1111, 0, abs(Biscuit2 - UserLocation))) %>%
+  mutate(dist_to_B1 = if_else(Biscuit1 == 1111, 0, abs(Biscuit1 - UserLocation))) %>%
+  mutate(score_on_trial = ((Score - first(Score)) /10)) %>%
+  mutate(points_remaining = if_else(reward_groups == 3, (80 - score_on_trial)/10, (70 - score_on_trial)/10 )) %>%
+  ungroup() %>%
+  select(turnaway_event, subject, distance_to_ghost, ghost_dir, 
+         dist_to_B5, dist_to_B4, dist_to_B3, dist_to_B2, dist_to_B1, Eaten, score_on_trial, points_remaining,
+         Chase, Attack) %>%
+  mutate(dis_to_ghost_scaled = scale(distance_to_ghost))
+  # mutate(across(.cols = c(-subject, -turnaway_event, -ghost_dir), .fns = ~scale(.x)))
+
+
+
+model_dist <- glmer(turnaway_event ~ dis_to_ghost_scaled + (1|subject), data = game_data_regressions, family = binomial)
+
+# why is ghost dir have the wrong sign?
+model_dist_dir <- glmer(turnaway_event ~ dis_to_ghost_scaled + ghost_dir + 
+                          (1|subject), data = game_data_regressions, family = binomial)
+
+model_dist_dir_eaten <- glmer(turnaway_event ~ dis_to_ghost_scaled + ghost_dir + Eaten +
+                          (1|subject), data = game_data_regressions, family = binomial)
+
+model_dist_dir_pr <- glmer(turnaway_event ~ dis_to_ghost_scaled + ghost_dir + points_remaining +
+                          (1|subject), data = game_data_regressions, family = binomial)
+
+model_dist_dir_trialsc <- glmer(turnaway_event ~ dis_to_ghost_scaled + ghost_dir + score_on_trial +
+                          (1|subject), data = game_data_regressions, family = binomial)
+
+model_dist_dir_eaten_ch <- glmer(turnaway_event ~ dis_to_ghost_scaled + ghost_dir + Eaten + Chase +
+                          (1|subject), data = game_data_regressions, family = binomial)
+
+model_dist_dir_eaten_ch_at <- glmer(turnaway_event ~ dis_to_ghost_scaled + ghost_dir + Eaten + Chase + Attack +
+                          (1|subject), data = game_data_regressions, family = binomial(link="logit"))
+
+model_dist_dir_reward_dist <- glmer(turnaway_event ~ dis_to_ghost_scaled + ghost_dir + 
+                      dist_to_B5 + dist_to_B4 + dist_to_B3 + dist_to_B2 + dist_to_B1 +
+                          (1|subject), data = game_data_regressions, family = binomial)
+
+
+summary(model_dist)
+summary(model_dist_dir)
+summary(model_dist_dir_eaten)
+summary(model_dist_dir_pr)
+summary(model_dist_dir_trialsc)
+summary(model_dist_dir_reward_dist)
+summary(model_dist_dir_eaten_ch)
+summary(model_dist_dir_eaten_ch_at)
+
+
+plot_model(model_dist)+theme_ggeffects()
+plot_model(model_dist_dir)+theme_ggeffects()
+plot_model(model_dist_dir_eaten)+theme_ggeffects()
+plot_model(model_dist_dir_pr)+theme_ggeffects()
+plot_model(model_dist_dir_trialsc)+theme_ggeffects()
+plot_model(model_dist_dir_reward_dist)+theme_ggeffects()
+plot_model(model_dist_dir_eaten_ch)+theme_ggeffects()
+plot_model(model_dist_dir_eaten_ch_at)+theme_ggeffects()
+
+```
+
+```{r survival-analysis-prep}
+
+# first attempt #
+game_data_survival <- pilot_game_data_distance %>%
+  filter(number_of_runs == 1) %>%
+  group_by(subject, Trial) %>%
+   mutate(ghost_dir = if_else(GhostLocation > UserLocation & c(0, diff(GhostLocation)) < 0, "towards", 
+                              if_else(GhostLocation < UserLocation & c(0, diff(GhostLocation)) > 0, "towards", "away"))) %>%
+  mutate(ghost_dir = replace(ghost_dir, 1, first(ghost_start_dir))) %>%
+  mutate(trial_end = trial_time + c(time_step[2:n()], 0.05)) %>%
+  rename(trial_start = trial_time) %>%
+  filter(towards_ghost != "Still") %>%
+  mutate(across(.cols = c(trial_start, trial_end), ~(.x - first(trial_start)))) %>%
+  mutate(turnaway_event = if_else(away_choice > 0, 1, 0)) %>%
+  mutate(dist_to_B5 = if_else(Biscuit5 == 1111, 0, abs(Biscuit5 - UserLocation))) %>%
+  mutate(dist_to_B4 = if_else(Biscuit4 == 1111, 0, abs(Biscuit4 - UserLocation))) %>%
+  mutate(dist_to_B3 = if_else(Biscuit3 == 1111, 0, abs(Biscuit3 - UserLocation))) %>%
+  mutate(dist_to_B2 = if_else(Biscuit2 == 1111, 0, abs(Biscuit2 - UserLocation))) %>%
+  mutate(dist_to_B1 = if_else(Biscuit1 == 1111, 0, abs(Biscuit1 - UserLocation))) %>%
+  filter(trial_start <= trial_start[turnaway_event == 1]) %>%
+  ungroup() %>%
+  # mutate(across(.cols = starts_with("dist_to_B"), .fns = ~as.numeric(replace(.x, .x == 0, NA)))) %>%
+  select(turnaway_event, subject, Trial, trial_start, trial_end, towards_ghost, distance_to_ghost, ghost_dir, dist_to_B5, dist_to_B4, dist_to_B3, dist_to_B2, dist_to_B1) 
+
+
+# second attempt #
+game_data_tmerge_prep <- pilot_game_data_distance %>%
+  filter(number_of_runs == 1) %>%
+  group_by(subject, Trial) %>%
+   mutate(ghost_dir = if_else(GhostLocation > UserLocation & c(0, diff(GhostLocation)) < 0, "towards", 
+                              if_else(GhostLocation < UserLocation & c(0, diff(GhostLocation)) > 0, "towards", "away"))) %>%
+  mutate(ghost_dir = replace(ghost_dir, 1, first(ghost_start_dir))) %>%
+  filter(towards_ghost != "Still") %>%
+  mutate(trial_time = trial_time - first(trial_time)) %>%
+  mutate(turnaway_event = if_else(away_choice > 0, 1, 0)) %>%
+  mutate(dist_to_B5 = if_else(Biscuit5 == 1111, 0, abs(Biscuit5 - UserLocation))) %>%
+  mutate(dist_to_B4 = if_else(Biscuit4 == 1111, 0, abs(Biscuit4 - UserLocation))) %>%
+  mutate(dist_to_B3 = if_else(Biscuit3 == 1111, 0, abs(Biscuit3 - UserLocation))) %>%
+  mutate(dist_to_B2 = if_else(Biscuit2 == 1111, 0, abs(Biscuit2 - UserLocation))) %>%
+  mutate(dist_to_B1 = if_else(Biscuit1 == 1111, 0, abs(Biscuit1 - UserLocation))) %>%
+  filter(trial_time <= trial_time[turnaway_event == 1]) %>%
+  mutate(turnaway_time =  trial_time[turnaway_event == 1]) %>%
+  ungroup() %>%
+  filter(subject == "Pilot_13" & turnaway_time > 0) %>%
+  arrange(trial_time) %>%
+  mutate(ghost_dir = factor(ghost_dir)) %>%
+  select(turnaway_event, Trial, trial_time, turnaway_time, towards_ghost, distance_to_ghost, ghost_dir, dist_to_B5, dist_to_B4, dist_to_B3, dist_to_B2, dist_to_B1) 
+
+game_data_tmerge_baseline <- 
+  tmerge(
+    data1 = game_data_tmerge_prep %>% select(Trial, turnaway_time) %>% distinct(), 
+    data2 = game_data_tmerge_prep %>% select(Trial, turnaway_time) %>% distinct(),
+    id = Trial, 
+    turn_around = event(turnaway_time)
+    )
+
+game_data_tmerge <- 
+  tmerge(
+    data1 = game_data_tmerge_baseline, 
+    data2 = game_data_tmerge_prep %>% select(Trial, turnaway_time, trial_time, ghost_dir, dist_to_B4, distance_to_ghost) %>% distinct(),
+    id = Trial, 
+    distance_to_ghost = tdc(trial_time, distance_to_ghost),
+    ghost_dir = tdc(trial_time, ghost_dir),
+    B4 = tdc(trial_time, dist_to_B4)
+    )
+
+ggsurvplot(
+    fit = survfit(Surv(time = tstart, time2 = tstop, event = turn_around) ~ 1, data = game_data_tmerge), 
+    xlab = "Time", 
+    ylab = "Overall survival probability")
+
+test_model <- coxph(
+  Surv(time = tstart, time2 = tstop, event = turn_around) ~ distance_to_ghost + ghost_dir + cluster(Trial), 
+  data = game_data_tmerge
+  )
+
+test_model %>% 
+  gtsummary::tbl_regression(exp = TRUE)
+
+
+Surv(time = game_data_tmerge$tstart, time2 = game_data_tmerge$tstop, event = game_data_tmerge$turn_around)
+
+plot(residuals(test_model, type="dfbeta")[,1])
+
+proportions_table <- cox.zph(test_model)
+
+plot(proportions_table)
+```
+
+
+```{r surv-analysis}
+
+
+single_sub_survival <- game_data_survival %>% filter(subject == "Pilot_13")
+
+survival_model <- coxph(Surv(trial_start, trial_end, turnaway_event) ~ ghost_dir + 
+                          dist_to_B5 + dist_to_B4 + dist_to_B3 + dist_to_B2 + dist_to_B1 + cluster(Trial), single_sub_survival)
+
+
+simple_model <- coxph(Surv(trial_start, trial_end, turnaway_event) ~ distance_to_ghost, single_sub_survival)
+
+proportions_table <- cox.zph(survival_model)
+plot(proportions_table)
+
+simple_p_table <- cox.zph(simple_model)
+plot(simple_p_table)
+
+Surv(single_sub_survival$trial_start, single_sub_survival$trial_end, single_sub_survival$turnaway_event)
+
+summary(survfit(Surv(trial_start, trial_end, turnaway_event) ~ 1, data = game_data_survival), times = 2)
+
+
+game_data_survival %>%
+  filter(turnaway_event == 1) %>%
+  ggplot(., aes(x = trial_start)) +
+  geom_histogram(binwidth = .1) +
+  theme(panel.background = element_rect(fill = "white"))
+
+ggsurvplot(
+    fit = survfit(Surv(trial_start, trial_end, turnaway_event) ~ 1, data = single_sub_survival), 
+    xlab = "Time", 
+    ylab = "Overall survival probability")
+
+```  
+  
+```{r discrete-distance-surv-analysis}
+
+
+single_sub_survival_discrete <- single_sub_survival %>%
+  mutate(under_20 = if_else(distance_to_ghost <= 20, 1, 0)) %>%
+  mutate(under_40 = if_else(distance_to_ghost <= 40 & distance_to_ghost > 20, 1, 0)) %>%
+  mutate(under_60 = if_else(distance_to_ghost <= 60 & distance_to_ghost > 40, 1, 0)) %>%
+  mutate(under_80 = if_else(distance_to_ghost <= 80 & distance_to_ghost > 60, 1, 0)) %>%
+  mutate(under_100 = if_else(distance_to_ghost <= 100 & distance_to_ghost > 80, 1, 0))
+
+discrete_model <- coxph(Surv(trial_start, trial_end, turnaway_event) ~ under_20 + under_40 + under_60 + under_80 + under_100, single_sub_survival_discrete)
+
+discrete_table <- cox.zph(discrete_model)
+
+discrete_model
+discrete_table
+plot(discrete_table)
+
+
+
+
+```
+
+
+
