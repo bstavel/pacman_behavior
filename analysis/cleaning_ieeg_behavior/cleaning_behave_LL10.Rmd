@@ -1,0 +1,350 @@
+---
+title: "LL10 Cleaning"
+output: html_document
+date: '2022-08-02'
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+## LL10
+
+```{r LL10-data-load}
+
+ll10_data <- read_csv(path(here(), './data/ieeg_behave/LL10_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+```
+
+```{r LL10-data-prep}
+
+# clean Biscuits #
+ll10_data_clean <- clean_bci_data(ll10_data, 512)
+
+# create distance df #
+ll10_data_distance <- create_distance_df_bci(ll10_data_clean)
+
+# task vars df #
+ll10_all_vars_df <- get_across_task_variables_bci(ll10_data_clean)
+
+```
+
+
+```{r}
+
+ll10_all_vars_df %>%
+  ggplot(., aes(x = block, y = block_deaths)) +
+  geom_point(size = 3) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+ll10_all_vars_df %>%
+  ggplot(., aes(x = block, y = average_dots_per_block)) +
+  geom_point(size = 3) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+
+```{r trials-no-biscuits}
+
+
+ll10_data_clean %>%
+  filter(Trial != "ITI") %>%
+  group_by(trial_numeric) %>%
+  mutate(total_eaten = max(Eaten)) %>%
+  filter(total_eaten == 0) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+no_biscuits_trials <- ll10_data_clean %>%
+  filter(Trial != "ITI") %>%
+  group_by(trial_numeric) %>%
+  mutate(total_eaten = max(Eaten)) %>%
+  select(trial_numeric, total_eaten) %>%
+  distinct() %>%
+  filter(total_eaten == 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  # exclude fake trial 0 
+  filter(neural_trial_numeric >= 0) %>%
+  ungroup() %>%
+  pull(neural_trial_numeric)
+
+
+
+```
+
+
+```{r how-long-do-trials-last}
+
+
+ll10_all_vars_df %>%
+  ggplot(., aes(x = trial_length)) +
+  geom_histogram() +
+  geom_vline(xintercept =10) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+long_trials <- ll10_all_vars_df %>%
+  select(trial_numeric, trial_length) %>%
+  unique() %>%
+  filter(trial_length > 10) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  pull(neural_trial_numeric)
+
+```
+
+
+```{r compile-bad-trials}
+
+
+bad_trials <- c(no_biscuits_trials, long_trials)
+
+
+```
+
+
+## all other trials look good!
+
+```{r all-other-trials}
+
+# no ghost trials
+ll10_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(TrialType > 16) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  ylim(0, 200) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+
+# first 100 trials
+ll10_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric < 100) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  ylim(0, 200) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+# 100-200 trials
+ll10_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 100 & trial_numeric < 200) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+
+# 200-300 trials
+ll10_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 200 & trial_numeric < 300) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+
+
+
+
+```
+
+```{r save-bad-trials}
+
+
+bad_trials <- c(no_biscuits_trials, long_trials)
+
+bad_df <- data_frame("neural_trial_numeric" = bad_trials)
+
+write_csv(bad_df, path(here(), './data/ieeg_behave/LL10_bad_trials.csv'))
+
+```
+
+```{r last-away}
+
+# read in bad df
+bad_df <- read_csv(path(here(), './data/ieeg_behave/LL10_bad_trials.csv'))
+
+
+last_away_df <- ll10_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  filter(died == 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+  group_by(trial_numeric) %>%
+  mutate(towards_dots = if_else(Direction == 2 & starting_side == "Right", "Towards",  # Left:2 Right :11
+                                 if_else(Direction == 11 & starting_side == "Left", "Towards",
+                                         if_else(Direction == 4, "Still", "Away")))) %>%
+  mutate(away_choice_tmp = c(0, diff(factor(towards_dots)))) %>%
+  mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_dots == "Away") | 
+                                  (away_choice_tmp == -1 & towards_dots == "Away"), sample, 0)) %>%
+  select(-away_choice_tmp) %>%
+  mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
+  mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
+  ungroup() %>%
+  filter(sample == last_away)
+
+anyDuplicated(last_away_df$trial_numeric)
+
+
+last_away_clean_df <- last_away_df %>%
+  ungroup() %>%
+  mutate(sample_before = 0) %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, TrialType, sample, sample_before, event)
+
+
+write_csv(last_away_clean_df, path(here(), './data/ieeg_behave/LL10_last_away_events.csv'))
+
+
+```
+
+
+```{r longest-trial}
+
+# read in bad df
+bad_df <- read_csv(path(here(), './data/ieeg_behave/LL10_bad_trials.csv'))
+
+
+trial_times <- ll10_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+  select(trial_length, trial_numeric) %>%
+  distinct()
+
+
+```
+

@@ -1,0 +1,386 @@
+---
+title: "Aalen Modeling"
+output: html_document
+date: '2022-07-28'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(lubridate)
+library(ranger)
+library(ggfortify)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("solarized")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+## Load Pacman data ##
+
+```{r load-data}
+# game data #
+pilot_game_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_pacman_200_trial_n69.csv'), col_types = cols(X1 = col_double(),
+                                                                                              subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double(),
+                                                                                              final_score = col_double()))
+
+# behavioral data#
+pilot_behave_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_behave_data_200_trial_n69.csv'), col_types = cols())
+
+# metadata / IDs #
+pacman_ids <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_ids_200_trial_n69.csv'))
+
+# merge with ids to confirm parsing worked #
+pilot_behave_data_clean <- merge.data.frame(pilot_behave_data, pacman_ids, by = c("subject", "ID"))
+
+```
+
+## Prep behavioral data
+
+
+```{r beahvioral-prep, echo = F}
+
+
+## IMPORTANT NOTES ##
+# subject 84 and trial 48 somehow managed to press before trial began-- manually need to change startlocation to 63 and starting direction
+# subject 70 on trial 127 also pressed, true start was 57
+
+
+## 11 is to the right
+## 2 is to the left
+
+# clean data #
+pilot_game_data_clean <- clean_data_for_aalen(pilot_game_data)
+
+
+# create distance df #
+pilot_game_data_distance <- create_distance_prolific(pilot_game_data_clean)
+
+
+
+
+```
+
+
+```{r prep-df-surival}
+
+survival_df_49_downsampled <- pilot_game_data_distance %>%
+  filter(last_away != 0) %>% # filter out times person ran into the ghost
+  filter(subject == "Subject_49") %>%
+  group_by(trial_numeric) %>%
+  filter(trial_time <= trial_time[away_choice == last_away]) %>%
+  mutate(trial_time = round(trial_time/.25)*.25) %>%
+  mutate(survival_time = max(trial_time)) %>%
+  mutate(time1 = round(trial_time, digits = 2)) %>%
+  mutate(time2 = c(time1[2:n()], time1[n()] + .25)) %>%
+  mutate(dif = time2 - time1) %>%
+  mutate(status = if_else(survival_time ==trial_time, 1, 0 )) %>%
+  mutate(censor = 1)  %>%
+  select(subject, trial_numeric, survival_time, min_distance, status, reward_groups, censor,
+         distance_to_ghost, jittered_start_location, Eaten, Score, Lives, Direction, time1, time2, dif, number_of_runs) %>%
+  distinct()
+
+
+survival_df_49 <- create_subject_survival_aalen(pilot_game_data_distance, "Subject_49")
+survival_df_52 <- create_subject_survival_aalen(pilot_game_data_distance, "Subject_52")
+survival_df_12 <- create_subject_survival_aalen(pilot_game_data_distance, "Subject_12")
+
+
+```
+
+
+```{r general-surv-curve}
+# sanity check survival curve
+survival_df_49 %>%
+  ggplot(., aes(x= time1)) +
+  geom_histogram(alpha = .5, binwidth = .05, aes(y = 100 *(..count..)/length(unique(survival_df_49$trial_numeric)))) +
+  ylab("Percent of Trials") +
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+# also using aalen models
+basic_aalen_fit_49 <- survfit(Surv(time1, time2, status) ~  1, data=survival_df_49, type = "fleming-harrington")
+basic_aalen_fit_52 <- survfit(Surv(time1, time2, status) ~  1, data=survival_df_52, type = "fleming-harrington")
+basic_aalen_fit_12 <- survfit(Surv(time1, time2, status) ~  1, data=survival_df_12, type = "fleming-harrington")
+
+ggsurvplot(basic_aalen_fit_49)
+ggsurvplot(basic_aalen_fit_52)
+ggsurvplot(basic_aalen_fit_12)
+
+```
+
+
+```{r aalen-regression}
+library(timereg)
+
+aalen_null_model_49 <- aareg(Surv( time1, time2, status) ~ Direction,
+              data=survival_df_49)
+
+aalen_timereg_model_49 <- timereg::aalen(Surv( time1, time2, status) ~  
+              distance_to_ghost + Eaten + const(reward_groups) + const(Score) + const(Lives) +
+              const(jittered_start_location) + const(Direction),
+              data=survival_df_49)
+
+aareg_full_model_49 <- aareg(Surv( time1, time2, status) ~  
+              distance_to_ghost + discounted_reward + Score + Lives +
+              jittered_start_location + Direction,
+              data=survival_df_49)
+
+aalen_full_model_52 <- aareg(Surv( time1, time2, status) ~  
+              distance_to_ghost + discounted_reward + Score + Lives +
+              jittered_start_location + Direction,
+              data=survival_df_52)
+
+
+aalen_full_model_12 <- aareg(Surv( time1, time2, status) ~  
+              distance_to_ghost + discounted_reward + Score + Lives +
+              jittered_start_location + Direction,
+              data=survival_df_12)
+
+
+
+
+# regression table
+aalen_null_model_49 %>%
+  broom::tidy() %>%
+  mutate(p_sig = p.value < .05) %>%
+  kable() %>%
+  kable_styling()
+
+aareg_full_model_49 %>%
+  broom::tidy() %>%
+  mutate(p_sig = p.value < .05) %>%
+  kable() %>%
+  kable_styling()
+
+aalen_full_model_52 %>%
+  broom::tidy() %>%
+  mutate(p_sig = p.value < .05) %>%
+  kable() %>%
+  kable_styling()
+
+aalen_full_model_12 %>%
+  broom::tidy() %>%
+  mutate(p_sig = p.value < .05) %>%
+  kable() %>%
+  kable_styling()
+
+# plot beta coefficients
+autoplot(aalen_null_model_49) +
+  theme(panel.background = element_rect(fill = "white"))
+
+autoplot(aareg_full_model_49) +
+  theme(panel.background = element_rect(fill = "white"))
+
+autoplot(aalen_full_model_12) +
+  theme(panel.background = element_rect(fill = "white"))
+
+# plot beta coefficients
+autoplot(aalen_full_model_52) +
+  theme(panel.background = element_rect(fill = "white"))
+
+# plot beta coefficients
+autoplot(aalen_full_model_12) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+
+
+
+```
+
+```{r prediction}
+
+survival_df_49_short <- survival_df_49 %>%
+  select(trial_numeric, time1, time2, status, cdf_distance, Direction, Eaten, points_remaining, jittered_start_location, Lives, reward_groups, Score) %>%
+  mutate(points_remaining_alt = scale(points_remaining)) %>%
+  ungroup()
+
+survival_df <- survival_df_49_short
+
+aalen_model_49 <- timereg::aalen(Surv( time1, time2, status) ~  
+                                cdf_distance + 
+                                jittered_start_location + points_remaining_alt,
+                                residuals = 1, data=survival_df,resample.iid=1, max.time = 4.2)
+
+summary(aalen_model_49)
+
+pred <- timereg::predict.timereg(object = aalen_model_49, newdata = survival_df)
+
+plot(pred,multiple=1,se=1,uniform=0)
+
+df <- data_frame(pred$S0)
+
+dim(pred$S0)
+
+# for loop across df to predict everything at each time point 
+# count everyone who has turned before each point
+# here look at predicted vs not
+
+
+
+aalen_model_49
+```
+
+
+
+```{r aalen-model-assumptions}
+
+plot(aalen_model_49)
+
+resids<-cum.residuals(aalen_model_49,survival_df,cum.resid=1)
+
+plot(resids, score=2, robust =1, conf.band = T)
+
+summary(resids)
+
+
+```
+
+```{r alt-approach}
+
+survival_df_49_short <- survival_df_49_downsampled %>%
+  select(trial_numeric, time1, time2, status, cdf_distance, Direction, Eaten, points_aquired,
+         points_remaining, jittered_start_location, Lives, reward_groups, Score) %>%
+  mutate(points_remaining_alt = c(scale(points_remaining))) %>%
+  ungroup() %>%
+  group_by(time1, time2) %>%
+  mutate(num_events = sum(status))
+
+aareg_full_model_49 <- aareg(Surv( time1, time2, status) ~  
+              distance_to_ghost_bin + points_aquired + reward_groups + Score + Lives +
+              jittered_start_location + Direction,
+              data=survival_df_49_downsampled)
+
+aareg_full_model_49 %>%
+  broom::tidy() %>%
+  mutate(p_sig = p.value < .05) %>%
+  kable() %>%
+  kable_styling()
+
+survival_df_49_short %>%
+  ggplot(., aes(x = time2, y = num_events)) +
+  geom_jitter(alpha = .5) +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_x_continuous(breaks = seq(0, 6, .25))
+
+
+single_time_point <- survival_df_49_short %>%
+  filter(time2 == 2.75)
+
+
+model1 <- glm(status ~ cdf_distance  + Direction + jittered_start_location + reward_groups + Lives, data = single_time_point, family = 'binomial')
+summary(model1)
+
+
+```
+
+
+
+## Meeting
+
+I have data that looks like it should be appropriate for survival analysis. Time to turn around in a game of pacman. There is no censoring. 
+
+I want to know, are the variables that I think are important actually important. And can I tell if some subjects care less about some aspects than others, ie some are more motivated by reward, others are very sensitive to how close they are to the ghost. 
+
+Ming suggest survival analysis, but doesn't have much experience. I started with cox-proportional hazard models, but my data don't meet the proportional hazard assumption. 
+
+I looked next looked at Aalen models, but struggled to find many practical walk throughs. I have played around with both the timereg package, and the aareg function from the survival package. Basically, I can fit the models okay, but I am not 100% sure if I am meeting model assumptions. With timereg, I can't re predict my data, because it the prediction function doesn't accept data in the interval format. Also, the martingale residuals look funky for at least some of the variables. I can keep playing with the form of my predictors, but I want to make sure I am on the right track... Meanwhile, the survival package seems to be all about cox proportional hazard models, with aalen mostly as checks for the cox proportional hazard. 
+
+I signed up for the course to basically try to find any resources and as an excuse to talk to you about it. 
+
+
+
+glmnet
+
+discerete super learners
+
+helen rijtgaard survival , time depdent vars gerds helen is first author
+
+highly depth of lasso
+
+intensity of a counting process can still be modeled to e the power link function
+
+cox.ph
+
+hal9001 , poision link in the right way
+
+
+
+
+

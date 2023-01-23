@@ -1,0 +1,653 @@
+---
+title: 'Ghost vs NoGhost: Approach and Avoidance'
+output: html_document
+date: '2022-10-31'
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'merge_theta_and_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+
+
+## SLCH002
+
+```{r SLCH002-data-load}
+
+sl02_data <- read_csv(path(here(), './data/ieeg_behave/SLCH002_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+bjh16_data <- read_csv(path(here(), './data/ieeg_behave/BJH016_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+ll10_data <- read_csv(path(here(), './data/ieeg_behave/LL10_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+
+
+
+```
+
+```{r SLCH002-data-prep}
+
+
+# clean df #
+sl02_data_clean <- clean_bci_data(sl02_data, 2000)
+
+# create distance df # 
+sl02_data_distance <- create_distance_df_bci(sl02_data_clean)
+
+sl02_data_distance_no_ghost <- create_distance_df_bci(sl02_data_clean, ghost = F)
+
+# round trial time to match theta analyses #
+sl02_data_distance <- sl02_data_distance %>%
+    mutate(trial_time = as.character(round(trial_time, 3)))
+  
+sl02_data_distance_no_ghost <- sl02_data_distance_no_ghost %>%
+    mutate(trial_time = as.character(round(trial_time, 3)))
+  
+
+```
+
+```{r BJH016-data-prep}
+
+
+# clean df #
+bjh16_data_clean <- clean_bci_data(bjh16_data, 2000)
+
+# create distance df # 
+bjh16_data_distance <- create_distance_df_bci(bjh16_data_clean)
+
+bjh16_data_distance_no_ghost <- create_distance_df_bci(bjh16_data_clean, ghost = F)
+
+# round trial time to match theta analyses #
+bjh16_data_distance <- bjh16_data_distance %>%
+    mutate(trial_time = as.character(round(trial_time, 3)))
+  
+bjh16_data_distance_no_ghost <- bjh16_data_distance_no_ghost %>%
+    mutate(trial_time = as.character(round(trial_time, 3)))
+  
+
+```
+
+```{r LL10-data-prep}
+
+
+# clean df #
+ll10_data_clean <- clean_bci_data(ll10_data, 512)
+
+# create distance df # 
+ll10_data_distance <- create_distance_df_bci(ll10_data_clean)
+
+ll10_data_distance_no_ghost <- create_distance_df_bci(ll10_data_clean, ghost = F)
+
+# round trial time to match theta analyses #
+ll10_data_distance <- ll10_data_distance %>%
+    mutate(trial_time = as.character(round(trial_time, 2)))
+  
+ll10_data_distance_no_ghost <- ll10_data_distance_no_ghost %>%
+    mutate(trial_time = as.character(round(trial_time, 2)))
+  
+
+```
+
+```{r merge-theta-data-and-combine}
+
+#  Ghost Data
+slch2_ghost_df <- merge_theta_and_behavioral_data("hc", "SLCH002", sl02_data_distance, timepoints = 181)
+bjh16_ghost_df <- merge_theta_and_behavioral_data("hc", "BJH016", bjh16_data_distance, timepoints = 281)
+ll10_ghost_df <- merge_theta_and_behavioral_data("hc", "LL10", ll10_data_distance, timepoints = 181)
+
+
+# No Ghost Data
+slch2_no_ghost_df <- merge_theta_and_behavioral_data("hc", "SLCH002", sl02_data_distance_no_ghost, timepoints = 181)
+bjh16_no_ghost_df <- merge_theta_and_behavioral_data("hc", "BJH016", bjh16_data_distance_no_ghost, timepoints = 281)
+ll10_no_ghost_df <- merge_theta_and_behavioral_data("hc", "LL10", ll10_data_distance_no_ghost, timepoints = 181)
+
+# Bind together
+ghost_df <- rbind(slch2_ghost_df %>% mutate(subject = "SLCH002"),
+                  bjh16_ghost_df %>% mutate(subject = "BJH016"),
+                  ll10_ghost_df %>% mutate(subject = "LL10"))
+
+no_ghost_df <- rbind(slch2_no_ghost_df %>% mutate(subject = "SLCH002"),
+                  bjh16_no_ghost_df %>% mutate(subject = "BJH016"),
+                  ll10_no_ghost_df %>% mutate(subject = "LL10"))
+
+# pacman_df <- rbind(ghost_df %>% mutate(case = "ghost"),
+#                     no_ghost_df %>% mutate(case = "no_ghost"))
+
+```
+
+
+```{r ghost_approach_avoid}
+
+ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  ungroup() %>%
+  group_by(electrode) %>%
+  mutate(pval = round(t.test(theta ~ towards_ghost)$p.value, 7)) %>%
+  mutate(electrode = gsub("_trial_theta.csv", "", electrode)) %>%
+  mutate(facet_title = paste0(electrode, ": ", pval)) %>%
+  ggplot(., aes(x = towards_ghost, fill =towards_ghost, y = theta)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  labs(y = "Theta Power", x = "Approaching or Avoiding Reward") +
+  facet_wrap(~facet_title, nrow = 3) +
+  ggtitle("HC Electrode Theta Power by Approach/Avoid Behavior", subtitle = "T tests ran on each elec, p value rounded to the 7th decimal place")
+
+ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  filter(subject == "BJH016") %>%
+  ungroup() %>%
+  group_by(electrode) %>%
+  mutate(pval = round(t.test(theta ~ towards_ghost)$p.value, 7)) %>%
+  mutate(electrode = gsub("_trial_theta.csv", "", electrode)) %>%
+  mutate(facet_title = paste0(electrode, ": ", pval)) %>%
+  ggplot(., aes(x = towards_ghost, fill =towards_ghost, y = theta)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  labs(y = "Theta Power", x = "Approaching or Avoiding Reward") +
+  facet_wrap(~facet_title, nrow = 3) +
+  ggtitle("HC Electrode Theta Power by Approach/Avoid Behavior", subtitle = "T tests ran on each elec, p value rounded to the 7th decimal place")
+
+
+
+ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  ungroup() %>%
+  group_by(electrode, towards_ghost) %>%
+  mutate(elec_aa_theta = mean(theta)) %>%
+  select(electrode, elec_aa_theta, towards_ghost) %>%
+  distinct() %>%
+  ggplot(., aes(x = towards_ghost, fill =towards_ghost, y = elec_aa_theta)) +
+  geom_violin() +
+  geom_boxplot(notch = T, width = .2) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  labs(y = "Theta Power", x = "Approaching or Avoiding") +
+  ggtitle("HC Electrode Theta Power by Approach/Avoid Behavior: Ghost")
+
+
+
+# ghost_df %>%
+#   filter(towards_ghost != "Still") %>%
+#   ungroup() %>%
+#   group_by(electrode, trial_numeric, towards_ghost) %>%
+#   mutate(trial_aa_theta = mean(theta)) %>%
+#   select(subject, electrode, trial_aa_theta, towards_ghost) %>%
+#   distinct() %>%
+#    ggplot(., aes(x = towards_ghost, fill =towards_ghost, y = trial_aa_theta)) +
+#   geom_violin() +
+#   # geom_point() +
+#   geom_boxplot(notch = T, width = .2) +
+#   theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+#   labs(y = "Theta Power", x = "Approaching or Avoiding Reward") +
+#   facet_wrap(~subject, nrow = 1) +
+#   ggtitle("HC Electrode Theta Power by Approach/Avoid Behavior")
+
+
+```
+
+
+```{r aac-boxplots}
+
+all_subs_boxplot <- ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  mutate(towards_ghost = if_else(towards_ghost == "Away", "Avoid", "Approach")) %>%
+  ungroup() %>%
+  group_by(electrode, towards_ghost) %>%
+  mutate(elec_aa_theta = mean(theta)) %>%
+  select(electrode, elec_aa_theta, towards_ghost) %>%
+  distinct() %>%
+  ggplot(., aes(x = towards_ghost, alpha =towards_ghost, y = elec_aa_theta)) +
+  geom_boxplot(notch = T, fill = "#ffcc00") +
+  theme(panel.background = element_rect(fill = "white"), 
+      legend.position = "none",
+      axis.title = element_text(family = "Georgia", color = '#2D2327', size = 24), 
+      axis.text = element_text(family = "Georgia", color = '#2D2327', size = 20), 
+      plot.title = element_text(family = "Georgia", color = '#2D2327', size = 24)) + 
+  labs(y = "Theta Power", x = "") +
+  scale_alpha_manual(values = c(.5, 1)) +
+  ggtitle("All subjects\n combined")
+
+indv_subs_boxplot <- ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  mutate(towards_ghost = if_else(towards_ghost == "Away", "Avoid", "Approach")) %>%
+  mutate(subject = if_else(subject == "BJH016", "Patient 1",
+                           if_else(subject == "LL10", "Patient 2", "Patient 3"))) %>%
+  ungroup() %>%
+  group_by(electrode, trial_numeric, towards_ghost) %>%
+  mutate(trial_aa_theta = mean(theta)) %>%
+  select(subject, electrode, trial_aa_theta, towards_ghost) %>%
+  distinct() %>%
+  ggplot(., aes(x = towards_ghost, alpha =towards_ghost, fill = subject, y = trial_aa_theta)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "none",
+        strip.text = element_blank(),
+        axis.title = element_text(family = "Georgia", color = '#2D2327', size = 24), 
+        axis.text = element_text(family = "Georgia", color = '#2D2327', size = 20), 
+        plot.title = element_text(family = "Georgia", color = '#2D2327', size = 24, hjust = 0.5)) + 
+  labs(y = "Theta Power", x = "") +
+  scale_fill_manual(values = ghost_colors) +
+  scale_alpha_manual(values = c(.5, 1)) +
+  facet_wrap(~subject, nrow = 1) +
+  scale_y_continuous(position = "right") +
+  ggtitle("Individual Subjects")
+
+
+plot(arrangeGrob(grobs = list(all_subs_boxplot,indv_subs_boxplot), nrow = 1, ncol = 2, widths = c(1.25,3)))  # 32 inches
+
+
+ggsave(filename = path(here(), "figures", "SFN", "theta_aac_boxplots.tif"),
+     device = "tiff",
+     width = 14,
+     height = 7,
+     units = "in",
+     dpi = 340,
+     plot =  arrangeGrob(grobs = list(all_subs_boxplot,indv_subs_boxplot), nrow = 1, ncol = 2, widths = c(1.45,3)))
+
+```
+
+
+```{r ghost_approach_avoid}
+
+no_ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  ungroup() %>%
+  group_by(electrode) %>%
+  mutate(pval = round(t.test(theta ~ towards_ghost)$p.value, 7)) %>%
+  mutate(electrode = gsub("_trial_theta.csv", "", electrode)) %>%
+  mutate(facet_title = paste0(electrode, ": ", pval)) %>%
+  ggplot(., aes(x = towards_ghost, fill =towards_ghost, y = theta)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  labs(y = "Theta Power", x = "Approaching or Avoiding Reward") +
+  facet_wrap(~facet_title, nrow = 3) +
+  ggtitle("HC Electrode Theta Power by Approach/Avoid Behavior", subtitle = "T tests ran on each elec, p value rounded to the 7th decimal place")
+
+
+no_ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  ungroup() %>%
+  group_by(electrode, towards_ghost) %>%
+  mutate(elec_aa_theta = mean(theta)) %>%
+  select(electrode, elec_aa_theta, towards_ghost) %>%
+  distinct() %>%
+  ggplot(., aes(x = towards_ghost, fill =towards_ghost, y = elec_aa_theta)) +
+  geom_violin() +
+  geom_boxplot(notch = T, width = .2) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  labs(y = "Theta Power", x = "Approaching or Avoiding Reward") +
+  ggtitle("HC Electrode Theta Power by Approach/Avoid Behavior: No Ghost")
+
+
+no_ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  ungroup() %>%
+  ggplot(., aes(x = towards_ghost, fill =towards_ghost, y = theta)) +
+  geom_violin() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  labs(y = "Theta Power", x = "Approaching or Avoiding Reward") +
+  ggtitle("HC Electrode Theta Power by Approach/Avoid Behavior: No Ghost")
+
+all_subs_ng_boxplot <- no_ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  ungroup() %>%
+  group_by(electrode, towards_ghost) %>%
+  mutate(elec_aa_theta = mean(theta)) %>%
+  select(electrode, elec_aa_theta, towards_ghost) %>%
+  distinct() %>%
+  ggplot(., aes(x = towards_ghost, alpha =towards_ghost, y = elec_aa_theta)) +
+  geom_boxplot(notch = T, fill = "#ffcc00") +
+  theme(panel.background = element_rect(fill = "white"), 
+      legend.position = "none",
+      legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+      legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+      axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+      axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
+      plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
+  labs(y = "Theta Power", x = "") +
+  scale_alpha_manual(values = c(.5, 1)) +
+  ggtitle("All subjects averaged \n within electrode")
+
+
+indv_subs_ng_boxplot <- no_ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  mutate(subject = if_else(subject == "BJH016", "Patient 1",
+                           if_else(subject == "LL10", "Patient 2", "Patient 3"))) %>%
+  ungroup() %>%
+  group_by(electrode, trial_numeric, towards_ghost) %>%
+  mutate(trial_aa_theta = mean(theta)) %>%
+  select(subject, electrode, trial_aa_theta, towards_ghost) %>%
+  distinct() %>%
+  ggplot(., aes(x = towards_ghost, alpha =towards_ghost, fill = subject, y = trial_aa_theta)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "none",
+        strip.text =  element_text(family = "Georgia", color = '#2D2327', size = 16),
+        legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18, hjust = 0.5)) + 
+  labs(y = "Theta Power", x = "") +
+  scale_fill_manual(values = ghost_colors) +
+  scale_alpha_manual(values = c(.5, 1)) +
+  facet_wrap(~subject, nrow = 1) +
+  scale_y_continuous(position = "right") +
+  ggtitle("Individual Subjects")
+
+
+plot(arrangeGrob(grobs = list(all_subs_ng_boxplot,indv_subs_ng_boxplot), nrow = 1, ncol = 2, widths = c(1.25,3)))  # 32 inches
+
+
+ggsave(filename = path(here(), "figures", "SFN", "theta_aac_ng_boxplots.tif"),
+     device = "tiff",
+     width = 12,
+     height = 7.5,
+     units = "in",
+     dpi = 320,
+     plot =  arrangeGrob(grobs = list(all_subs_ng_boxplot,indv_subs_ng_boxplot), nrow = 1, ncol = 2, widths = c(1.45,3)))
+
+```
+Triple check that they do not apporach more when moving right/left.
+```{r ghost-modeling}
+
+ghost_model_df <- ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  mutate(towards_ghost = factor(towards_ghost)) %>%
+  mutate(discounted_reward = discounted_reward - mean(discounted_reward)) %>%
+  mutate(distance_to_ghost = distance_to_ghost - mean(distance_to_ghost))
+
+cov_model_all_elecs <- lmerTest::lmer(theta ~ 
+                           GhostLocation + UserLocation + trial_time +
+                          (1|subject/electrode) + (1|trial_numeric) + (1|trial_time), data = ghost_model_df, REML = F)
+
+aac_model_all_elecs <- lmerTest::lmer(theta ~ towards_ghost +
+                           GhostLocation + UserLocation + trial_time +
+                          (1|subject/electrode) + (1|trial_numeric) + (1|trial_time), data = ghost_model_df, REML = F)
+
+anova(cov_model_all_elecs, aac_model_all_elecs)
+AICc(cov_model_all_elecs) - AICc(aac_model_all_elecs)
+
+# ggpredict(aac_model_all_elecs, terms = c("towards_ghost", "electrode"), type = "re") %>% 
+#    plot() +
+#    labs(x = "Approach/Avoid", y = "Theta", title = "Ghost Trials") + 
+#    theme_minimal()
+
+aac_model_all_elecs <- lmerTest::lmer(theta ~ towards_ghost +
+                           GhostLocation + UserLocation + trial_time +
+                          (1|subject/electrode) + (1|trial_numeric) + (1|trial_time), data = ghost_model_df, REML = T)
+summary(aac_model_all_elecs)
+```
+
+```{r table}
+
+aac_model_all_elecs <- lme4::lmer(theta ~ towards_ghost +
+                           GhostLocation + UserLocation + trial_time +
+                          (1|subject/electrode) + (1|trial_numeric) + (1|trial_time), data = ghost_model_df, REML = T)
+
+summary(aac_model_all_elecs)
+stargazer(aac_model_all_elecs, type = "text",
+          digits = 3,
+          star.cutoffs = c(0.05, 0.01, 0.001, .0001),
+          digit.separator = "",
+          notes        = "*p<0.05; **p<0.01, ***p<0.001, ****p<.0001", notes.append = F)
+
+```
+
+
+
+```{r figures}
+
+
+# Extract the prediction data frame
+pred.mm <- ggpredict(aac_model_all_elecs, terms = c("towards_ghost"))  # this gives overall predictions for the model
+
+# Plot the predictions 
+
+(ggplot(pred.mm) + 
+   geom_line(aes(x = x, y = predicted)) +          # slope
+   geom_ribbon(aes(x = x, ymin = predicted - std.error, ymax = predicted + std.error), 
+               fill = "lightgrey", alpha = 0.5) +  # error band
+   geom_point(data = ghost_model_df,                      # adding the raw data (scaled values)
+              aes(x = towards_ghost, y = theta, colour = subject)) + 
+  geom_boxplot(aes(x = x, y = predicted)) +
+   labs(x = "Approach/Avoid", y = "Theta", 
+        title = "HC Theta during AAC") + 
+   theme_minimal() +
+    scale_color_manual(values = getPalette(24))
+)
+
+getPalette = colorRampPalette(brewer.pal(24, "Set1"))
+
+
+ggpredict(aac_model_all_elecs, terms = c("towards_ghost", "subject"), type = "re") %>% 
+   plot() +
+   labs(x = "Approach/Avoid", y = "Theta", title = "HC Theta during AAC") + 
+   theme_minimal()
+
+
+pred.mm
+```
+
+
+```{r lme}
+library(nlme)
+aac_lme_model_all_elecs <- nlme::lme(theta ~ towards_ghost +
+                           GhostLocation + UserLocation + trial_time,
+                          random=list(subject=~1, electrode=~1, trial_numeric=~1, trial_time=~1), correlation=corAR1(),
+                          data = ghost_model_df, method = "REML")
+
+summary(aac_lme_model_all_elecs)
+
+aac_lme_ng_model_all_elecs <- nlme::lme(theta ~ towards_ghost +
+                          UserLocation + trial_time,
+                          random=list(subject=~1, electrode=~1, trial_numeric=~1, trial_time=~1), correlation=corAR1(),
+                          data = no_ghost_model_df, method = "REML")
+
+summary(aac_lme_ng_model_all_elecs)
+
+```
+
+```{r full-mode, eval = F}
+
+  
+
+aac_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost + distance_to_ghost*towards_ghost +
+                           UserLocation + GhostLocation + trial_time + #poly(trial_time, 2) +
+                          (1|subject/electrode) + (1|trial_numeric) + (1|trial_time), data = ghost_df_recenter, REML = T)
+summary(aac_model_all_elecs)
+
+full_lme_model_all_elecs <- nlme::lme(theta ~ discounted_reward*towards_ghost + distance_to_ghost*towards_ghost +
+                           UserLocation + GhostLocation + trial_time,
+                          random=list(subject=~1, electrode=~1, trial_numeric=~1), correlation=corAR1(),
+                          data = ghost_model_df, method = "REML")
+
+summary(full_lme_model_all_elecs)
+
+# ar1 for lmer
+#(lme_simple_fit <- lme(y~1,random=~1|f,data=d,correlation=corAR1()))
+```
+
+
+```{r no-ghost-modeling}
+
+no_ghost_model_df <- no_ghost_df %>%
+  filter(towards_ghost != "Still") %>%
+  mutate(towards_ghost = factor(towards_ghost)) %>%
+  mutate(discounted_reward = discounted_reward - mean(discounted_reward)) 
+
+cov_model_all_elecs_ng <- lmerTest::lmer(theta ~ 
+                           UserLocation + trial_time +
+                          (1|subject/electrode) + (1|trial_numeric) + (1|trial_time), data = no_ghost_model_df, REML = F)
+
+aac_model_all_elecs_ng <- lmerTest::lmer(theta ~ towards_ghost +
+                           UserLocation + trial_time +
+                          (1|subject/electrode) + (1|trial_numeric) + (1|trial_time), data = no_ghost_model_df, REML = F)
+
+
+anova(cov_model_all_elecs_ng, aac_model_all_elecs_ng)
+AICc(cov_model_all_elecs) - AICc(aac_model_all_elecs)
+
+# show results
+aac_model_all_elecs_ng <- lmerTest::lmer(theta ~ towards_ghost +
+                           UserLocation + trial_time +
+                          (1|subject/electrode) + (1|trial_numeric) + (1|trial_time), data = no_ghost_model_df, REML = T)
+
+summary(aac_model_all_elecs_ng)
+```
+
+
+```{r no-ghost-table}
+
+aac_model_all_elecs_ng <- lme4::lmer(theta ~ towards_ghost +
+                           UserLocation + trial_time +
+                          (1|subject/electrode) + (1|trial_numeric) + (1|trial_time), data = no_ghost_model_df, REML = T)
+
+stargazer(aac_model_all_elecs_ng,
+          digits = 3,
+          star.cutoffs = c(0.05, 0.01, 0.001, .0001),
+          digit.separator = "",
+          notes        = "*p<0.05; **p<0.01, ***p<0.001, ****p<.0001", notes.append = F)
+
+```
+
+
+```{r lme-no-ghost}
+
+library(nlme)
+aac_lme_model_all_elecs_ng <- nlme::lme(theta ~ towards_ghost +
+                            UserLocation + trial_time,
+                          random=list(subject=~1, electrode=~1, trial_numeric=~1, trial_time=~1), correlation=corAR1(),
+                          data = no_ghost_df, method = "REML")
+
+summary(aac_lme_model_all_elecs_ng)
+
+```

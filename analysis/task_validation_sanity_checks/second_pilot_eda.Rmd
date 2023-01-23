@@ -1,0 +1,315 @@
+---
+title: "Second Pilot"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+
+## hand written functions ##
+
+
+## plotting helpers ##
+ggthemr("solarized")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+```{r load-data}
+# game data #
+pilot_game_data <- read_csv('../../pacman_parse/cleaned_game_data_7_14_2021.csv', col_types = cols())
+
+# behave data #
+pilot_behave_data_20 <- read_csv('../../pacman_parse/cleaned_behave_data_7_14_2021.csv', col_types = cols())
+
+pilot_behave_data_200 <- read_csv('../../pacman_parse/cleaned_behave_200_trial_data_7_25_2021.csv', col_types = cols())
+
+
+pilot_behave_data <- rbind(pilot_behave_data_20, pilot_behave_data_200 %>% select(-comp_7))
+```
+
+
+```{r clean-up}
+# clean Biscuits #
+pilot_game_data_clean <- pilot_game_data %>%
+  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+  group_by(subject) %>%
+  mutate(trial_end = as.numeric(c(diff(trial_numeric) > 0, FALSE))) %>%
+  mutate(ghost_location_true = if_else(GhostLocation %% 10 == 0,  GhostLocation, GhostLocation + (10 - GhostLocation %% 10))) %>%
+  mutate(user_location_true = if_else(UserLocation %% 10 == 0, UserLocation, UserLocation + (10 - UserLocation %% 10))) %>%
+  mutate(time_step = c(FALSE, diff(Time)))
+
+pilot_game_data_death <- pilot_game_data_clean %>%
+  group_by(subject) %>%
+  filter(!is.na(Score)) %>%
+  mutate(death_check = as.numeric(c(FALSE, diff(Score) < 0))) %>%
+  mutate(deaths = sum(death_check)) %>%
+  mutate(max_trial = max(trial_numeric)) %>%
+  group_by(subject, Trial) %>%
+  mutate(max_score = max(Score, na.rm = T)) %>%
+  group_by(subject) %>%
+  mutate(average_score = mean(max_score)) %>%
+  mutate(max_time = max(Time)) %>%
+  select(subject, max_trial, deaths, average_score, final_score, max_time) %>%
+  distinct()  %>%
+  filter(subject %in% c("Pilot_11", "Pilot_12", "Pilot_13", "Pilot_14", "Pilot_15"))
+
+pilot_game_data_death %>%
+  kable() %>%
+  kable_styling()
+
+
+
+# # types of missingness
+# GhostLocationMissing <- pilot_game_data %>% filter(is.na(GhostLocation))
+# 
+# # completeness
+# pilot_game_data_complete <- pilot_game_data %>% filter(!is.na(GhostLocation))
+# 
+# 
+# # test bug fixes
+# pilot_game_data_low_score <- pilot_game_data %>% 
+#   filter(subject == "Subject_16" )
+# 
+# 
+# tmp <- pilot_game_data %>% 
+#   filter(subject == "Subject_16" & Lives == 1) %>%
+#   group_by(Trial) %>%
+#   mutate(max_score = max(Score, na.rm = T)) %>%
+#   select(Trial, Lives, max_score) %>%
+#   distinct()
+# 
+# 
+# pilot_game_data %>%
+#   ggplot(., aes(x = Time, y = Score, color = subject)) +
+#   geom_point() +
+#   geom_line() +
+#   theme(panel.background = element_rect(fill = "white")) +
+#   scale_color_manual(values = getPalette(17))
+
+```
+
+
+## Timing ##
+
+```{r distance}
+
+pilot_game_data_clean <- pilot_game_data_clean %>%
+  mutate(distance_to_ghost = abs(ghost_location_true - user_location_true)) %>%
+  mutate(dir_change = c(0, diff(UserLocation))) %>%
+  mutate(current_dir = if_else(dir_change > 0, 1, if_else(dir_change < 0, -1, if_else(dir_change == 0, 0, 999)))) %>%
+  mutate(towards_ghost = if_else(current_dir == -1 & GhostLocation < UserLocation, "Towards", 
+                                 if_else(current_dir == 1 & GhostLocation > UserLocation, "Towards",
+                                         if_else(current_dir == 0, "Still", "Away")))) 
+
+
+distance_reg_df <- pilot_game_data_clean %>%
+  filter(towards_ghost != "Still") %>%
+  mutate(towards_ghost_numeric = if_else(towards_ghost == "Away", 1, 0)) %>%
+  mutate(turn_event = c(0, diff(towards_ghost_numeric))) %>%
+  mutate(turnaway_event = if_else(turn_event == 1, 1, 0))
+
+model <- glmer(turnaway_event ~ distance_to_ghost + (1|subject) + (1|Trial), data = distance_reg_df, family = binomial)
+
+exp(-0.02653461)
+
+distance_reg_df %>% 
+  ggplot(., aes(x = as.factor(towards_ghost_numeric), y = distance_to_ghost)) +
+  geom_boxplot(notch = T) + 
+  facet_wrap(~subject) + 
+  theme(panel.background = element_rect(fill = "white"))
+  
+
+plot(survfit(Surv(distance_to_ghost, turnaway_event) ~ 1, data = distance_reg_df), 
+     xlab = "Distance", 
+     ylab = "Overall Turn Around probability")
+
+ggsurvplot(
+    fit = survfit(Surv(distance_to_ghost, turnaway_event) ~ 1, data = distance_reg_df), 
+    xlab = "Distance", 
+    ylab = "Overall survival probability")
+```
+
+
+## Pilot Qs ##
+
+```{r pilot_qs_data}
+
+# engaging #
+pilot_behave_data %>%
+  mutate(pilot_3 = factor(pilot_3, levels = c("1", "2", "3 - moderately engaging", "4", "5 - very engaging"), labels = c("1", "2", "3", "4", "5"))) %>%
+  ggplot(., aes(x = pilot_3, fill = pilot_3)) +
+  geom_bar() +
+  xlab("1: not engaging at all ; 5: very engaging") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  ggtitle("On a scale of 1-5, how engaging was the game?") +
+  scale_x_discrete(drop = FALSE)
+
+
+# # strategy #
+# pilot_behave_data %>%
+#   mutate(pilot_4 = gsub(", please explain", "", pilot_4)) %>%
+#   ggplot(., aes(x = pilot_4, fill = pilot_4)) +
+#   geom_bar() +
+#   xlab("") +
+#   theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+#   ggtitle("Did you have a specific strategy during the game?")
+
+
+# experiences
+pilot_behave_data %>%
+  select(starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  mutate(experienced = if_else(experienced == "Click to write Choice 7", "Anger", 
+                              if_else(experienced == "Click to write Choice 8", "Suspense", 
+                                      if_else(experienced == "Click to write Choice 9", "Frusteration", experienced)))) %>%
+  mutate(emotion_count = if_else(!is.na(experienced), 1, 0)) %>%
+  filter(emotion_count == 1) %>%
+  mutate(experienced = factor(experienced)) %>%
+  mutate(experienced = factor(experienced, levels = c(levels(experienced), "Boredom"), labels = c(levels(experienced), "Boredom"))) %>%
+  ggplot(., aes(x = experienced, fill = experienced)) +
+  geom_bar() +
+  xlab("") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "right", axis.text.x = element_blank()) +
+  ggtitle("What did you experience when the ghost was close to catching you?", subtitle = "multiple answers allowed") +
+  scale_x_discrete(drop = FALSE) +
+  scale_fill_manual(values = getPalette(10))
+  
+
+
+```
+
+```{r mental-health-counts}
+
+pilot_behave_data_anx <- pilot_behave_data %>%
+  mutate(across(starts_with("O"), ~as.numeric(as.factor(.x)))) %>%
+  mutate(oasis_total = O1 + O2 + O3 + O4 +O5) %>%
+  select(subject, oasis_total) %>%
+  filter(subject %in% c("Pilot_11", "Pilot_12", "Pilot_13", "Pilot_14", "Pilot_15"))
+
+
+pilot_behave_data_anx %>%
+  arrange(oasis_total) %>%
+  kable() %>%
+  kable_styling()
+
+
+```
+
+
+
+```{r oasis-data-visuals, fig.width=15, fig.height= 6}
+
+# oasis
+pilot_behave_data %>%
+  ggplot(., aes(x = O1, fill = O1)) +
+  geom_bar(orientation = "x") +
+  theme(panel.background = element_rect(fill = "white")) + 
+  xlab("") +
+  ggtitle("In the past week, how often have you felt anxious?") +
+  scale_x_discrete(labels = 0:4)
+
+
+pilot_behave_data %>%
+  ggplot(., aes(x = O2, fill = O2)) +
+  geom_bar(orientation = "x") +
+  theme(panel.background = element_rect(fill = "white")) + 
+  xlab("") +
+  ggtitle("In the past week, when you have felt anxious, how intense or severe was your anxiety?") +
+  scale_x_discrete(labels = 0:4)
+
+
+pilot_behave_data %>%
+  ggplot(., aes(x = O3, fill = O3)) +
+  geom_bar(orientation = "x") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "bottom", legend.direction = "vertical") + 
+  xlab("") +
+  ggtitle(" In the past week, how often did you avoid situations, places, objects, or activities because of anxiety or fear?") +
+  scale_x_discrete(labels = 0:4)
+
+
+pilot_behave_data %>%
+  ggplot(., aes(x = O4, fill = O4)) +
+  geom_bar(orientation = "x") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "bottom", legend.direction = "vertical") + 
+  xlab("") +
+  ggtitle("In the past week, how much did your anxiety interfere with your ability to do the things you needed to do at work, at school, or at home?") +
+  scale_x_discrete(labels = 0:4)
+
+pilot_behave_data %>%
+  ggplot(., aes(x = O5, fill = O5)) +
+  geom_bar(orientation = "x") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "bottom", legend.direction = "vertical") + 
+  xlab("") +
+  ggtitle("In the past week, how much has anxiety interfered with your social life and relationships?") +
+  scale_x_discrete(labels = 0:4)
+
+
+
+```
+
+```{r os}
+
+pilot_game_trials <- pilot_game_data_death %>% select(subject, max_trial)
+pilot_behave_os <- pilot_behave_data %>% select(subject, starts_with("meta"))
+pilot_behave_data_os <- merge.data.frame(pilot_behave_os, pilot_game_trials, by = "subject")
+
+
+
+```
+
+

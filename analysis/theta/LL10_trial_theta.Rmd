@@ -1,0 +1,1194 @@
+---
+title: "Trial Theta ~ LL10"
+output: html_document
+date: '2022-09-12'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 10,  # set default width of figures
+  fig.height <- 12,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+
+
+## LL10
+
+```{r LL10-data-load}
+
+ll10_data <- read_csv(path(here(), './data/ieeg_behave/LL10_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+```
+
+```{r LL10-data-prep}
+
+
+# clean Biscuits #
+ll10_data_clean <- clean_bci_data(ll10_data, 512)
+
+# create distance df #
+ll10_data_distance <- create_distance_df_bci(ll10_data_clean)
+
+# round time steps to even timing to match the theta data #
+ll10_data_distance <- ll10_data_distance %>%
+    mutate(trial_time = as.character(round(trial_time, 2)))
+
+```
+
+```{r bheave-cors}
+
+behave_correl_data <- ll10_data_distance %>%
+  select(distance_to_ghost, discounted_reward, UserLocation, GhostLocation) 
+  
+behavioral_cor <- cor(behave_correl_data, use = "pairwise.complete.obs")
+  
+ggcorrplot(behavioral_cor,
+             lab = T,
+             type = "lower",
+             colors = colorRampPalette(brewer.pal(8, "RdBu"))(3)) +
+  ggtitle("LL10 Behavioral Correlations")
+
+
+```
+
+```{r aalen-basics}
+
+ll10_data_aalen <- create_subject_survival_aalen(ll10_data_distance %>% mutate(trial_time = as.numeric(trial_time)), "LL10")
+
+
+basic_aalen_fit <- survfit(Surv(time1, time2, status) ~  1, data=ll10_data_aalen, type = "fleming-harrington")
+
+ggsurvplot(basic_aalen_fit) +
+  ggtitle("LL10 Survival Curve")
+
+
+```
+
+
+```{r full-aalen-models, eval = F}
+
+
+aareg_full_model_1 <- aareg(Surv( time1, time2, status) ~  
+              cdf_distance + discounted_reward + Score + Lives +
+              jittered_start_location + Direction,
+              data=ll10_data_aalen)
+
+aareg_full_model_2 <- aareg(Surv( time1, time2, status) ~  
+              cdf_distance + distance_to_next_reward + Score + Lives +
+              jittered_start_location + Direction,
+              data=ll10_data_aalen)
+
+aareg_full_model_3 <- aareg(Surv( time1, time2, status) ~  
+              distance_to_ghost + discounted_reward + 
+              UserLocation + GhostLocation +
+              Score + Lives +
+              jittered_start_location ,
+              data=ll10_data_aalen)
+
+aareg_full_model_4 <- aareg(Surv( time1, time2, status) ~  
+              distance_to_ghost + distance_to_next_reward + Score + Lives +
+              jittered_start_location + Direction,
+              data=ll10_data_aalen, dfbeta = TRUE)
+
+
+aareg_full_model_1 %>%
+  broom::tidy() %>%
+  mutate(p_sig = p.value < .05) %>%
+  kable() %>%
+  kable_styling()
+
+aareg_full_model_2 %>%
+  broom::tidy() %>%
+  mutate(p_sig = p.value < .05) %>%
+  kable() %>%
+  kable_styling()
+
+aareg_full_model_3 %>%
+  broom::tidy() %>%
+  mutate(p_sig = p.value < .05) %>%
+  kable(table.attr = "style = \"color: black;\"") %>%
+  kable_styling()  %>%
+  add_header_above(c("LL10: Survival Model" = 7))
+
+aareg_full_model_4 %>%
+  broom::tidy() %>%
+  mutate(p_sig = p.value < .05) %>%
+  kable() %>%
+  kable_styling()
+
+residuals(aareg_full_model_4)
+
+# plot beta coefficients
+autoplot(aareg_full_model_4) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+
+
+```{r hc-elecs}
+
+
+hc_elecs <- list.files(path(here(), "data", "theta_csvs", "hc", "LL10"))
+
+ll10_trial_theta_results <- tibble()
+for(file in hc_elecs){
+
+  print(file)
+  
+  elec_theta_data <- read_csv(path(here(), "data",  "theta_csvs",  "hc", "LL10", file))
+  
+  # fix col names
+  elec_theta_data <- elec_theta_data %>%
+    select(-X1)
+  colnames(elec_theta_data) <- c(paste0("bin_", colnames(elec_theta_data)[1:181]), 'trial_numeric')
+  
+  # pivot
+  elec_theta_data <- elec_theta_data %>%
+    pivot_longer(names_to = 'bin', values_to = 'theta', cols = starts_with("bin")) %>%
+    mutate(trial_numeric = trial_numeric + 1) %>%
+    mutate(trial_time = .05 * as.numeric(gsub("bin_", "", bin))) %>% 
+    mutate(trial_time = as.character(round(trial_time, 3)))  %>% 
+    select(-bin)
+    
+  
+  # merge 
+  elec_full_data <- inner_join(elec_theta_data, ll10_data_distance)
+  
+  elec_full_data <- elec_full_data %>%
+     mutate(trial_numeric = factor(trial_numeric))
+  
+  
+  # only before last turn around, 
+  #less total trials because excluding trials where pacman died
+  elec_before_turn <- elec_full_data %>%
+    mutate(trial_time = as.numeric(trial_time)) %>%
+    # filter out anything after last away
+    group_by(trial_numeric) %>%
+    filter(trial_time <= max(trial_time[away_choice == last_away])) %>%
+    ungroup()
+  
+  
+  ## Basic models
+  
+  # threat model
+  threat_model <- lmerTest::lmer(theta ~ distance_to_ghost +
+                             UserLocation + GhostLocation + Direction + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(threat_model))
+  summary_model <- summary(threat_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "threat") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  # aac model
+  aac_model <- lmerTest::lmer(theta ~ towards_ghost +
+                             UserLocation + GhostLocation + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(aac_model))
+  summary_model <- summary(aac_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "aac") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  # reward model
+  reward_model <- lmerTest::lmer(theta ~ discounted_reward +
+                             UserLocation + GhostLocation + Direction + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(reward_model))
+  summary_model <- summary(reward_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "reward") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  ## Interaction
+  
+  ## threat, aac
+  threat_aac_model <- lmerTest::lmer(theta ~ distance_to_ghost*towards_ghost +
+                             UserLocation + GhostLocation + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(threat_aac_model))
+  summary_model <- summary(threat_aac_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "threat_aac") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  ## reward, aac
+  reward_aac_model <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost +
+                             UserLocation + GhostLocation +
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(reward_aac_model))  
+  summary_model <- summary(reward_aac_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "reward_aac") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  # full model
+  full_model <- lmerTest::lmer(theta ~ distance_to_ghost + towards_ghost + discounted_reward +
+                             UserLocation + GhostLocation + 
+                               (1|trial_numeric), data = elec_full_data)
+  print(summary(full_model))
+  summary_model <- summary(full_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "full") %>%
+    mutate(file = file) %>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)
+  
+  
+  # fullish model
+  fullish_model <- lmerTest::lmer(theta ~ distance_to_ghost + discounted_reward +
+                             UserLocation + GhostLocation + 
+                               (1|trial_numeric), data = elec_full_data)
+  print(summary(fullish_model))
+  summary_model <- summary(fullish_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "fullish") %>%
+    mutate(file = file) %>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)
+    
+
+
+}
+
+
+
+# # plot
+elec_full_data %>%
+  # select(distance_to_ghost, theta, trial_time, trial_numeric) %>%
+  # filter(trial_numeric == 216) %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  ggplot(., aes(x = discounted_reward, y = theta)) +
+  geom_point(size = 3, alpha = .7) +
+  geom_smooth(method = 'lm', formula = 'y ~ x', fill = 'grey', alpha = .7) +
+  theme(panel.background = element_rect(fill = "white")) +
+  labs(y = "Theta Power", x = "Discounted Reward") +
+  facet_wrap(~trial_numeric)
+
+
+ elec_full_data %>%
+   filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+   filter(towards_ghost != "Still") %>%
+   ggplot(., aes(x = distance_to_ghost, color = towards_ghost, y = theta)) +
+   geom_point(size = 4, alpha = .7) +
+   geom_smooth(method = 'lm', formula = 'y ~ x', fill = 'grey', alpha = .7) +
+   theme(panel.background = element_rect(fill = "white")) +
+   labs(y = "Theta Power", x = "Distance to Ghost") +
+   facet_wrap(~trial_numeric)
+  
+
+
+
+```
+
+```{r model-results-hc}
+
+ll10_trial_theta_results_clean <- ll10_trial_theta_results %>%
+  mutate(sig = `Pr(>|t|)` < .05) %>%
+  group_by(model, predictor) %>%
+  mutate("Number of Sig. HC Elecs" = sum(sig)) %>%
+  mutate("Average T" = mean(`t value`)) %>%
+  mutate("Average Beta" = mean(Estimate)) %>%
+  select(model, predictor, `Average Beta`, `Average T`, `Number of Sig. HC Elecs`) %>%
+  distinct() %>%
+  ungroup()
+
+
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "threat") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Threat Model" = 4))
+
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "reward") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Reward Model" = 4))
+
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "aac") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("AAC Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "threat_aac") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Threat + AAC Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "reward_aac") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Reward + AAC Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "full") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Fullest Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "fullish") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Hippocampus: Full Model" = 4))
+
+```
+
+```{r hc-full-regressions}
+
+shift <- 0
+hc_elecs <- list.files(path(here(), "data", "theta_csvs", "hc", "LL10"))
+
+elec_full_data_hc_elecs <- NULL
+for(file in hc_elecs){
+
+  print(file)
+  
+  elec_theta_data <- read_csv(path(here(), "data", "theta_csvs", "hc", "LL10", file))
+  
+   # fix col names
+  elec_theta_data <- elec_theta_data %>%
+    select(-X1)
+  colnames(elec_theta_data) <- c(paste0("bin_", colnames(elec_theta_data)[1:181]), 'trial_numeric')
+  
+  # pivot
+  elec_theta_data <- elec_theta_data %>%
+    pivot_longer(names_to = 'bin', values_to = 'theta', cols = starts_with("bin")) %>%
+    mutate(bin = as.numeric(gsub("bin_", "", bin))) %>%
+    mutate(bin = paste0("bin_", if_else(bin - shift > -1, bin - shift, 999))) %>%
+    filter(bin != "bin_999") %>%
+    mutate(trial_numeric = trial_numeric + 1) %>%
+    mutate(trial_time = .05 * as.numeric(gsub("bin_", "", bin))) %>% 
+    mutate(trial_time = as.character(round(trial_time, 3)))  %>% 
+    select(-bin)
+    
+  
+  # merge 
+  elec_full_data <- inner_join(elec_theta_data, ll10_data_distance)
+  
+  elec_full_data <- elec_full_data %>%
+     mutate(trial_numeric = factor(trial_numeric)) %>%
+    mutate(electrode = file)
+  
+  # rbind
+  elec_full_data_hc_elecs <- rbind(elec_full_data_hc_elecs, elec_full_data)
+
+}
+
+# threat model
+threat_model_all_elecs <- lmerTest::lmer(theta ~ distance_to_ghost +
+                           UserLocation + GhostLocation + Direction + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_hc_elecs, REML = F)
+print(summary(threat_model_all_elecs))
+
+
+# aac model
+aac_model_all_elecs <- lmerTest::lmer(theta ~ towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_hc_elecs, REML = F)
+print(summary(aac_model_all_elecs))
+
+# reward model
+reward_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward +
+                           UserLocation + GhostLocation + Direction + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_hc_elecs, REML = F)
+print(summary(reward_model_all_elecs))
+
+## threat, aac
+threat_aac_model_all_elecs <- lmerTest::lmer(theta ~ distance_to_ghost*towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_hc_elecs, REML = F)
+print(summary(threat_aac_model_all_elecs))
+
+
+## reward, aac
+reward_aac_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_hc_elecs, REML = F)
+print(summary(reward_aac_model_all_elecs))
+
+
+## reward, aac
+complete_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost + distance_to_ghost*towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_hc_elecs, REML = F)
+print(summary(complete_model_all_elecs))
+
+complete_model_all_elecs %>%
+  broom::tidy() %>%
+  kable(table.attr = "style = \"color: black;\"") %>%
+  kable_styling() %>%
+  add_header_above(c("LL10: LME HC Full Model" = 8))
+
+```
+
+
+
+## Cingulate
+
+```{r cingulate-regressions}
+
+
+cing_elecs <- list.files(path(here(), "data", "theta_csvs", "cing", "LL10"))
+
+ll10_trial_theta_results <- tibble()
+for(file in cing_elecs){
+
+  print(file)
+  
+  elec_theta_data <- read_csv(path(here(), "data", "theta_csvs", "cing", "LL10", file))
+  
+  # fix col names
+  elec_theta_data <- elec_theta_data %>%
+    select(-X1)
+  colnames(elec_theta_data) <- c(paste0("bin_", colnames(elec_theta_data)[1:181]), 'trial_numeric')
+  
+  # pivot
+  elec_theta_data <- elec_theta_data %>%
+    pivot_longer(names_to = 'bin', values_to = 'theta', cols = starts_with("bin")) %>%
+    mutate(trial_numeric = trial_numeric + 1) %>%
+    mutate(trial_time = .05 * as.numeric(gsub("bin_", "", bin))) %>% 
+    mutate(trial_time = as.character(round(trial_time, 3)))  %>% 
+    select(-bin)
+    
+  
+  # merge 
+  elec_full_data <- inner_join(elec_theta_data, ll10_data_distance)
+  
+  elec_full_data  <- elec_full_data %>%
+    mutate(trial_time = as.numeric(trial_time)) %>%
+    # get rid of no ghost
+    filter(TrialType <= 16) %>%
+    # filter out anything after last away
+    mutate(trial_numeric = factor(trial_numeric)) %>%
+    mutate(cdf_distance = distributions3::cdf(threat_function, distance_to_ghost/100)) %>%
+    mutate(Direction = factor(Direction)) %>%
+    mutate(discounted_reward = if_else(Eaten == 5, 0, points_remaining * 1/distance_to_next_reward))
+  
+  
+  # only before last turn around, less total trials because excluding trials where pacman died
+  elec_before_turn <- elec_full_data %>%
+    mutate(trial_time = as.numeric(trial_time)) %>%
+    # get rid of no ghost
+    filter(TrialType <= 16) %>%
+    # filter out anything after last away
+    group_by(trial_numeric) %>%
+    filter(trial_time <= max(trial_time[away_choice == last_away])) %>%
+    ungroup() %>%
+    mutate(trial_numeric = factor(trial_numeric)) %>%
+    mutate(cdf_distance = distributions3::cdf(threat_function, distance_to_ghost/100)) 
+  
+  
+  ## Basic models
+  
+  # threat model
+  threat_model <- lmerTest::lmer(theta ~ distance_to_ghost +
+                             UserLocation + GhostLocation + Direction + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(threat_model))
+  summary_model <- summary(threat_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "threat") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  # aac model
+  aac_model <- lmerTest::lmer(theta ~ towards_ghost +
+                             UserLocation + GhostLocation + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(aac_model))
+  summary_model <- summary(aac_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "aac") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  # reward model
+  reward_model <- lmerTest::lmer(theta ~ discounted_reward +
+                             UserLocation + GhostLocation + Direction + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(reward_model))
+  summary_model <- summary(reward_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "reward") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  ## Interaction
+  
+  ## threat, aac
+  threat_aac_model <- lmerTest::lmer(theta ~ distance_to_ghost*towards_ghost +
+                             UserLocation + GhostLocation + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(threat_aac_model))
+  summary_model <- summary(threat_aac_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "threat_aac") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  ## reward, aac
+  reward_aac_model <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost +
+                             UserLocation + GhostLocation +
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(reward_aac_model))  
+  summary_model <- summary(reward_aac_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "reward_aac") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  # full model
+  full_model <- lmerTest::lmer(theta ~ distance_to_ghost + towards_ghost + discounted_reward +
+                             UserLocation + GhostLocation + 
+                               (1|trial_numeric), data = elec_full_data)
+  print(summary(full_model))
+  summary_model <- summary(full_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "full") %>%
+    mutate(file = file) %>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)
+  
+  
+  # fullish model
+  fullish_model <- lmerTest::lmer(theta ~ distance_to_ghost + discounted_reward +
+                             UserLocation + GhostLocation + 
+                               (1|trial_numeric), data = elec_full_data)
+  print(summary(fullish_model))
+  summary_model <- summary(fullish_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "fullish") %>%
+    mutate(file = file) %>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)
+    
+
+
+}
+
+
+
+```
+
+```{r model-results-cing}
+
+ll10_trial_theta_results_clean <- ll10_trial_theta_results %>%
+  mutate(sig = `Pr(>|t|)` < .05) %>%
+  group_by(model, predictor) %>%
+  mutate("Number of Sig. Cingulate Elecs" = sum(sig)) %>%
+  mutate("Average T" = mean(`t value`)) %>%
+  mutate("Average Beta" = mean(Estimate)) %>%
+  select(model, predictor, `Average Beta`, `Average T`, `Number of Sig. Cingulate Elecs`) %>%
+  distinct() %>%
+  ungroup()
+
+
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "threat") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Threat Model" = 4))
+
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "reward") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Reward Model" = 4))
+
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "aac") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("AAC Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "threat_aac") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Threat + AAC Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "reward_aac") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Reward + AAC Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "full") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Fuller Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "fullish") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Cingulate: Full Model" = 4))
+
+```
+
+```{r cingulate-all-electrodes}
+
+shift <- 0
+hc_elecs <- list.files(path(here(), "data", "theta_csvs", "cing", "LL10"))
+
+elec_full_data_cing_elecs <- NULL
+for(file in hc_elecs){
+
+  print(file)
+  
+  elec_theta_data <- read_csv(path(here(), "data", "theta_csvs", "cing", "LL10", file))
+  
+   # fix col names
+  elec_theta_data <- elec_theta_data %>%
+    select(-X1)
+  colnames(elec_theta_data) <- c(paste0("bin_", colnames(elec_theta_data)[1:181]), 'trial_numeric')
+  
+  # pivot
+  elec_theta_data <- elec_theta_data %>%
+    pivot_longer(names_to = 'bin', values_to = 'theta', cols = starts_with("bin")) %>%
+    mutate(bin = as.numeric(gsub("bin_", "", bin))) %>%
+    mutate(bin = paste0("bin_", if_else(bin - shift > -1, bin - shift, 999))) %>%
+    filter(bin != "bin_999") %>%
+    mutate(trial_numeric = trial_numeric + 1) %>%
+    mutate(trial_time = .05 * as.numeric(gsub("bin_", "", bin))) %>% 
+    mutate(trial_time = as.character(round(trial_time, 3)))  %>% 
+    select(-bin)
+    
+  
+  # merge 
+  elec_full_data <- inner_join(elec_theta_data, ll10_data_distance)
+  
+  elec_full_data <- elec_full_data %>%
+     mutate(trial_numeric = factor(trial_numeric)) %>%
+    mutate(electrode = file)
+  
+  # rbind
+  elec_full_data_cing_elecs <- rbind(elec_full_data_cing_elecs, elec_full_data)
+
+}
+
+
+# threat model
+threat_model_all_elecs <- lmerTest::lmer(theta ~ distance_to_ghost +
+                           UserLocation + GhostLocation + Direction + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_cing_elecs, REML = F)
+print(summary(threat_model_all_elecs))
+
+
+# aac model
+aac_model_all_elecs <- lmerTest::lmer(theta ~ towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_cing_elecs, REML = F)
+print(summary(aac_model_all_elecs))
+
+# reward model
+reward_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward +
+                           UserLocation + GhostLocation + Direction + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_cing_elecs, REML = F)
+print(summary(reward_model_all_elecs))
+
+## threat, aac
+threat_aac_model_all_elecs <- lmerTest::lmer(theta ~ distance_to_ghost*towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_cing_elecs, REML = F)
+print(summary(threat_aac_model_all_elecs))
+
+
+## reward, aac
+reward_aac_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_cing_elecs, REML = F)
+print(summary(reward_aac_model_all_elecs))
+
+
+## reward, aac
+complete_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost + distance_to_ghost*towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_cing_elecs, REML = F)
+print(summary(complete_model_all_elecs))
+
+complete_model_all_elecs %>%
+  broom::tidy() %>%
+  kable(table.attr = "style = \"color: black;\"") %>%
+  kable_styling() %>%
+  add_header_above(c("LL10: LME Cingulate Full Model" = 8))
+
+
+```
+
+
+## MTG
+
+```{r mtg-regressions}
+
+
+cing_elecs <- list.files(path(here(), "data", "theta_csvs", "mtg", "LL10"))
+
+ll10_trial_theta_results <- tibble()
+for(file in cing_elecs){
+
+  print(file)
+  
+  elec_theta_data <- read_csv(path(here(), "data", "theta_csvs", "mtg", "LL10", file))
+  
+  # fix col names
+  elec_theta_data <- elec_theta_data %>%
+    select(-X1)
+  colnames(elec_theta_data) <- c(paste0("bin_", colnames(elec_theta_data)[1:181]), 'trial_numeric')
+  
+  # pivot
+  elec_theta_data <- elec_theta_data %>%
+    pivot_longer(names_to = 'bin', values_to = 'theta', cols = starts_with("bin")) %>%
+    mutate(trial_numeric = trial_numeric + 1) %>%
+    mutate(trial_time = .05 * as.numeric(gsub("bin_", "", bin))) %>% 
+    mutate(trial_time = as.character(round(trial_time, 3)))  %>% 
+    select(-bin)
+    
+  
+  # merge 
+  elec_full_data <- inner_join(elec_theta_data, ll10_data_distance)
+  
+  elec_full_data  <- elec_full_data %>%
+    mutate(trial_time = as.numeric(trial_time)) %>%
+    # get rid of no ghost
+    filter(TrialType <= 16) %>%
+    # filter out anything after last away
+    mutate(trial_numeric = factor(trial_numeric)) %>%
+    mutate(cdf_distance = distributions3::cdf(threat_function, distance_to_ghost/100)) %>%
+    mutate(Direction = factor(Direction)) %>%
+    mutate(discounted_reward = if_else(Eaten == 5, 0, points_remaining * 1/distance_to_next_reward))
+  
+  
+  # only before last turn around, less total trials because excluding trials where pacman died
+  elec_before_turn <- elec_full_data %>%
+    mutate(trial_time = as.numeric(trial_time)) %>%
+    # get rid of no ghost
+    filter(TrialType <= 16) %>%
+    # filter out anything after last away
+    group_by(trial_numeric) %>%
+    filter(trial_time <= max(trial_time[away_choice == last_away])) %>%
+    ungroup() %>%
+    mutate(trial_numeric = factor(trial_numeric)) %>%
+    mutate(cdf_distance = distributions3::cdf(threat_function, distance_to_ghost/100)) 
+  
+  
+  ## Basic models
+  
+  # threat model
+  threat_model <- lmerTest::lmer(theta ~ distance_to_ghost +
+                             UserLocation + GhostLocation + Direction + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(threat_model))
+  summary_model <- summary(threat_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "threat") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  # aac model
+  aac_model <- lmerTest::lmer(theta ~ towards_ghost +
+                             UserLocation + GhostLocation + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(aac_model))
+  summary_model <- summary(aac_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "aac") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  # reward model
+  reward_model <- lmerTest::lmer(theta ~ discounted_reward +
+                             UserLocation + GhostLocation + Direction + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(reward_model))
+  summary_model <- summary(reward_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "reward") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  ## Interaction
+  
+  ## threat, aac
+  threat_aac_model <- lmerTest::lmer(theta ~ distance_to_ghost*towards_ghost +
+                             UserLocation + GhostLocation + 
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(threat_aac_model))
+  summary_model <- summary(threat_aac_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "threat_aac") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  ## reward, aac
+  reward_aac_model <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost +
+                             UserLocation + GhostLocation +
+                            (1|trial_numeric), data = elec_full_data)
+  print(summary(reward_aac_model))  
+  summary_model <- summary(reward_aac_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "reward_aac") %>%
+    mutate(file = file)%>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)  
+  
+  # full model
+  full_model <- lmerTest::lmer(theta ~ distance_to_ghost + towards_ghost + discounted_reward +
+                             UserLocation + GhostLocation + 
+                               (1|trial_numeric), data = elec_full_data)
+  print(summary(full_model))
+  summary_model <- summary(full_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "full") %>%
+    mutate(file = file) %>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)
+  
+    # fullish model
+  fullish_model <- lmerTest::lmer(theta ~ distance_to_ghost + discounted_reward +
+                             UserLocation + GhostLocation + 
+                               (1|trial_numeric), data = elec_full_data)
+  print(summary(fullish_model))
+  summary_model <- summary(fullish_model) 
+  
+  tmp <- as_tibble(summary_model$coefficients) %>%
+    mutate(model = "fullish") %>%
+    mutate(file = file) %>%
+    mutate(predictor = rownames(summary_model$coefficients))
+  
+  ll10_trial_theta_results <- rbind(ll10_trial_theta_results, tmp)
+    
+
+
+}
+
+
+
+```
+
+
+```{r model-results-mtg}
+
+ll10_trial_theta_results_clean <- ll10_trial_theta_results %>%
+  mutate(sig = `Pr(>|t|)` < .05) %>%
+  group_by(model, predictor) %>%
+  mutate("Number of Sig. MTG Elecs" = sum(sig)) %>%
+  mutate("Average T" = mean(`t value`)) %>%
+  mutate("Average Beta" = mean(Estimate)) %>%
+  select(model, predictor, `Average Beta`, `Average T`, `Number of Sig. MTG Elecs`) %>%
+  distinct() %>%
+  ungroup()
+
+
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "threat") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Threat Model" = 4))
+
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "reward") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Reward Model" = 4))
+
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "aac") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("AAC Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "threat_aac") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Threat + AAC Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "reward_aac") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Reward + AAC Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "full") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("Fuller Model" = 4))
+
+ll10_trial_theta_results_clean %>%
+  filter(model == "fullish") %>%
+  select(-model) %>%
+  kable() %>%
+  kable_styling() %>%
+  add_header_above(c("MTG: Full Model" = 4))
+
+```
+
+```{r mtg-all-electrodes}
+
+shift <- 0
+hc_elecs <- list.files(path(here(), "data", "theta_csvs", "mtg", "LL10"))
+
+elec_full_data_mtg_elecs <- NULL
+for(file in hc_elecs){
+
+  print(file)
+  
+  elec_theta_data <- read_csv(path(here(), "data", "theta_csvs", "mtg", "LL10", file))
+  
+   # fix col names
+  elec_theta_data <- elec_theta_data %>%
+    select(-X1)
+  colnames(elec_theta_data) <- c(paste0("bin_", colnames(elec_theta_data)[1:181]), 'trial_numeric')
+  
+  # pivot
+  elec_theta_data <- elec_theta_data %>%
+    pivot_longer(names_to = 'bin', values_to = 'theta', cols = starts_with("bin")) %>%
+    mutate(bin = as.numeric(gsub("bin_", "", bin))) %>%
+    mutate(bin = paste0("bin_", if_else(bin - shift > -1, bin - shift, 999))) %>%
+    filter(bin != "bin_999") %>%
+    mutate(trial_numeric = trial_numeric + 1) %>%
+    mutate(trial_time = .05 * as.numeric(gsub("bin_", "", bin))) %>% 
+    mutate(trial_time = as.character(round(trial_time, 3)))  %>% 
+    select(-bin)
+    
+  
+  # merge 
+  elec_full_data <- inner_join(elec_theta_data, ll10_data_distance)
+  
+  elec_full_data <- elec_full_data %>%
+     mutate(trial_numeric = factor(trial_numeric)) %>%
+    mutate(electrode = file)
+  
+  # rbind
+  elec_full_data_mtg_elecs <- rbind(elec_full_data_mtg_elecs, elec_full_data)
+
+}
+
+# threat model
+threat_model_all_elecs <- lmerTest::lmer(theta ~ distance_to_ghost +
+                           UserLocation + GhostLocation + Direction + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_mtg_elecs, REML = F)
+print(summary(threat_model_all_elecs))
+
+
+# aac model
+aac_model_all_elecs <- lmerTest::lmer(theta ~ towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_mtg_elecs, REML = F)
+print(summary(aac_model_all_elecs))
+
+# reward model
+reward_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward +
+                           UserLocation + GhostLocation + Direction + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_mtg_elecs, REML = F)
+print(summary(reward_model_all_elecs))
+
+## threat, aac
+threat_aac_model_all_elecs <- lmerTest::lmer(theta ~ distance_to_ghost*towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_mtg_elecs, REML = F)
+print(summary(threat_aac_model_all_elecs))
+
+
+## reward, aac
+reward_aac_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_mtg_elecs, REML = F)
+print(summary(reward_aac_model_all_elecs))
+
+
+## reward, aac
+complete_model_all_elecs <- lmerTest::lmer(theta ~ discounted_reward*towards_ghost + distance_to_ghost*towards_ghost +
+                           UserLocation + GhostLocation + 
+                          (1|trial_numeric) + (1|electrode), data = elec_full_data_mtg_elecs, REML = F)
+print(summary(complete_model_all_elecs))
+
+
+complete_model_all_elecs %>%
+  broom::tidy() %>%
+  kable(table.attr = "style = \"color: black;\"") %>%
+  kable_styling() %>%
+  add_header_above(c("LL10: LME MTG Full Model" = 8))
+```
