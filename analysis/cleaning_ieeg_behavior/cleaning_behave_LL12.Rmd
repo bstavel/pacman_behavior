@@ -47,6 +47,7 @@ library(scales)
 source(path(here(), "R", 'mutate_cond.R'))
 source(path(here(), "R", 'create_distance_df.R'))
 source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'create_timelock_event_tables.R'))
 
 ## plotting helpers ##
 ggthemr("light")
@@ -136,6 +137,13 @@ ll12_all_vars_df %>%
 
 ```{r trials-no-biscuits}
 
+tmp <- ll12_data_clean %>%
+  filter(trial_length != 999) %>%
+  select(trial_numeric, trial_length) %>%
+  mutate(trial_numeric = trial_numeric - 1) %>%
+  filter(trial_numeric %in% bad_trials) %>%
+  distinct()
+
 
 ll12_data_clean %>%
   filter(Trial != "ITI") %>%
@@ -167,7 +175,7 @@ no_biscuits_trials <- ll12_data_clean %>%
 # possible paused trials
 tmp <- ll12_data_clean %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(neural_trial_numeric == 247)
+  filter(neural_trial_numeric == 246)
 
 # 247 is not paused, but ran into wall and waited
 
@@ -197,7 +205,7 @@ long_trials <- ll12_all_vars_df %>%
 ```{r compile-bad-trials}
 
 
-bad_trials <- c(no_biscuits_trials, long_trials)
+bad_trials <- unique(c(no_biscuits_trials, long_trials))
 
 
 ```
@@ -288,7 +296,6 @@ ll12_data_clean %>%
 
 ```{r more-than-240-trials}
 
-
 length(unique(ll12_data_clean$trial_numeric))
 
 
@@ -303,7 +310,7 @@ unique(ll12_data_clean$trial_numeric) - 0:260
 ```{r save-bad-trials}
 
 
-bad_trials <- c(no_biscuits_trials, long_trials)
+bad_trials <- unique(c(no_biscuits_trials, long_trials))
 
 bad_df <- data_frame("neural_trial_numeric" = bad_trials)
 
@@ -311,42 +318,11 @@ write_csv(bad_df, path(here(), './data/ieeg_behave/LL12_bad_trials.csv'))
 
 ```
 
-```{r last-away}
+```{r time-lock-events}
 
-# read in bad df
-bad_df <- read_csv(path(here(), './data/ieeg_behave/LL12_bad_trials.csv'))
-
-
-last_away_df <- ll12_data_clean %>%
-  filter(Trial != "ITI") %>%
-  filter(trial_numeric != 0) %>%
-  mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
-  group_by(trial_numeric) %>%
-  mutate(towards_dots = if_else(Direction == 2 & starting_side == "Right", "Towards",  # Left:2 Right :11
-                                 if_else(Direction == 11 & starting_side == "Left", "Towards",
-                                         if_else(Direction == 4, "Still", "Away")))) %>%
-  mutate(away_choice_tmp = c(0, diff(factor(towards_dots)))) %>%
-  mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_dots == "Away") | 
-                                  (away_choice_tmp == -1 & towards_dots == "Away"), sample, 0)) %>%
-  select(-away_choice_tmp) %>%
-  mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
-  mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
-  ungroup() %>%
-  filter(sample == last_away)
-
-anyDuplicated(last_away_df$trial_numeric)
-
-
-last_away_clean_df <- last_away_df %>%
-  ungroup() %>%
-  mutate(sample_before = 0) %>%
-  mutate(event = 1) %>%
-  select(trial_numeric, TrialType, sample, sample_before, event)
-
-
-write_csv(last_away_clean_df, path(here(), './data/ieeg_behave/LL12_last_away_events.csv'))
-
+create_last_away_events(ll12_data_clean, 'LL12_last_away_events.csv')
+create_first_dot_events(ll12_data_clean, 'LL12_first_dot_events.csv')
+create_died_events(ll12_data_clean, 'LL12_died_events.csv')
 
 ```
 

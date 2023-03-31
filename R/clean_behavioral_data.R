@@ -1,5 +1,6 @@
 clean_bci_data <- function(df, sample_rate){
   df_clean <- df %>%
+    select(-any_of(c("...1", "X1"))) %>%
     rename(subject = Subject) %>%
     # ungrouped timing variables
     rename(sample = Time) %>%
@@ -31,12 +32,18 @@ clean_bci_data <- function(df, sample_rate){
     mutate(Biscuit5 = if_else(Biscuit5 == FALSE & base_start_location <= 80,  base_start_location + 52, 
                               if_else(Biscuit5 == FALSE & base_start_location > 80, base_start_location -52, 1111)))  %>%
     mutate(dots_eaten = max(Eaten)) %>%
+    # Fix Direction
+    mutate(move = c(0, diff(UserLocation))) %>%
+    mutate(Direction = if_else(move %in% c(-2, -4), "Left",
+                                        if_else(move %in% c(2, 4), "Right", 
+                                                if_else(move == 0, "Still", "Unsure")))) %>%
+    select(-move) %>%
     # get starting side
     mutate(starting_side = if_else(base_start_location < 95, "Left", "Right")) %>%
     # trial timing information
     mutate(Trial = if_else(Trial_on_off == 0, "ITI", Trial)) %>%
     mutate_cond(Trial == "ITI", 
-                GhostLocation = NA, UserLocation = NA, Lives = NA, starting_side = NA,
+                GhostLocation = NA, UserLocation = NA, Lives = NA, starting_side = NA, Direction = NA,
                 Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, 
                 Attack = NA, Chase = NA, Eaten = NA, TrialType = NA) %>%
     mutate(trial_time = if_else(Trial == "ITI", 999, Time - first(Time))) %>%
@@ -92,11 +99,17 @@ clean_data_for_aalen <- function(df){
                               if_else(Biscuit4 == FALSE & base_start_location > 80, base_start_location -42, 1111)))  %>%
     mutate(Biscuit5 = if_else(Biscuit5 == FALSE & base_start_location <= 80,  base_start_location + 52, 
                               if_else(Biscuit5 == FALSE & base_start_location > 80, base_start_location -52, 1111)))  %>%
+    # Fix Direction
+    mutate(move = c(0, diff(UserLocation))) %>%
+    mutate(Direction = if_else(move %in% c(-2, -4), "Left",
+                               if_else(move %in% c(2, 4), "Right", 
+                                       if_else(move == 0, "Still", "Unsure")))) %>%
+    select(-move) %>%
     # trial timing information
     mutate(Trial = if_else(Trial == "Trial_1", Trial, if_else(Time == first(Time), "ITI", Trial))) %>%
     mutate_cond(Trial == "ITI", 
                 GhostLocation = NA, UserLocation = NA, 
-                Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, 
+                Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, Direction = NA,
                 Attack = NA, Chase = NA, Eaten = NA, TrialType = NA) %>%
     mutate(trial_time = if_else(Trial == "ITI", 999, Time - first(Time))) %>%
     mutate(trial_flip = 1:n()) %>%

@@ -1,10 +1,8 @@
-
 ---
-title: "iEEg Cleaning"
+title: "Cleaning BJH024"
 output: html_document
+date: "2023-02-09"
 ---
-
-
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -49,7 +47,6 @@ library(scales)
 source(path(here(), "R", 'mutate_cond.R'))
 source(path(here(), "R", 'create_distance_df.R'))
 source(path(here(), "R", 'clean_behavioral_data.R'))
-source(path(here(), "R", 'create_timelock_event_tables.R'))
 
 ## plotting helpers ##
 ggthemr("light")
@@ -77,14 +74,11 @@ c25 <- c(
 
 ```
 
+## BJH024
 
+```{r BJH024-data-load}
 
-
-## SLCH002
-
-```{r SLCH002-data-load}
-
-sl02_data <- read_csv(path(here(), './data/ieeg_behave/SLCH002_raw_behave.csv'), col_types = cols(X1 = col_double(),
+bjh24_data <- read_csv(path(here(), './data/ieeg_behave/BJH024_raw_behave.csv'), col_types = cols(`...1` = col_double(),
                                                                                               Subject = col_character(),
                                                                                               Trial = col_character(),
                                                                                               Lives = col_double(),
@@ -107,39 +101,62 @@ sl02_data <- read_csv(path(here(), './data/ieeg_behave/SLCH002_raw_behave.csv'),
 
 ```
 
-```{r BJH021-data-prep}
+```{r BJH024-data-prep}
 
 # clean Biscuits #
-sl02_data_clean <- clean_bci_data(sl02_data, 2000)
+bjh24_data_clean <- clean_bci_data(bjh24_data, 2000)
 
 # create distance df #
-sl02_data_distance <- create_distance_df_bci(sl02_data_clean)
+bjh24_data_distance <- create_distance_df_bci(bjh24_data_clean)
 
 # task vars df #
-sl02_all_vars_df <- get_across_task_variables_bci(sl02_data_clean)
+bjh24_all_vars_df <- get_across_task_variables_bci(bjh24_data_clean)
 
 ```
 
 
-```{r paused-trials}
+```{r}
 
-tmp <- sl02_data %>%
-  group_by(Trial) %>%
-  mutate(TrialType = as.numeric(names(sort(table(TrialType),decreasing=TRUE))[1])) %>%
-  select(Trial, TrialType) %>%
-  distinct() %>%
-  ungroup() %>%
-  mutate(same_trial_type = c(0, diff(TrialType))) %>%
-  filter(same_trial_type == 0)
+bjh24_all_vars_df %>%
+  ggplot(., aes(x = block, y = block_deaths)) +
+  geom_point(size = 3) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Deaths across blocks")
+
+
+bjh24_all_vars_df %>%
+  ggplot(., aes(x = block, y = average_dots_per_block)) +
+  geom_point(size = 3) +
+  theme(panel.background = element_rect(fill = "white"))+
+  ggtitle("Dots across blocks")
 
 
 ```
+
 
 ```{r trials-no-biscuits}
 
+# possible paused trials
+# 129 looks like a paused trial
 
-sl02_data_clean %>%
+bjh24_data_clean %>%
   filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  filter(trial_numeric == 129) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  ylim(0, 200) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+
+# other no biscuit trials
+bjh24_data_clean %>%
+  filter(Trial != "ITI" & trial_numeric != 129) %>%
   group_by(trial_numeric) %>%
   mutate(total_eaten = max(Eaten)) %>%
   filter(total_eaten == 0) %>%
@@ -152,7 +169,8 @@ sl02_data_clean %>%
   theme(panel.background = element_rect(fill = "white")) +
   facet_wrap(~trial_numeric)
 
-no_biscuits_trials <- sl02_data_clean %>%
+# save info
+no_biscuits_trials <- bjh24_data_clean %>%
   filter(Trial != "ITI") %>%
   group_by(trial_numeric) %>%
   mutate(total_eaten = max(Eaten)) %>%
@@ -163,44 +181,102 @@ no_biscuits_trials <- sl02_data_clean %>%
   # exclude fake trial 0 
   filter(neural_trial_numeric >= 0) %>%
   ungroup() %>%
-  select(neural_trial_numeric)
+  pull(neural_trial_numeric)
 
-
+# 129 - 1
+paused_trials <- c(128)
 
 ```
 
 
-```{r long-trials}
+```{r how-long-do-trials-last}
 
-# No trials longer than 8 seconds #
+
+bjh24_all_vars_df %>%
+  filter(trial_numeric != 129) %>%
+  ggplot(., aes(x = trial_length)) +
+  geom_histogram() +
+  geom_vline(xintercept =10) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+long_trials <- bjh24_all_vars_df %>%
+  select(trial_numeric, trial_length) %>%
+  unique() %>%
+  filter(trial_length > 10) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  pull(neural_trial_numeric)
+
+tmp <- bjh24_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(neural_trial_numeric %in% long_trials) 
+
+  
+bjh24_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(neural_trial_numeric %in% long_trials) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  ylim(0, 200) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+
+## looks like there was another long trial from hanging out after a ghost trial
+
+
+
 
 ```
 
 
 ```{r compile-bad-trials}
 
-# bad_trials <- rbind(pasued_trials, no_biscuits_trials)
 
-bad_trials <- no_biscuits_trials
+bad_trials <- unique(c(no_biscuits_trials, long_trials, paused_trials))
 
-write_csv(bad_trials, path(here(), './data/ieeg_behave/SLCH002_bad_trials.csv'))
 
 ```
 
 
+## all other trials look good (mostly)
 
-
-Wow!! They all look great!
 
 ```{r all-other-trials}
 
-# first 100 trials
-sl02_data_clean %>%
+# no ghost trials
+bjh24_data_clean %>%
   filter(Trial != "ITI") %>%
-  filter(trial_length <= 10) %>%
   filter(trial_numeric != 0) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(TrialType > 16) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  ylim(0, 200) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+
+# first 100 trials
+bjh24_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
   filter(trial_numeric < 100) %>%
   pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
   ggplot(., aes(x = trial_flip, y = location, color = unit)) +
@@ -208,16 +284,18 @@ sl02_data_clean %>%
   geom_hline(yintercept = 10, color = "black") +
   geom_point() +
   geom_line() +
+  ylim(0, 200) +
   theme(panel.background = element_rect(fill = "white")) +
   facet_wrap(~trial_numeric)
 
 # 100-200 trials
-sl02_data_clean %>%
+bjh24_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_length <= 10) %>%
   filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
   filter(trial_numeric >= 100 & trial_numeric < 200) %>%
   pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
   ggplot(., aes(x = trial_flip, y = location, color = unit)) +
@@ -230,12 +308,13 @@ sl02_data_clean %>%
 
 
 # 200-300 trials
-sl02_data_clean %>%
+bjh24_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_length <= 10) %>%
   filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
   filter(trial_numeric >= 200 & trial_numeric < 300) %>%
   pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
   ggplot(., aes(x = trial_flip, y = location, color = unit)) +
@@ -250,36 +329,87 @@ sl02_data_clean %>%
 
 
 
-  
+```
+
+```{r more-than-240-trials}
+
+
+length(unique(bjh24_data_clean$trial_numeric))
+
+# nope!
 ```
 
 
-## create new events arrays
 
 
 
-```{r time-lock-events}
+```{r save-bad-trials}
 
-create_last_away_events(sl02_data_clean, 'SLCH002_last_away_events.csv')
-create_first_dot_events(sl02_data_clean, 'SLCH002_first_dot_events.csv')
-create_died_events(sl02_data_clean, 'SLCH002_died_events.csv')
+
+bad_trials <- c(no_biscuits_trials, long_trials)
+
+bad_df <- data_frame("neural_trial_numeric" = bad_trials)
+
+write_csv(bad_df, path(here(), './data/ieeg_behave/BJH024_bad_trials.csv'))
+
+```
+
+```{r last-away}
+
+# read in bad df
+bad_df <- read_csv(path(here(), './data/ieeg_behave/BJH024_bad_trials.csv'))
+
+
+last_away_df <- bjh24_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+  group_by(trial_numeric) %>%
+  mutate(towards_ghost = if_else(Direction == "Left" & starting_side == "Right", "Towards",  # Left:2 Right :11
+                                 if_else(Direction == "Right" & starting_side == "Left", "Towards",
+                                         if_else(Direction == "Left" & starting_side == "Left", "Away",  # Left:2 Right :11
+                                                 if_else(Direction == "Right" & starting_side == "Right", "Away",
+                                                         if_else(Direction == "Still", "Still", "Unsure")))))) %>%
+  mutate(away_choice_tmp = c(0, diff(factor(towards_ghost)))) %>%
+  mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_ghost == "Away") | 
+                                  (away_choice_tmp == -1 & towards_ghost == "Away"), sample, 0)) %>%
+  select(-away_choice_tmp) %>%
+  mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
+  mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
+  ungroup() %>%
+  filter(sample == last_away)
+
+anyDuplicated(last_away_df$trial_numeric)
+
+
+last_away_clean_df <- last_away_df %>%
+  ungroup() %>%
+  mutate(sample_before = 0) %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, TrialType, sample, sample_before, event)
+
+
+write_csv(last_away_clean_df, path(here(), './data/ieeg_behave/BJH024_last_away_events.csv'))
+
 
 ```
 
 
 ```{r longest-trial}
 
-trial_times <- sl02_data_clean %>%
+# read in bad df
+bad_df <- read_csv(path(here(), './data/ieeg_behave/BJH024_bad_trials.csv'))
+
+
+trial_times <- bjh24_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_numeric != 0) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
+  filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
   select(trial_length, trial_numeric) %>%
   distinct()
 
-
+max(trial_times$trial_length)
 ```
-
-
-
 

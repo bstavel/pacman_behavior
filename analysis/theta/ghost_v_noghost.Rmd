@@ -79,546 +79,128 @@ c25 <- c(
 
 
 
-## SLCH002
+```{r read-data-pres}
 
-```{r SLCH002-data-load}
-
-sl02_data <- read_csv(path(here(), './data/ieeg_behave/SLCH002_raw_behave.csv'), col_types = cols(X1 = col_double(),
-                                                                                              Subject = col_character(),
-                                                                                              Trial = col_character(),
-                                                                                              Lives = col_double(),
-                                                                                              Trial_on_off = col_double(),
-                                                                                              TrialType = col_double(),
-                                                                                              Time = col_double(),
-                                                                                              GhostLocation = col_double(),
-                                                                                              UserLocation = col_double(),
-                                                                                              Direction = col_double(),
-                                                                                              Biscuit1 = col_logical(),
-                                                                                              Biscuit2 = col_logical(),
-                                                                                              Biscuit3 = col_logical(),
-                                                                                              Biscuit4 = col_logical(),
-                                                                                              Biscuit5 = col_logical(),
-                                                                                              Attack = col_logical(),
-                                                                                              Chase = col_logical(),
-                                                                                              Eaten = col_double(),
-                                                                                              Score = col_double()))
+# data compiled in `theta_behave_data_prep.Rmd`
+## HC #
+HC_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_hc_all_subs_ghost.csv"))
+HC_no_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_hc_all_subs_noghost.csv"))
 
 
-bjh16_data <- read_csv(path(here(), './data/ieeg_behave/BJH016_raw_behave.csv'), col_types = cols(X1 = col_double(),
-                                                                                              Subject = col_character(),
-                                                                                              Trial = col_character(),
-                                                                                              Lives = col_double(),
-                                                                                              Trial_on_off = col_double(),
-                                                                                              TrialType = col_double(),
-                                                                                              Time = col_double(),
-                                                                                              GhostLocation = col_double(),
-                                                                                              UserLocation = col_double(),
-                                                                                              Direction = col_double(),
-                                                                                              Biscuit1 = col_logical(),
-                                                                                              Biscuit2 = col_logical(),
-                                                                                              Biscuit3 = col_logical(),
-                                                                                              Biscuit4 = col_logical(),
-                                                                                              Biscuit5 = col_logical(),
-                                                                                              Attack = col_logical(),
-                                                                                              Chase = col_logical(),
-                                                                                              Eaten = col_double(),
-                                                                                              Score = col_double()))
+## EC #
+EC_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ec_all_subs_ghost.csv"))
+EC_no_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ec_all_subs_noghost.csv"))
 
 
-ll10_data <- read_csv(path(here(), './data/ieeg_behave/LL10_raw_behave.csv'), col_types = cols(X1 = col_double(),
-                                                                                              Subject = col_character(),
-                                                                                              Trial = col_character(),
-                                                                                              Lives = col_double(),
-                                                                                              Trial_on_off = col_double(),
-                                                                                              TrialType = col_double(),
-                                                                                              Time = col_double(),
-                                                                                              GhostLocation = col_double(),
-                                                                                              UserLocation = col_double(),
-                                                                                              Direction = col_double(),
-                                                                                              Biscuit1 = col_logical(),
-                                                                                              Biscuit2 = col_logical(),
-                                                                                              Biscuit3 = col_logical(),
-                                                                                              Biscuit4 = col_logical(),
-                                                                                              Biscuit5 = col_logical(),
-                                                                                              Attack = col_logical(),
-                                                                                              Chase = col_logical(),
-                                                                                              Eaten = col_double(),
-                                                                                              Score = col_double()))
+## Amygdala #
+AMYG_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_amyg_all_subs_ghost.csv"))
+AMYG_no_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_amyg_all_subs_noghost.csv"))
+
+## OFC #
+OFC_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ofc_all_subs_ghost.csv"))
+OFC_no_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ofc_all_subs_noghost.csv"))
 
 
-
+## Anterior Cingulate #
+AC_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ac_all_subs_ghost.csv"))
+AC_no_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ac_all_subs_noghost.csv"))
 
 
 ```
 
-```{r SLCH002-data-prep}
+```{r read-data-choice}
+
+# data compiled in `theta_behave_data_prep.Rmd`
+## HC #
+HC_choice_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_hc_choice_all_subs_ghost.csv"))
+HC_choice_no_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_hc_choice_all_subs_noghost.csv"))
 
 
-# clean df #
-sl02_data_clean <- clean_bci_data(sl02_data, 2000)
+## Amygdala #
+AMYG_choice_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_amyg_choice_all_subs_ghost.csv"))
+AMYG_choice_no_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_amyg_choice_all_subs_noghost.csv"))
 
-# create distance df # 
-sl02_data_distance <- create_distance_df_bci(sl02_data_clean)
-
-sl02_data_distance_no_ghost <- create_distance_df_bci(sl02_data_clean, ghost = F)
-
-# round trial time to match theta analyses #
-sl02_data_distance <- sl02_data_distance %>%
-    mutate(trial_time = as.character(round(trial_time, 3)))
-  
-sl02_data_distance_no_ghost <- sl02_data_distance_no_ghost %>%
-    mutate(trial_time = as.character(round(trial_time, 3)))
-  
-
-```
-
-```{r BJH016-data-prep}
+## OFC #
+OFC_choice_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ofc_choice_all_subs_ghost.csv"))
+OFC_choice_no_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ofc_choice_all_subs_noghost.csv"))
 
 
-# clean df #
-bjh16_data_clean <- clean_bci_data(bjh16_data, 2000)
+## Anterior Cingulate #
+AC_choice_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ac_choice_all_subs_ghost.csv"))
+AC_choice_no_ghost_df <- read_csv(path(here(), "results", "theta", "theta_behavior_ac_choice_all_subs_noghost.csv"))
 
-# create distance df # 
-bjh16_data_distance <- create_distance_df_bci(bjh16_data_clean)
-
-bjh16_data_distance_no_ghost <- create_distance_df_bci(bjh16_data_clean, ghost = F)
-
-# round trial time to match theta analyses #
-bjh16_data_distance <- bjh16_data_distance %>%
-    mutate(trial_time = as.character(round(trial_time, 3)))
-  
-bjh16_data_distance_no_ghost <- bjh16_data_distance_no_ghost %>%
-    mutate(trial_time = as.character(round(trial_time, 3)))
-  
-
-```
-
-```{r LL10-data-prep}
-
-
-# clean df #
-ll10_data_clean <- clean_bci_data(ll10_data, 512)
-
-# create distance df # 
-ll10_data_distance <- create_distance_df_bci(ll10_data_clean)
-
-ll10_data_distance_no_ghost <- create_distance_df_bci(ll10_data_clean, ghost = F)
-
-# round trial time to match theta analyses #
-ll10_data_distance <- ll10_data_distance %>%
-    mutate(trial_time = as.character(round(trial_time, 2)))
-  
-ll10_data_distance_no_ghost <- ll10_data_distance_no_ghost %>%
-    mutate(trial_time = as.character(round(trial_time, 2)))
-  
-
-```
-
-```{r merge-theta-data-and-combine}
-
-#  Ghost Data
-slch2_ghost_df <- merge_theta_and_behavioral_data("hc", "SLCH002", sl02_data_distance, timepoints = 181)
-bjh16_ghost_df <- merge_theta_and_behavioral_data("hc", "BJH016", bjh16_data_distance, timepoints = 281)
-ll10_ghost_df <- merge_theta_and_behavioral_data("hc", "LL10", ll10_data_distance, timepoints = 181)
-
-
-# No Ghost Data
-slch2_no_ghost_df <- merge_theta_and_behavioral_data("hc", "SLCH002", sl02_data_distance_no_ghost, timepoints = 181)
-bjh16_no_ghost_df <- merge_theta_and_behavioral_data("hc", "BJH016", bjh16_data_distance_no_ghost, timepoints = 281)
-ll10_no_ghost_df <- merge_theta_and_behavioral_data("hc", "LL10", ll10_data_distance_no_ghost, timepoints = 181)
-
-# Bind together
-ghost_df <- rbind(slch2_ghost_df %>% mutate(subject = "SLCH002"),
-                  bjh16_ghost_df %>% mutate(subject = "BJH016"),
-                  ll10_ghost_df %>% mutate(subject = "LL10"))
-
-no_ghost_df <- rbind(slch2_no_ghost_df %>% mutate(subject = "SLCH002"),
-                  bjh16_no_ghost_df %>% mutate(subject = "BJH016"),
-                  ll10_no_ghost_df %>% mutate(subject = "LL10"))
-
-# pacman_df <- rbind(ghost_df %>% mutate(case = "ghost"),
-#                     no_ghost_df %>% mutate(case = "no_ghost"))
-
-```
-
-```{r merge-theta-data-and-combine-choice}
-
-#  Ghost Data
-slch2_ghost_choice_df <- merge_theta_and_behavioral_data("hc", "SLCH002", sl02_data_distance, timepoints = 81,
-                                                  keyword_include = "choice_locked_ghost", keyword_exclude = "none")
-bjh16_ghost_choice_df <- merge_theta_and_behavioral_data("hc", "BJH016", bjh16_data_distance, timepoints = 81,
-                                                  keyword_include = "choice_locked_ghost", keyword_exclude = "none")
-ll10_ghost_choice_df <- merge_theta_and_behavioral_data("hc", "LL10", ll10_data_distance, timepoints = 81,
-                                                  keyword_include = "choice_locked_ghost", keyword_exclude = "none")
-
-
-# No Ghost Data
-slch2_no_ghost_choice_df <- merge_theta_and_behavioral_data("hc", "SLCH002", sl02_data_distance_no_ghost, timepoints = 81,
-                                                  keyword_include = "choice_locked_noghost", keyword_exclude = "none")
-bjh16_no_ghost_choice_df <- merge_theta_and_behavioral_data("hc", "BJH016", bjh16_data_distance_no_ghost, timepoints = 81,
-                                                  keyword_include = "choice_locked_noghost", keyword_exclude = "none")
-ll10_no_ghost_choice_df <- merge_theta_and_behavioral_data("hc", "LL10", ll10_data_distance_no_ghost, timepoints = 81,
-                                                  keyword_include = "choice_locked_noghost", keyword_exclude = "none")
-
-# Bind together
-choice_ghost_df <- rbind(slch2_ghost_choice_df %>% mutate(subject = "SLCH002"),
-                  bjh16_ghost_choice_df %>% mutate(subject = "BJH016"),
-                  ll10_ghost_choice_df %>% mutate(subject = "LL10"))
-
-choice_no_ghost_df <- rbind(slch2_no_ghost_choice_df %>% mutate(subject = "SLCH002"),
-                  bjh16_no_ghost_choice_df %>% mutate(subject = "BJH016"),
-                  ll10_no_ghost_choice_df %>% mutate(subject = "LL10"))
-
-# pacman_df <- rbind(ghost_df %>% mutate(case = "ghost"),
-#                     no_ghost_df %>% mutate(case = "no_ghost"))
-
-```
-
-```{r ghost-theta-exploration}
-
-average_ghost_df <- ghost_df %>%
-  group_by(trial_time, electrode, subject) %>%
-  mutate(mean_theta = mean(theta))
-
-ghost_theta_elec_plot <- average_ghost_df %>%
-  filter(as.numeric(trial_time) <5) %>%
-  ggplot(., aes(x= trial_time, y = mean_theta, group = electrode, color = subject)) +
-  geom_point() + 
-  geom_line() +
-  theme(panel.background = element_rect(fill = "white")) +
-  ylim(-.5, .5) +
-  facet_wrap(~subject)
-
-no_ghost_theta_elec_plot <- average_no_ghost_df %>%
-  filter(as.numeric(trial_time) <5) %>%
-  ggplot(., aes(x= trial_time, y = mean_theta, group = electrode, color = subject)) +
-  geom_point() + 
-  geom_line() +
-  theme(panel.background = element_rect(fill = "white")) +
-  ylim(-.5, .5) +
-  facet_wrap(~subject)
-
-
-theta_ghost_plot <- average_ghost_df %>%
-  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
-  group_by(subject, trial_time) %>%
-  mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
-  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n())) %>%
-  # mutate(upper_theta = t.test(sub_mean_theta)$conf.int[2] ) %>%
-  # mutate(lower_theta = t.test(sub_mean_theta)$conf.int[1] ) %>%
-  select(subject, electrode, theta, trial_time, sub_mean_theta, mean_theta, upper_theta, lower_theta) %>%
-  ggplot(., aes(x= trial_time, y = sub_mean_theta, group = electrode, color = subject, fill = subject)) +
-  geom_point() + 
-  geom_line() +
-  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
-  theme(panel.background = element_rect(fill = "white")) +
-  facet_wrap(~subject)
-
-theta_no_ghost_plot <- average_no_ghost_df %>%
-  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
-  group_by(subject, trial_time) %>%
-  mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
-  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n())) %>%
-  # mutate(upper_theta = t.test(sub_mean_theta)$conf.int[2] ) %>%
-  # mutate(lower_theta = t.test(sub_mean_theta)$conf.int[1] ) %>%
-  select(subject, electrode, theta, trial_time, sub_mean_theta, mean_theta, upper_theta, lower_theta) %>%
-  ggplot(., aes(x= trial_time, y = sub_mean_theta, group = electrode, color = subject, fill = subject)) +
-  geom_point() + 
-  geom_line() +
-  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
-  theme(panel.background = element_rect(fill = "white")) +
-  facet_wrap(~subject)
-
-
-
-
-plot(arrangeGrob(grobs = list(ghost_theta_elec_plot,no_ghost_theta_elec_plot), nrow = 2, ncol = 1))
-
-
-plot(arrangeGrob(grobs = list(theta_ghost_plot,theta_no_ghost_plot), nrow = 2, ncol = 1))
 
 ```
 
 
-```{r distance}
 
-theta_plot <- average_ghost_df %>%
-  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
-  group_by(subject, trial_time) %>%
-  mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
-  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n())) %>%
-  # mutate(upper_theta = t.test(sub_mean_theta)$conf.int[2] ) %>%
-  # mutate(lower_theta = t.test(sub_mean_theta)$conf.int[1] ) %>%
-  select(subject, electrode, theta, trial_time, sub_mean_theta, mean_theta, upper_theta, lower_theta) %>%
-  ggplot(., aes(x= trial_time, y = sub_mean_theta, group = electrode, color = subject, fill = subject)) +
-  geom_point() + 
-  geom_line() +
-  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
-  theme(panel.background = element_rect(fill = "white")) 
+## Choice Locked
 
-average_ghost_df <- ghost_df %>%
-  group_by(trial_time, electrode, subject) %>%
-  mutate(mean_dist = mean(distance_to_ghost))
+```{r choice-locked-all-elecs,  fig.width=7, fig.height=4}
 
-dist_plot <- average_ghost_df %>%
-  filter(as.numeric(trial_time) <5) %>%
-  ggplot(., aes(x= trial_time, y = mean_dist, group = electrode, color = subject)) +
-  geom_point() + 
-  geom_line() +
-  theme(panel.background = element_rect(fill = "white")) 
-
-plot(arrangeGrob(grobs = list(theta_plot,dist_plot), nrow = 2, ncol = 1))
-```
-
-```{r ghost-theta-vs-no-ghost}
-
-
-
-average_ghost_df <- ghost_df %>%
-  group_by(trial_time, electrode, subject) %>%
-  mutate(mean_theta = mean(theta)) %>%
-  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
-  group_by(trial_time) %>%
-  mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
-  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n()))
-
-average_no_ghost_df <- no_ghost_df %>%
-  group_by(trial_time, electrode, subject) %>%
-  mutate(mean_theta = mean(theta)) %>%
-  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
-  group_by(trial_time) %>%
-  mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
-  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n()))
-
-
-theta_power_trial_type_plot <- ggplot() +
-  geom_point(data = average_ghost_df, 
-             aes(x= trial_time, y = sub_mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") + 
-  geom_ribbon(data = average_ghost_df, 
-              aes(x= trial_time, y = sub_mean_theta, group = electrode, 
-                  ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#2468AD") +
-  geom_line(data = average_ghost_df, 
-            aes(x= trial_time, y = sub_mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
-  geom_point(data = average_no_ghost_df, 
-             aes(x= trial_time, y = sub_mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") + 
-  geom_ribbon(data = average_no_ghost_df, 
-              aes(x= trial_time, y = sub_mean_theta, group = electrode, 
-                  ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#DF755D") +
-  geom_line(data = average_no_ghost_df, 
-           aes(x= trial_time, y = sub_mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") +
-   theme(panel.background = element_rect(fill = "white"), 
-        legend.position = "none",
-        strip.text =  element_text(family = "Georgia", color = '#2D2327', size = 16),
-        legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
-        legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
-        axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
-        axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
-        plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
-
-  labs(y = "Theta Power", x = "Time since trial onset") +
-  ggtitle("Hippocampal Theta Power in Conflict (Ghost) vs No-conflict (No-ghost) Trials")
-
-
-ggsave(filename = path(here(), "figures", "SFN", "hc_theta_power_across_trial_types.tif"),
-     device = "tiff",
-     width = 3650,
-     height = 1800,
-     units = "px",
-     dpi = 320,
-     plot =  theta_power_trial_type_plot)
-
-```
-
-What is happening during that red peak?
-
-
-```{r choice-locked,  fig.width=14, fig.height=8}
-
-average_ghost_df <- choice_ghost_df %>%
-  mutate(electrode = gsub("_hc_trial_theta_choice_locked_ghost.csv", "", electrode)) %>%
-  filter(subject == "SLCH002") %>%
-  group_by(trial_time, electrode) %>%
-  mutate(mean_theta = mean(theta)) %>%
-  # group_by(trial_time) %>%
-  # mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
-  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
-
-average_no_ghost_df <- choice_no_ghost_df %>%
-  mutate(electrode = gsub("_hc_trial_theta_choice_locked_noghost.csv", "", electrode)) %>%
-  filter(subject == "SLCH002") %>%
-  group_by(trial_time, electrode) %>%
-  mutate(mean_theta = mean(theta)) %>%
-  # group_by(trial_time) %>%
-  # mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
-  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
-
-for(elec in unique(average_no_ghost_df$electrode)){
-  
-  average_ghost_df_tmp <- average_ghost_df %>% filter(electrode == elec)
-  average_no_ghost_df_tmp <- average_no_ghost_df %>% filter(electrode == elec)
-
-  p <- ggplot() +
-    geom_point(data = average_ghost_df_tmp,
-               aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
-    geom_ribbon(data = average_ghost_df_tmp,
-                aes(x= trial_time, y = mean_theta, group = electrode,
-                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#2468AD") +
-    geom_line(data = average_ghost_df_tmp,
-              aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
-    geom_point(data = average_no_ghost_df_tmp, 
-               aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") + 
-    geom_ribbon(data = average_no_ghost_df_tmp, 
-                aes(x= trial_time, y = mean_theta, group = electrode, 
-                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#DF755D") +
-    geom_line(data = average_no_ghost_df_tmp, 
-             aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") +
-     theme(panel.background = element_rect(fill = "white"), 
-          legend.position = "none",
-          strip.text =  element_text(family = "Georgia", color = '#2D2327', size = 16),
-          legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
-          legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
-          axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
-          axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
-          plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
-  
-    labs(y = "Theta Power", x = "Time since trial onset") +
-    ggtitle(elec)
-  
-plot(p)
-
-}
-
-
-average_ghost_df <- choice_ghost_df %>%
-  mutate(electrode = gsub("_hc_trial_theta_choice_locked_ghost.csv", "", electrode)) %>%
-  filter(subject == "BJH016") %>%
-  group_by(trial_time, electrode) %>%
-  mutate(mean_theta = mean(theta)) %>%
-  # group_by(trial_time) %>%
-  # mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
-  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
-
-average_no_ghost_df <- choice_no_ghost_df %>%
-  mutate(electrode = gsub("_hc_trial_theta_choice_locked_noghost.csv", "", electrode)) %>%
-  filter(subject == "BJH016") %>%
-  group_by(trial_time, electrode) %>%
-  mutate(mean_theta = mean(theta)) %>%
-  # group_by(trial_time) %>%
-  # mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
-  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
-
-for(elec in unique(average_no_ghost_df$electrode)){
-  
-  average_ghost_df_tmp <- average_ghost_df %>% filter(electrode == elec)
-  average_no_ghost_df_tmp <- average_no_ghost_df %>% filter(electrode == elec)
-
-  p <- ggplot() +
-    geom_point(data = average_ghost_df_tmp,
-               aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
-    geom_ribbon(data = average_ghost_df_tmp,
-                aes(x= trial_time, y = mean_theta, group = electrode,
-                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#2468AD") +
-    geom_line(data = average_ghost_df_tmp,
-              aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
-    geom_point(data = average_no_ghost_df_tmp, 
-               aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") + 
-    geom_ribbon(data = average_no_ghost_df_tmp, 
-                aes(x= trial_time, y = mean_theta, group = electrode, 
-                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#DF755D") +
-    geom_line(data = average_no_ghost_df_tmp, 
-             aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") +
-     theme(panel.background = element_rect(fill = "white"), 
-          legend.position = "none",
-          strip.text =  element_text(family = "Georgia", color = '#2D2327', size = 16),
-          legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
-          legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
-          axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
-          axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
-          plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
-  
-    labs(y = "Theta Power", x = "Time since trial onset") +
-    ggtitle(elec)
-  
-plot(p)
-
-}
-
-average_ghost_df <- choice_ghost_df %>%
-  mutate(electrode = gsub("_hc_trial_theta_choice_locked_ghost.csv", "", electrode)) %>%
-  filter(subject == "LL10") %>%
-  group_by(trial_time, electrode) %>%
-  mutate(mean_theta = mean(theta)) %>%
-  # group_by(trial_time) %>%
-  # mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
-  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
-
-average_no_ghost_df <- choice_no_ghost_df %>%
-  mutate(electrode = gsub("_hc_trial_theta_choice_locked_noghost.csv", "", electrode)) %>%
-  filter(subject == "LL10") %>%
-  group_by(trial_time, electrode) %>%
-  mutate(mean_theta = mean(theta)) %>%
-  # group_by(trial_time) %>%
-  # mutate(sub_mean_theta = mean(mean_theta)) %>%
-  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
-  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
-
-for(elec in unique(average_no_ghost_df$electrode)){
-  
-  average_ghost_df_tmp <- average_ghost_df %>% filter(electrode == elec)
-  average_no_ghost_df_tmp <- average_no_ghost_df %>% filter(electrode == elec)
-
-  p <- ggplot() +
-    geom_point(data = average_ghost_df_tmp,
-               aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
-    geom_ribbon(data = average_ghost_df_tmp,
-                aes(x= trial_time, y = mean_theta, group = electrode,
-                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#2468AD") +
-    geom_line(data = average_ghost_df_tmp,
-              aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
-    geom_point(data = average_no_ghost_df_tmp, 
-               aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") + 
-    geom_ribbon(data = average_no_ghost_df_tmp, 
-                aes(x= trial_time, y = mean_theta, group = electrode, 
-                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#DF755D") +
-    geom_line(data = average_no_ghost_df_tmp, 
-             aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") +
-     theme(panel.background = element_rect(fill = "white"), 
-          legend.position = "none",
-          strip.text =  element_text(family = "Georgia", color = '#2D2327', size = 16),
-          legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
-          legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
-          axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
-          axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
-          plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
-  
-    labs(y = "Theta Power", x = "Time since trial onset") +
-    ggtitle(elec)
-  
-plot(p)
-
-}
-
-```
-
-
-```{r choice-locked-all-elecs,  fig.width=14, fig.height=8}
-
-choice_df <- rbind(choice_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "Conflict"),
-                   choice_no_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "No-Conflict"))
+choice_df <- rbind(HC_choice_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "Conflict"),
+                   HC_choice_no_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "No-Conflict"))
 
 
 average_choice_df <- choice_df %>%
   mutate(trial_time = trial_time -2) %>%
+  filter(trial_time < 2) %>%
+  group_by(trial_time, condition) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  mutate(upper_theta = t.test(theta)$conf.int[2], conf.level = .95) %>%
+  mutate(lower_theta = t.test(theta)$conf.int[1], conf.level = .95) %>%
+  group_by(trial_time) %>%
+  mutate(pval = t.test(theta ~ condition)$p.value) %>%
+  select(condition, trial_time, mean_theta, upper_theta, lower_theta, pval) %>%
+  distinct() %>%
+  group_by(condition) %>%
+  mutate(pval_fdr = p.adjust(pval, method = "fdr", n = 80)) %>%
+  mutate(sig = if_else((pval_fdr < .05) == T, .18, 1))
+
+
+choice_hc_theta_ghostnoghost_plot <- average_choice_df %>%
+  ggplot(., aes(x= trial_time, y = mean_theta, fill = condition, color = condition)) +
+      geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+      geom_point() +
+      geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
+      geom_line() +
+      geom_line(aes(y = sig), color = "black", size =2) +
+      theme(panel.background = element_rect(fill = "white"), 
+            legend.position = "top",
+            legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+            legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+            axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+            axis.text = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+            plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
+      scale_color_manual(values = c("#FCC673", "#87C8B7")) +
+      scale_fill_manual(values = c("#FCC673", "#87C8B7")) +
+      ylim(-.2, .2) +
+      labs(y = "Theta Power", x = "Time (locked to turnaround)") +
+      ggtitle("Hippocampal Theta Power in Conflict (Ghost) vs\n No-conflict (No-ghost) Trials")
+
+
+choice_hc_theta_ghostnoghost_plot
+
+
+ggsave(filename = path(here(), "figures", "brain_lunch", "hc_theta_power_across_trial_types.png"),
+     device = "png",
+     width = 8,
+     height = 4,
+     units = "in",
+     dpi = 300,
+     plot =  choice_hc_theta_ghostnoghost_plot)
+
+```
+
+```{r choice-locked-ac-elecs}
+
+choice_df <- rbind(AC_choice_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "Conflict"),
+                   AC_choice_no_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "No-Conflict"))
+
+
+average_choice_df <- choice_df %>%
+  mutate(trial_time = trial_time -2) %>%
+  filter(trial_time < 2) %>%
   group_by(trial_time, condition) %>%
   mutate(mean_theta = mean(theta)) %>%
   mutate(upper_theta = t.test(theta)$conf.int[2]) %>%
@@ -632,35 +214,153 @@ average_choice_df <- choice_df %>%
   mutate(sig = if_else((pval_fdr < .05) == T, .16, 1))
 
 
-choice_hc_theta_ghostnoghost_plot <- average_choice_df %>%
+choice_ac_theta_ghostnoghost_plot <- average_choice_df %>%
   ggplot(., aes(x= trial_time, y = mean_theta, fill = condition, color = condition)) +
       geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
       geom_point() +
       geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
       geom_line() +
-      geom_line(aes(y = sig), color = "black", size =3) +
+      geom_line(aes(y = sig), color = "black", size =2) +
       theme(panel.background = element_rect(fill = "white"), 
             legend.position = "top",
-            legend.title = element_text(family = "Georgia", color = '#2D2327', size = 22),
-            legend.text = element_text(family = "Georgia", color = '#2D2327', size = 22),
-            axis.title = element_text(family = "Georgia", color = '#2D2327', size = 24), 
-            axis.text = element_text(family = "Georgia", color = '#2D2327', size = 20), 
-            plot.title = element_text(family = "Georgia", color = '#2D2327', size = 28)) + 
-      scale_color_manual(values = c("#FFA800", "#0B7A75")) +
-      scale_fill_manual(values = c("#FFA800", "#0B7A75")) +
-      ylim(-.12, .17) +
+            legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+            legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+            axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+            axis.text = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+            plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
+      scale_color_manual(values = c("#FCC673", "#87C8B7")) +
+      scale_fill_manual(values = c("#FCC673", "#87C8B7")) +
+      ylim(-.2, .2) +
       labs(y = "Theta Power", x = "Time (locked to turnaround)") +
-      ggtitle("Hippocampal Theta Power in Conflict (Ghost) vs No-conflict (No-ghost) Trials")
+      ggtitle("Ant. Cingulate Theta Power in Conflict (Ghost) vs\n No-conflict (No-ghost) Trials")
 
-ggsave(filename = path(here(), "figures", "SFN", "hc_theta_power_across_trial_types.tif"),
-     device = "tiff",
-     width = 18,
-     height = 7.5,
+
+choice_ac_theta_ghostnoghost_plot
+
+
+
+ggsave(filename = path(here(), "figures", "brain_lunch", "ac_theta_power_across_trial_types.png"),
+     device = "png",
+     width = 8,
+     height = 4,
      units = "in",
-     dpi = 320,
-     plot =  choice_hc_theta_ghostnoghost_plot)
+     dpi = 300,
+     plot =  choice_ac_theta_ghostnoghost_plot)
 
 ```
+
+```{r choice-locked-ofc-elecs}
+
+choice_df <- rbind(OFC_choice_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "Conflict"),
+                   OFC_choice_no_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "No-Conflict"))
+
+
+average_choice_df <- choice_df %>%
+  mutate(trial_time = trial_time -2) %>%
+  filter(trial_time < 2) %>%
+  group_by(trial_time, condition) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  mutate(upper_theta = t.test(theta)$conf.int[2]) %>%
+  mutate(lower_theta = t.test(theta)$conf.int[1]) %>%
+  group_by(trial_time) %>%
+  mutate(pval = t.test(theta ~ condition)$p.value) %>%
+  select(condition, trial_time, mean_theta, upper_theta, lower_theta, pval) %>%
+  distinct() %>%
+  group_by(condition) %>%
+  mutate(pval_fdr = p.adjust(pval, method = "fdr")) %>%
+  mutate(sig = if_else((pval_fdr < .05) == T, .16, 1))
+
+
+choice_ofc_theta_ghostnoghost_plot <- average_choice_df %>%
+  ggplot(., aes(x= trial_time, y = mean_theta, fill = condition, color = condition)) +
+      geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+      geom_point() +
+      geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
+      geom_line() +
+      geom_line(aes(y = sig), color = "black", size =2) +
+      theme(panel.background = element_rect(fill = "white"), 
+            legend.position = "top",
+            legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+            legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+            axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+            axis.text = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+            plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
+      scale_color_manual(values = c("#FCC673", "#87C8B7")) +
+      scale_fill_manual(values = c("#FCC673", "#87C8B7")) +
+      ylim(-.2, .2) +
+      labs(y = "Theta Power", x = "Time (locked to turnaround)") +
+      ggtitle("OFC Theta Power in Conflict (Ghost) vs\n No-conflict (No-ghost) Trials")
+
+
+choice_ofc_theta_ghostnoghost_plot
+
+
+ggsave(filename = path(here(), "figures", "brain_lunch", "ofc_theta_power_across_trial_types.png"),
+     device = "png",
+     width = 8,
+     height = 4,
+     units = "in",
+     dpi = 300,
+     plot =  choice_ofc_theta_ghostnoghost_plot)
+
+```
+
+```{r choice-locked-amyg-elecs}
+
+choice_df <- rbind(AMYG_choice_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "Conflict"),
+                   AMYG_choice_no_ghost_df %>% select(subject, electrode, trial_time, theta) %>% mutate(condition = "No-Conflict"))
+
+
+average_choice_df <- choice_df %>%
+  mutate(trial_time = trial_time -2) %>%
+  filter(trial_time < 2) %>%
+  group_by(trial_time, condition) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  mutate(upper_theta = t.test(theta)$conf.int[2]) %>%
+  mutate(lower_theta = t.test(theta)$conf.int[1]) %>%
+  group_by(trial_time) %>%
+  mutate(pval = t.test(theta ~ condition)$p.value) %>%
+  select(condition, trial_time, mean_theta, upper_theta, lower_theta, pval) %>%
+  distinct() %>%
+  group_by(condition) %>%
+  mutate(pval_fdr = p.adjust(pval, method = "fdr")) %>%
+  mutate(sig = if_else((pval_fdr < .05) == T, .16, 1))
+
+
+choice_amyg_theta_ghostnoghost_plot <- average_choice_df %>%
+  ggplot(., aes(x= trial_time, y = mean_theta, fill = condition, color = condition)) +
+      geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+      geom_point() +
+      geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
+      geom_line() +
+      geom_line(aes(y = sig), color = "black", size =2) +
+      theme(panel.background = element_rect(fill = "white"), 
+            legend.position = "top",
+            legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+            legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+            axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+            axis.text = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+            plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
+      scale_color_manual(values = c("#FCC673", "#87C8B7")) +
+      scale_fill_manual(values = c("#FCC673", "#87C8B7")) +
+      ylim(-.2, .2) +
+      labs(y = "Theta Power", x = "Time (locked to turnaround)") +
+      ggtitle("Amyg. Theta Power in Conflict (Ghost) vs\n No-conflict (No-ghost) Trials") 
+
+
+choice_amyg_theta_ghostnoghost_plot
+
+
+ggsave(filename = path(here(), "figures", "brain_lunch", "amyg_theta_power_across_trial_types.png"),
+     device = "png",
+     width = 8,
+     height = 4,
+     units = "in",
+     dpi = 300,
+     plot =  choice_amyg_theta_ghostnoghost_plot)
+
+```
+
 
 ```{r fig.width=42, fig.height=8}
 
@@ -696,15 +396,360 @@ choice_hc_theta_ghostnoghost_sub_plot <- average_choice_df %>%
   
   facet_wrap(~plot_subject)
 
-ggsave(filename = path(here(), "figures", "SFN", "hc_theta_power_across_trial_types_subs.tif"),
-     device = "tiff",
-     width = 42,
-     height = 8,
-     units = "in",
-     dpi = 320,
-     plot =  choice_hc_theta_ghostnoghost_sub_plot)
+# ggsave(filename = path(here(), "figures", "SFN", "hc_theta_power_across_trial_types_subs.tif"),
+#      device = "tiff",
+#      width = 42,
+#      height = 8,
+#      units = "in",
+#      dpi = 320,
+#      plot =  choice_hc_theta_ghostnoghost_sub_plot)
 
 ```
+
+
+ 
+
+### Pre SFN exploration
+
+```{r ghost-theta-exploration}
+
+average_ghost_df <- HC_ghost_df %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_theta = mean(theta))
+
+ghost_theta_elec_plot <- average_HC_ghost_df %>%
+  filter(as.numeric(trial_time) <5) %>%
+  ggplot(., aes(x= trial_time, y = mean_theta, group = electrode, color = subject)) +
+  geom_point() + 
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(-.5, .5) +
+  facet_wrap(~subject)
+
+no_ghost_theta_elec_plot <- average_HC_no_ghost_df %>%
+  filter(as.numeric(trial_time) <5) %>%
+  ggplot(., aes(x= trial_time, y = mean_theta, group = electrode, color = subject)) +
+  geom_point() + 
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(-.5, .5) +
+  facet_wrap(~subject)
+
+
+theta_ghost_plot <- average_HC_ghost_df %>%
+  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
+  group_by(subject, trial_time) %>%
+  mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
+  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n())) %>%
+  # mutate(upper_theta = t.test(sub_mean_theta)$conf.int[2] ) %>%
+  # mutate(lower_theta = t.test(sub_mean_theta)$conf.int[1] ) %>%
+  select(subject, electrode, theta, trial_time, sub_mean_theta, mean_theta, upper_theta, lower_theta) %>%
+  ggplot(., aes(x= trial_time, y = sub_mean_theta, group = electrode, color = subject, fill = subject)) +
+  geom_point() + 
+  geom_line() +
+  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+theta_no_ghost_plot <- average_HC_no_ghost_df %>%
+  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
+  group_by(subject, trial_time) %>%
+  mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
+  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n())) %>%
+  # mutate(upper_theta = t.test(sub_mean_theta)$conf.int[2] ) %>%
+  # mutate(lower_theta = t.test(sub_mean_theta)$conf.int[1] ) %>%
+  select(subject, electrode, theta, trial_time, sub_mean_theta, mean_theta, upper_theta, lower_theta) %>%
+  ggplot(., aes(x= trial_time, y = sub_mean_theta, group = electrode, color = subject, fill = subject)) +
+  geom_point() + 
+  geom_line() +
+  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+
+
+plot(arrangeGrob(grobs = list(ghost_theta_elec_plot,no_ghost_theta_elec_plot), nrow = 2, ncol = 1))
+
+
+plot(arrangeGrob(grobs = list(theta_ghost_plot,theta_no_ghost_plot), nrow = 2, ncol = 1))
+
+```
+
+
+```{r distance}
+
+theta_plot <- average_HC_ghost_df %>%
+  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
+  group_by(subject, trial_time) %>%
+  mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
+  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n())) %>%
+  # mutate(upper_theta = t.test(sub_mean_theta)$conf.int[2] ) %>%
+  # mutate(lower_theta = t.test(sub_mean_theta)$conf.int[1] ) %>%
+  select(subject, electrode, theta, trial_time, sub_mean_theta, mean_theta, upper_theta, lower_theta) %>%
+  ggplot(., aes(x= trial_time, y = sub_mean_theta, group = electrode, color = subject, fill = subject)) +
+  geom_point() + 
+  geom_line() +
+  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.7) +
+  theme(panel.background = element_rect(fill = "white")) 
+
+average_HC_ghost_df <- HC_ghost_df %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_dist = mean(distance_to_ghost))
+
+dist_plot <- average_HC_ghost_df %>%
+  filter(as.numeric(trial_time) <5) %>%
+  ggplot(., aes(x= trial_time, y = mean_dist, group = electrode, color = subject)) +
+  geom_point() + 
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+plot(arrangeGrob(grobs = list(theta_plot,dist_plot), nrow = 2, ncol = 1))
+```
+
+```{r ghost-theta-vs-no-ghost}
+
+
+
+average_HC_ghost_df <- HC_ghost_df %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
+  group_by(trial_time) %>%
+  mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
+  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n()))
+
+average_HC_no_ghost_df <- HC_no_ghost_df %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  filter(as.numeric(trial_time) <5 & as.numeric(trial_time) >0) %>%
+  group_by(trial_time) %>%
+  mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = sub_mean_theta + sd(mean_theta)/sqrt(n())) %>%
+  mutate(lower_theta = sub_mean_theta - sd(mean_theta)/sqrt(n()))
+
+
+theta_power_trial_type_plot <- ggplot() +
+  geom_point(data = average_HC_ghost_df, 
+             aes(x= trial_time, y = sub_mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") + 
+  geom_ribbon(data = average_HC_ghost_df, 
+              aes(x= trial_time, y = sub_mean_theta, group = electrode, 
+                  ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#2468AD") +
+  geom_line(data = average_HC_ghost_df, 
+            aes(x= trial_time, y = sub_mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
+  geom_point(data = average_HC_no_ghost_df, 
+             aes(x= trial_time, y = sub_mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") + 
+  geom_ribbon(data = average_HC_no_ghost_df, 
+              aes(x= trial_time, y = sub_mean_theta, group = electrode, 
+                  ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#DF755D") +
+  geom_line(data = average_HC_no_ghost_df, 
+           aes(x= trial_time, y = sub_mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") +
+   theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "none",
+        strip.text =  element_text(family = "Georgia", color = '#2D2327', size = 16),
+        legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
+
+  labs(y = "Theta Power", x = "Time since trial onset") +
+  ggtitle("Hippocampal Theta Power in Conflict (Ghost) vs No-conflict (No-ghost) Trials")
+
+
+ggsave(filename = path(here(), "figures", "SFN", "hc_theta_power_across_trial_types.tif"),
+     device = "tiff",
+     width = 3650,
+     height = 1800,
+     units = "px",
+     dpi = 320,
+     plot =  theta_power_trial_type_plot)
+
+```
+
+What is happening during that red peak?
+
+
+```{r choice-locked,  fig.width=14, fig.height=8}
+
+average_ghost_df <- HC_choice_ghost_df %>%
+  mutate(electrode = gsub("_hc_trial_theta_choice_locked_ghost.csv", "", electrode)) %>%
+  filter(subject == "SLCH002") %>%
+  group_by(trial_time, electrode) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  # group_by(trial_time) %>%
+  # mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
+  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
+
+average_no_ghost_df <- HC_choice_no_ghost_df %>%
+  mutate(electrode = gsub("_hc_trial_theta_choice_locked_noghost.csv", "", electrode)) %>%
+  filter(subject == "SLCH002") %>%
+  group_by(trial_time, electrode) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  # group_by(trial_time) %>%
+  # mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
+  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
+
+for(elec in unique(average_no_ghost_df$electrode)){
+  
+  average_ghost_df_tmp <- average_ghost_df %>% filter(electrode == elec)
+  average_no_ghost_df_tmp <- average_no_ghost_df %>% filter(electrode == elec)
+
+  p <- ggplot() +
+    geom_point(data = average_ghost_df_tmp,
+               aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
+    geom_ribbon(data = average_ghost_df_tmp,
+                aes(x= trial_time, y = mean_theta, group = electrode,
+                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#2468AD") +
+    geom_line(data = average_ghost_df_tmp,
+              aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
+    geom_point(data = average_no_ghost_df_tmp, 
+               aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") + 
+    geom_ribbon(data = average_no_ghost_df_tmp, 
+                aes(x= trial_time, y = mean_theta, group = electrode, 
+                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#DF755D") +
+    geom_line(data = average_no_ghost_df_tmp, 
+             aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") +
+     theme(panel.background = element_rect(fill = "white"), 
+          legend.position = "none",
+          strip.text =  element_text(family = "Georgia", color = '#2D2327', size = 16),
+          legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+          legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+          axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+          axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
+          plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
+  
+    labs(y = "Theta Power", x = "Time since trial onset") +
+    ggtitle(elec)
+  
+plot(p)
+
+}
+
+
+average_ghost_df <- HC_choice_ghost_df %>%
+  mutate(electrode = gsub("_hc_trial_theta_choice_locked_ghost.csv", "", electrode)) %>%
+  filter(subject == "BJH016") %>%
+  group_by(trial_time, electrode) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  # group_by(trial_time) %>%
+  # mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
+  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
+
+average_no_ghost_df <- HC_choice_no_ghost_df %>%
+  mutate(electrode = gsub("_hc_trial_theta_choice_locked_noghost.csv", "", electrode)) %>%
+  filter(subject == "BJH016") %>%
+  group_by(trial_time, electrode) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  # group_by(trial_time) %>%
+  # mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
+  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
+
+for(elec in unique(average_no_ghost_df$electrode)){
+  
+  average_ghost_df_tmp <- average_ghost_df %>% filter(electrode == elec)
+  average_no_ghost_df_tmp <- average_no_ghost_df %>% filter(electrode == elec)
+
+  p <- ggplot() +
+    geom_point(data = average_ghost_df_tmp,
+               aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
+    geom_ribbon(data = average_ghost_df_tmp,
+                aes(x= trial_time, y = mean_theta, group = electrode,
+                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#2468AD") +
+    geom_line(data = average_ghost_df_tmp,
+              aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
+    geom_point(data = average_no_ghost_df_tmp, 
+               aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") + 
+    geom_ribbon(data = average_no_ghost_df_tmp, 
+                aes(x= trial_time, y = mean_theta, group = electrode, 
+                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#DF755D") +
+    geom_line(data = average_no_ghost_df_tmp, 
+             aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") +
+     theme(panel.background = element_rect(fill = "white"), 
+          legend.position = "none",
+          strip.text =  element_text(family = "Georgia", color = '#2D2327', size = 16),
+          legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+          legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+          axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+          axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
+          plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
+  
+    labs(y = "Theta Power", x = "Time since trial onset") +
+    ggtitle(elec)
+  
+plot(p)
+
+}
+
+average_ghost_df <- HC_choice_ghost_df %>%
+  mutate(electrode = gsub("_hc_trial_theta_choice_locked_ghost.csv", "", electrode)) %>%
+  filter(subject == "LL10") %>%
+  group_by(trial_time, electrode) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  # group_by(trial_time) %>%
+  # mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
+  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
+
+average_no_ghost_df <- HC_choice_no_ghost_df %>%
+  mutate(electrode = gsub("_hc_trial_theta_choice_locked_noghost.csv", "", electrode)) %>%
+  filter(subject == "LL10") %>%
+  group_by(trial_time, electrode) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  # group_by(trial_time) %>%
+  # mutate(sub_mean_theta = mean(mean_theta)) %>%
+  mutate(upper_theta = mean_theta + sd(theta)/sqrt(n())) %>%
+  mutate(lower_theta = mean_theta - sd(theta)/sqrt(n()))
+
+for(elec in unique(average_no_ghost_df$electrode)){
+  
+  average_ghost_df_tmp <- average_ghost_df %>% filter(electrode == elec)
+  average_no_ghost_df_tmp <- average_no_ghost_df %>% filter(electrode == elec)
+
+  p <- ggplot() +
+    geom_point(data = average_ghost_df_tmp,
+               aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
+    geom_ribbon(data = average_ghost_df_tmp,
+                aes(x= trial_time, y = mean_theta, group = electrode,
+                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#2468AD") +
+    geom_line(data = average_ghost_df_tmp,
+              aes(x= trial_time, y = mean_theta, group = electrode), color = "#2468AD", fill = "#2468AD") +
+    geom_point(data = average_no_ghost_df_tmp, 
+               aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") + 
+    geom_ribbon(data = average_no_ghost_df_tmp, 
+                aes(x= trial_time, y = mean_theta, group = electrode, 
+                    ymin = lower_theta, ymax = upper_theta), alpha =.7, fill = "#DF755D") +
+    geom_line(data = average_no_ghost_df_tmp, 
+             aes(x= trial_time, y = mean_theta, group = electrode), color = "#B72231", fill = "#DF755D") +
+     theme(panel.background = element_rect(fill = "white"), 
+          legend.position = "none",
+          strip.text =  element_text(family = "Georgia", color = '#2D2327', size = 16),
+          legend.title = element_text(family = "Georgia", color = '#2D2327', size = 16),
+          legend.text = element_text(family = "Georgia", color = '#2D2327', size = 16),
+          axis.title = element_text(family = "Georgia", color = '#2D2327', size = 18), 
+          axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14), 
+          plot.title = element_text(family = "Georgia", color = '#2D2327', size = 18)) + 
+  
+    labs(y = "Theta Power", x = "Time since trial onset") +
+    ggtitle(elec)
+  
+plot(p)
+
+}
+
+```
+
+
+
+
 
 ```{r ant-post-analysis, fig.width=20, fig.height=8}
 
@@ -734,8 +779,8 @@ anot_post_plot <- average_choice_df %>%
             axis.title = element_text(family = "Georgia", color = '#2D2327', size = 24), 
             axis.text = element_text(family = "Georgia", color = '#2D2327', size = 20), 
             plot.title = element_text(family = "Georgia", color = '#2D2327', size = 28, hjust = .5)) + 
-      scale_color_manual(values = c("#FFA800", "#0B7A75")) +
-      scale_fill_manual(values = c("#FFA800", "#0B7A75")) +    
+      scale_color_manual(values = c("#FCC673", "#87C8B7")) +
+      scale_fill_manual(values = c("#FCC673", "#87C8B7")) +    
       labs(y = "Theta Power", x = "Time (locked to turnaround)") +
       ggtitle("At least some posterior hippocampal contacts exhibit differences in theta power between\n conflict and no-conflict conditions") +
   facet_wrap(~plot_subject)

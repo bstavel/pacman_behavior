@@ -47,6 +47,7 @@ library(scales)
 source(path(here(), "R", 'mutate_cond.R'))
 source(path(here(), "R", 'create_distance_df.R'))
 source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'create_timelock_event_tables.R'))
 
 ## plotting helpers ##
 ggthemr("light")
@@ -303,43 +304,11 @@ write_csv(bad_df, path(here(), './data/ieeg_behave/BJH021_bad_trials.csv'))
 
 ```
 
-```{r last-away}
+```{r time-lock-events}
 
-# read in bad df
-bad_df <- read_csv(path(here(), './data/ieeg_behave/BJH021_bad_trials.csv'))
-
-
-last_away_df <- bjh21_data_clean %>%
-  filter(Trial != "ITI") %>%
-  filter(trial_numeric != 0) %>%
-  filter(died == 0) %>%
-  mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
-  group_by(trial_numeric) %>%
-  mutate(towards_dots = if_else(Direction == 2 & starting_side == "Right", "Towards",  # Left:2 Right :11
-                                 if_else(Direction == 11 & starting_side == "Left", "Towards",
-                                         if_else(Direction == 4, "Still", "Away")))) %>%
-  mutate(away_choice_tmp = c(0, diff(factor(towards_dots)))) %>%
-  mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_dots == "Away") | 
-                                  (away_choice_tmp == -1 & towards_dots == "Away"), sample, 0)) %>%
-  select(-away_choice_tmp) %>%
-  mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
-  mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
-  ungroup() %>%
-  filter(sample == last_away)
-
-anyDuplicated(last_away_df$trial_numeric)
-
-
-last_away_clean_df <- last_away_df %>%
-  ungroup() %>%
-  mutate(sample_before = 0) %>%
-  mutate(event = 1) %>%
-  select(trial_numeric, TrialType, sample, sample_before, event)
-
-
-write_csv(last_away_clean_df, path(here(), './data/ieeg_behave/BJH021_last_away_events.csv'))
-
+create_last_away_events(bjh21_data_clean, 'BJH021_last_away_events.csv')
+create_first_dot_events(bjh21_data_clean, 'BJH021_first_dot_events.csv')
+create_died_events(bjh21_data_clean, 'BJH021_died_events.csv')
 
 ```
 

@@ -48,6 +48,7 @@ library(scales)
 source(path(here(), "R", 'mutate_cond.R'))
 source(path(here(), "R", 'create_distance_df.R'))
 source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'create_timelock_event_tables.R'))
 
 ## plotting helpers ##
 ggthemr("light")
@@ -116,173 +117,6 @@ bj16_data_distance <- create_distance_df_bci(bj16_data_clean)
 
 # task vars df #
 bj16_all_vars_df <- get_across_task_variables_bci(bj16_data_clean)
-
-```
-
-```{r BJH016-data-prep, eval = F}
-
-
-# clean Biscuits #
-bj16_data_clean <- bj16_data %>%
-  rename(subject = Subject) %>%
-  # ungrouped timing variables
-  rename(sample = Time) %>%
-  mutate(Time = sample /2000) %>%
-  mutate(time_step = c(FALSE, diff(Time))) %>%
-  mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
-  ## grouped by trial variables
-  group_by(subject, Trial) %>%
-  mutate(jittered_start_location = first(UserLocation)) %>%
-  mutate(base_start_location = if_else(TrialType %in% c(16, 8), 30,
-                                       if_else(TrialType %in% c(19, 15, 14, 7, 6), 50,
-                                               if_else(TrialType %in% c(20, 13, 5), 70,
-                                                   if_else(TrialType %in% c(17, 12, 4), 110,
-                                                       if_else(TrialType %in% c(18, 11, 10, 3, 2), 130,
-                                                               if_else(TrialType %in% c(9, 1), 150, 999))))))) %>%
-  # get correct trial type info (sometimes trial type switches early/ lags)
-  mutate(TrialType = names(sort(table(TrialType),decreasing=TRUE))[1]) %>%
-  # same deal with lives
-  mutate(Lives = as.numeric(names(sort(table(Lives),decreasing=TRUE))[1])) %>%
-  # biscuit location
-  mutate(Biscuit1 = if_else(Biscuit1 == FALSE & base_start_location <= 80,  base_start_location + 12, 
-                            if_else(Biscuit1 == FALSE & base_start_location > 80, base_start_location -12, 1111)))  %>%
-  mutate(Biscuit2 = if_else(Biscuit2 == FALSE & base_start_location <= 80,  base_start_location + 22, 
-                            if_else(Biscuit2 == FALSE & base_start_location > 80, base_start_location -22, 1111)))  %>%
-  mutate(Biscuit3 = if_else(Biscuit3 == FALSE & base_start_location <= 80,  base_start_location + 32, 
-                            if_else(Biscuit3 == FALSE & base_start_location > 80, base_start_location -32, 1111)))  %>%
-  mutate(Biscuit4 = if_else(Biscuit4 == FALSE & base_start_location <= 80,  base_start_location + 42, 
-                            if_else(Biscuit4 == FALSE & base_start_location > 80, base_start_location -42, 1111)))  %>%
-  mutate(Biscuit5 = if_else(Biscuit5 == FALSE & base_start_location <= 80,  base_start_location + 52, 
-                            if_else(Biscuit5 == FALSE & base_start_location > 80, base_start_location -52, 1111)))  %>%
-  # get starting side
-  mutate(starting_side = if_else(base_start_location < 95, "Left", "Right")) %>%
-  # trial timing information
-  mutate(Trial = if_else(Trial_on_off == 0, "ITI", Trial)) %>%
-  mutate_cond(Trial == "ITI", 
-              GhostLocation = NA, UserLocation = NA, Lives = NA, starting_side = NA,
-              Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, 
-              Attack = NA, Chase = NA, Eaten = NA, TrialType = NA) %>%
-  mutate(trial_time = if_else(Trial == "ITI", 999, Time - first(Time))) %>%
-  mutate(trial_flip = 1:n()) %>%
-  mutate(time_lag = c(FALSE, diff(trial_time))) %>%
-  mutate(trial_end = as.numeric(c(diff(trial_numeric) > 0, FALSE))) %>%
-  mutate(trial_length = max(trial_time)) %>%
-  # trial grouping variables
-  mutate(reward_groups = if_else(TrialType %in% c(1, 5, 9, 13), 2, 
-                                 if_else(TrialType %in% c(2, 6, 10, 14), 3, 
-                                         if_else(TrialType %in% c(3, 7, 11, 15), 1, 
-                                                 if_else(TrialType %in% c(4, 8, 12, 16), 4, 99))))) %>%
-  mutate(ghost_start_dir = if_else(TrialType > 16, "no_ghost", 
-                                   if_else(TrialType <= 4 | TrialType >= 13, "away", "towards"))) %>%
-  mutate(rewards_direction_groups = paste0(reward_groups, "_", ghost_start_dir)) %>%
-  mutate(attack_chase_bob = if_else(Attack == T, "Attack", if_else(Chase == T, "Chase", "Bob"))) %>%
-  ungroup() %>%
-  group_by(subject) %>%
-  arrange(subject, trial_numeric) %>%
-  mutate(life_change = as.numeric(c(diff(Score) < 0, FALSE))) %>%
-  group_by(subject, Trial) %>%
-  mutate(died = sum(life_change)) %>%
-  select(-life_change) %>%
-  ungroup()
-
-# get rid of paused trials  don't think they exist for this subject#
-# bj16_paused_trials <- bj16_data_clean %>%
-#   filter(ghost_start_dir != "no_ghost" & Trial != "ITI") %>%
-#   group_by(Trial) %>%
-#   mutate(ghost_step = c(FALSE, diff(GhostLocation))) %>%
-#   mutate(user_step = c(FALSE, diff(UserLocation))) %>%
-#   filter(ghost_step == 0 & user_step == 0) %>%
-#   filter(c(0, diff(trial_flip)) == 1)
-# 
-# 
-# pilot_game_data_clean <- pilot_game_data_clean %>%
-#   ungroup() %>%
-#    mutate(trial_ids = paste0(subject, "_", trial_numeric)) %>%
-#   filter(!trial_ids %in% paused_trials)
- 
-bj16_data_distance <- bj16_data_clean %>%
-  filter(Trial != "ITI") %>%
-  filter(!is.na(GhostLocation)) %>%
-  filter(died == 0) %>%
-  group_by(subject, Trial) %>%
-  # user movement and distance measures
-  mutate(distance_to_ghost = abs(GhostLocation - UserLocation)) %>%
-  mutate(min_distance = min(distance_to_ghost)) %>%
-  mutate(towards_ghost = if_else(Direction == 2 & GhostLocation < UserLocation, "Towards",  # Left:2 Right :11
-                                 if_else(Direction == 11 & GhostLocation > UserLocation, "Towards",
-                                         if_else(Direction == 4, "Still", "Away")))) %>%
-  mutate(away_choice_tmp = c(0, diff(factor(towards_ghost)))) %>%
-  mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_ghost == "Away") | 
-                                  (away_choice_tmp == -1 & towards_ghost == "Away"), distance_to_ghost, 0)) %>%
-  select(-away_choice_tmp) %>%
-  mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
-  mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
-  ungroup()
-
-
-bj16_all_vars_df <- bj16_data_clean %>%
-  group_by(subject) %>%
-  filter(!is.na(Score)) %>%
-  filter(Trial != "ITI") %>%
-  filter(Trial != 0) %>%
-  # calculate number of deaths
-  mutate(death_check = as.numeric(c(diff(Score) < 0, FALSE))) %>%
-  mutate(total_deaths = sum(death_check)) %>%
-  mutate(max_trial = max(trial_numeric)) %>%
-  mutate(trial_in_block = trial_numeric %% 20) %>%
-  mutate(trial_in_block = if_else(trial_in_block == 0, 20, trial_in_block)) %>%
-  # new minigame
-  mutate(lives_check = as.numeric(c(diff(Lives) > 0, FALSE))) %>%
-  mutate(total_games = sum(lives_check) + 1) %>%
-  group_by(subject, Trial) %>%
-  mutate(dots_eaten = max(Eaten)) %>%
-  mutate(max_score = max(Score, na.rm = T)) %>%
-  mutate(trial_died = sum(death_check)) %>%
-  mutate(last_trial_in_minigame = sum(lives_check)) %>% # if lose all lives, mark as last trial
-  mutate(last_trial_in_minigame = if_else(trial_in_block == 20, 1, last_trial_in_minigame)) %>% # 20 is always last trial 
-  group_by(subject) %>%
-  mutate(average_score = mean(max_score)) %>%
-  mutate(max_time = max(Time)) %>%
-  select(subject, Trial, trial_numeric, trial_in_block, TrialType, trial_length,
-         trial_died, last_trial_in_minigame, Lives, dots_eaten,
-         max_trial, total_deaths, average_score, max_time) %>%
-  distinct()
-
-# get trials in minigame
-round <- 1
-game <- 1
-bj16_all_vars_df$trial_in_minigame <- 0
-bj16_all_vars_df$minigame <- 0
-for(idx in 1:nrow(bj16_all_vars_df)){
-  # add to df
-  bj16_all_vars_df$trial_in_minigame[idx] <- round
-  bj16_all_vars_df$minigame[idx] <- game
-  if(bj16_all_vars_df$last_trial_in_minigame[idx] == 1){
-    round <- 1
-    game <- game + 1
-  } else {
-    round <- round + 1
-  }
-  
-  if(bj16_all_vars_df$subject[idx + 1] != bj16_all_vars_df$subject[idx] & idx != nrow(bj16_all_vars_df)) {
-    round <- 1
-    game <- 1
-  }
-  
-}
-
-# max trials in minigame and such
-bj16_all_vars_df <- bj16_all_vars_df %>%
-  group_by(subject) %>%
-  mutate(longest_minigame = max(trial_in_minigame)) %>%
-  mutate(longest_minigame_under20 = max(trial_in_minigame[trial_in_minigame < 20])) %>%
-  mutate(number_of_minigames = max(minigame)) %>%
-  mutate(block = ceiling(trial_numeric/20)) %>%
-  group_by(subject, block) %>%
-  mutate(block_deaths = sum(trial_died)) %>%
-  mutate(average_dots_per_block = mean(dots_eaten)) %>%
-  ungroup()
-  
 
 ```
 
@@ -357,13 +191,6 @@ no_biscuits_trials <- bj16_data_clean %>%
 
 ```
 
-```{r compile-bad-trials}
-
-bad_trials <- rbind(pasued_trials, no_biscuits_trials)
-
-write_csv(bad_trials, path(here(), './data/ieeg_behave/BJH016_bad_trials.csv'))
-
-```
 
 
 ```{r long-trials}
@@ -383,18 +210,31 @@ long_trials <- bj16_all_vars_df %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
   pull(neural_trial_numeric)
 
-# looks pretty good except for trial 16 where the player was stuck on the edge...
+# looks pretty good except for trial 8, 16, 32 where the player was stuck on the edge...
 bj16_data_clean %>%
   filter(Trial != "ITI") %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
   # filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
   filter(trial_length > 10) %>%
   pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
-  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  ggplot(., aes(x = trial_time, y = location, color = unit)) +
   geom_point() +
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
   facet_wrap(~trial_numeric)
+
+# 8, 16, 32, but subtract 1 for 0 index
+bad_long_trials <- c(7, 15, 31)
+
+```
+
+```{r compile-bad-trials}
+
+bad_trials <- unique(c(pasued_trials$neural_trial_numeric, no_biscuits_trials$neural_trial_numeric, bad_long_trials))
+
+bad_df <- data_frame("neural_trial_numeric" = bad_trials)
+
+write_csv(bad_df, path(here(), './data/ieeg_behave/BJH016_bad_trials.csv'))
 
 ```
 
@@ -479,91 +319,15 @@ bj16_data_clean %>%
 
 ## create new events arrays
 
-CHECK DIED AGAIN, MISSING  TRIAL 98 AT LEAST
+```{r time-lock-events}
 
-
-```{r last_biscuit}
-
-tmp <- last_dot_df <- bj16_data_clean %>%
-  filter(Trial != "ITI") %>%
-  filter(trial_numeric != 0) %>%
-  mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) 
-
-last_dot_df <- bj16_data_clean %>%
-  filter(Trial != "ITI") %>%
-  filter(trial_numeric != 0) %>%
-  mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
-  group_by(trial_numeric) %>%
-  filter(Eaten == max(Eaten)) %>%
-  filter(trial_flip == min(trial_flip))
-
-
-last_dot_trial_end <- bj16_data_clean %>%
-  filter(Trial != "ITI") %>%
-  filter(trial_numeric != 0) %>%
-  mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
-  group_by(trial_numeric) %>%
-  filter(Eaten == max(Eaten)) %>%
-  filter(trial_flip == min(trial_flip) | trial_flip == max(trial_flip)) %>%
-  filter(min(trial_flip) != max(trial_flip)) %>% # exclude when they died at the same moment
-  mutate(time_remaing = diff(Time)) %>%
-  select(trial_numeric, TrialType, Time, time_remaing, sample)
-
-
-anyDuplicated(last_dot_df$trial_numeric)
-
-
-last_dot_clean_df <- last_dot_df %>%
-  ungroup() %>%
-  mutate(sample_before = 0) %>%
-  mutate(event = 1) %>%
-  select(trial_numeric, TrialType, sample, sample_before, event)
-
-
-write_csv(last_dot_clean_df, path(here(), './data/ieeg_behave/BJH016_last_dot_events.csv'))
+create_last_away_events(bj16_data_clean, 'BJH016_last_away_events.csv')
+create_first_dot_events(bj16_data_clean, 'BJH016_first_dot_events.csv')
+create_died_events(bj16_data_clean, 'BJH016_died_events.csv')
 
 ```
 
 
-
-```{r last-away}
-
-
-
-last_away_df <- bj16_data_clean %>%
-  filter(Trial != "ITI") %>%
-  filter(trial_numeric != 0) %>%
-  mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
-  group_by(trial_numeric) %>%
-  mutate(towards_dots = if_else(Direction == 2 & starting_side == "Right", "Towards",  # Left:2 Right :11
-                                 if_else(Direction == 11 & starting_side == "Left", "Towards",
-                                         if_else(Direction == 4, "Still", "Away")))) %>%
-  mutate(away_choice_tmp = c(0, diff(factor(towards_dots)))) %>%
-  mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_dots == "Away") | 
-                                  (away_choice_tmp == -1 & towards_dots == "Away"), sample, 0)) %>%
-  select(-away_choice_tmp) %>%
-  mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
-  mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
-  ungroup() %>%
-  filter(sample == last_away)
-
-anyDuplicated(last_away_df$trial_numeric)
-
-
-last_away_clean_df <- last_away_df %>%
-  ungroup() %>%
-  mutate(sample_before = 0) %>%
-  mutate(event = 1) %>%
-  select(trial_numeric, TrialType, sample, sample_before, event)
-
-
-write_csv(last_away_clean_df, path(here(), './data/ieeg_behave/BJH016_last_away_events.csv'))
-
-```
 ```{r longest-trial}
 
 bad_trials <- read_csv(path(here(), './data/ieeg_behave/BJH016_bad_trials.csv'))
@@ -576,5 +340,5 @@ trial_times <- bj16_data_clean %>%
   select(trial_length, trial_numeric) %>%
   distinct()
 
-
+max(trial_times$trial_length)
 ```

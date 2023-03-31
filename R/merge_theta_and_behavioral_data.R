@@ -13,7 +13,7 @@ merge_theta_and_behavioral_data <- function(roi, sub, distance_df, timepoints, k
     
     # fix col names
     elec_theta_data <- elec_theta_data %>%
-      select(-X1)
+      select(-any_of(c("X1", "...1")))
     if(!"trial_numeric" %in% colnames(elec_theta_data)){
       elec_theta_data <- elec_theta_data %>%
         rename(trial_numeric = trial)

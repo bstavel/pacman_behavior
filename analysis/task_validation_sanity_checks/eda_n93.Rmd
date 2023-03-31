@@ -334,7 +334,43 @@ pilot_game_data_anx <- full_join(pilot_game_data_distance, pilot_behave_data_anx
 
 pilot_game_data_anx <- pilot_game_data_anx %>%
   filter(number_of_runs > 0)
+```
 
+```{r percent-anxious}
+
+oasis_behave_data_anx <- pilot_behave_data_anx %>%
+  select(starts_with("o"), subject) %>%
+  mutate(oasis_anx = if_else(oasis_total >= 10, "Anx", "Healthy")) 
+
+# percent anxious
+table(oasis_behave_data_anx$oasis_anx)
+48/nrow(pilot_behave_data_anx)
+
+
+pilot_behave_data_anx %>%
+  ggplot(., aes(x = masq_aa)) +
+  geom_histogram(binwidth = 1) +
+  theme(panel.background = element_rect(fill = "white"))
+
+pilot_behave_data_anx %>%
+  filter(oasis_total >= 8) %>%
+  ggplot(., aes(x = masq_aa)) +
+  geom_histogram(binwidth = 1) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+pilot_behave_data_anx %>%
+  # filter(oasis_total >= 8) %>%
+  ggplot(., aes(x = oasis_total)) +
+  geom_histogram(binwidth = 1) +
+  geom_vline(xintercept = 8, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
+
+
+```{r}
 
 # Models #
 pilot_game_data_anx_model <- pilot_game_data_anx %>%
