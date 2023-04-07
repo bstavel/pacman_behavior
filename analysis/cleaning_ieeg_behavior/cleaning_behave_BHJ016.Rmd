@@ -230,7 +230,9 @@ bad_long_trials <- c(7, 15, 31)
 
 ```{r compile-bad-trials}
 
-bad_trials <- unique(c(pasued_trials$neural_trial_numeric, no_biscuits_trials$neural_trial_numeric, bad_long_trials))
+# added more bad trials from when the patient just ran into the wall
+wall_trials <- c(23, 65, 80, 101, 111, 391)
+bad_trials <- unique(c(pasued_trials$neural_trial_numeric, no_biscuits_trials$neural_trial_numeric, bad_long_trials, wall_trials))
 
 bad_df <- data_frame("neural_trial_numeric" = bad_trials)
 
@@ -312,14 +314,16 @@ bj16_data_clean %>%
   
 
 
-
+bad_trials$neural_trial_numeric
   
 ```
 
 
 ## create new events arrays
 
-```{r time-lock-events}
+```{r time-lock-events, fig.width = 16, fig.height = 16}
+
+bad_trials <- read_csv(path(here(), './data/ieeg_behave/BJH016_bad_trials.csv'))
 
 create_last_away_events(bj16_data_clean, 'BJH016_last_away_events.csv')
 create_first_dot_events(bj16_data_clean, 'BJH016_first_dot_events.csv')

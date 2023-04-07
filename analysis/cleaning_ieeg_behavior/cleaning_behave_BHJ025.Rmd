@@ -105,6 +105,13 @@ bjh25_data <- read_csv(path(here(), './data/ieeg_behave/BJH025_raw_behave.csv'),
 
 ```{r BJH025-data-prep}
 
+# Subject paused to get out of dying and that resulted in an incorrect trial count
+bjh25_data <- bjh25_data %>%
+  mutate(Trial = as.numeric(Trial)) %>%
+  filter(Trial != 7) %>%
+  mutate(Trial = if_else(Trial < 7, Trial, Trial -1)) %>%
+  mutate(Trial = as.character(Trial))
+
 # clean Biscuits #
 bjh25_data_clean <- clean_bci_data(bjh25_data, 2000)
 
@@ -221,8 +228,8 @@ bjh25_data_clean %>%
 
 ```{r compile-bad-trials}
 
-
-bad_trials <- unique(c(no_biscuits_trials, long_trials))
+# other paused trials
+bad_trials <- unique(c(no_biscuits_trials, long_trials, 6, 10))
 
 
 ```
@@ -340,8 +347,8 @@ length(unique(bjh25_data_clean$trial_numeric))
 
 ```{r save-bad-trials}
 
-
-bad_trials <- c(no_biscuits_trials, long_trials)
+# manually add 6, because it looks like th person pressed n to avoid dying...
+bad_trials <- unique(c(no_biscuits_trials, long_trials, 6, 9))
 
 bad_df <- data_frame("neural_trial_numeric" = bad_trials)
 
@@ -349,7 +356,8 @@ write_csv(bad_df, path(here(), './data/ieeg_behave/BJH025_bad_trials.csv'))
 
 ```
 
-```{r time-lock-events}
+```{r time-lock-events, fig.width = 16, fig.height = 16}
+bad_trials <- read_csv(path(here(), './data/ieeg_behave/BJH025_bad_trials.csv'))
 
 create_last_away_events(bjh25_data_clean, 'BJH025_last_away_events.csv')
 create_first_dot_events(bjh25_data_clean, 'BJH025_first_dot_events.csv')

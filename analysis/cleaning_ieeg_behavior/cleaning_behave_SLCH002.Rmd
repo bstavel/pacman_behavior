@@ -195,13 +195,13 @@ Wow!! They all look great!
 ```{r all-other-trials}
 
 # first 100 trials
-sl02_data_clean %>%
+sl02_data_clean_new %>%
   filter(Trial != "ITI") %>%
   filter(trial_length <= 10) %>%
   filter(trial_numeric != 0) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
   filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
-  filter(trial_numeric < 100) %>%
+  filter(trial_numeric < 10) %>%
   pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
   ggplot(., aes(x = trial_flip, y = location, color = unit)) +
   geom_hline(yintercept = 170, color = "black") +
@@ -256,16 +256,17 @@ sl02_data_clean %>%
 
 ## create new events arrays
 
+```{r time-lock-events, fig.width = 16, fig.height = 16}
 
+bad_trials <- read_csv(path(here(), './data/ieeg_behave/SLCH002_bad_trials.csv'))
 
-```{r time-lock-events}
 
 create_last_away_events(sl02_data_clean, 'SLCH002_last_away_events.csv')
 create_first_dot_events(sl02_data_clean, 'SLCH002_first_dot_events.csv')
 create_died_events(sl02_data_clean, 'SLCH002_died_events.csv')
 
-```
 
+```
 
 ```{r longest-trial}
 

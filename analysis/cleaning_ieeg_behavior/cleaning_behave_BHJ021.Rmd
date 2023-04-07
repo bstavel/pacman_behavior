@@ -304,7 +304,10 @@ write_csv(bad_df, path(here(), './data/ieeg_behave/BJH021_bad_trials.csv'))
 
 ```
 
-```{r time-lock-events}
+```{r time-lock-events, fig.width = 16, fig.height = 16}
+
+bad_trials <- read_csv(path(here(), './data/ieeg_behave/SLCH002_bad_trials.csv'))
+
 
 create_last_away_events(bjh21_data_clean, 'BJH021_last_away_events.csv')
 create_first_dot_events(bjh21_data_clean, 'BJH021_first_dot_events.csv')

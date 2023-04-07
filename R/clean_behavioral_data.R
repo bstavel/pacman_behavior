@@ -18,7 +18,7 @@ clean_bci_data <- function(df, sample_rate){
                                                                          if_else(TrialType %in% c(9, 1), 150, 999))))))) %>%
     # get correct trial type info (sometimes trial type switches early/ lags)
     mutate(TrialType = as.numeric(names(sort(table(TrialType),decreasing=TRUE))[1])) %>%
-    # same deal with lives
+    # # same deal with lives
     mutate(Lives = as.numeric(names(sort(table(Lives),decreasing=TRUE))[1])) %>%
     # biscuit location
     mutate(Biscuit1 = if_else(Biscuit1 == FALSE & base_start_location <= 80,  base_start_location + 12, 
@@ -33,11 +33,13 @@ clean_bci_data <- function(df, sample_rate){
                               if_else(Biscuit5 == FALSE & base_start_location > 80, base_start_location -52, 1111)))  %>%
     mutate(dots_eaten = max(Eaten)) %>%
     # Fix Direction
-    mutate(move = c(0, diff(UserLocation))) %>%
-    mutate(Direction = if_else(move %in% c(-2, -4), "Left",
-                                        if_else(move %in% c(2, 4), "Right", 
-                                                if_else(move == 0, "Still", "Unsure")))) %>%
-    select(-move) %>%
+    mutate(move_step = c(0, diff(UserLocation))) %>%
+    mutate(move_direction = if_else(move_step %in% c(-2, -4), "Left",
+                                        if_else(move_step %in% c(2, 4), "Right", 
+                                                if_else(move_step == 0, "Still", "Unsure")))) %>%
+    mutate(Direction = if_else(Direction == 2, "Left", 
+                                if_else(Direction == 11, "Right", 
+                                        if_else(Direction == 4, "Still", "Unsure")))) %>%
     # get starting side
     mutate(starting_side = if_else(base_start_location < 95, "Left", "Right")) %>%
     # trial timing information
@@ -60,15 +62,32 @@ clean_bci_data <- function(df, sample_rate){
                                      if_else(TrialType <= 4 | TrialType >= 13, "away", "towards"))) %>%
     mutate(rewards_direction_groups = paste0(reward_groups, "_", ghost_start_dir)) %>%
     mutate(attack_chase_bob = if_else(Attack == T, "Attack", if_else(Chase == T, "Chase", "Bob"))) %>%
-    ungroup() %>%
-    group_by(subject) %>%
-    arrange(subject, trial_numeric) %>%
-    mutate(life_change = as.numeric(c(diff(Score) < 0, FALSE))) %>%
-    group_by(subject, Trial) %>%
-    mutate(died = sum(life_change)) %>%
-    select(-life_change) %>%
-    ungroup()
+    ungroup() 
   
+  died_trials <- df_clean %>%
+    filter(Trial != "ITI") %>%
+    # filter out trials where they didn't get any points, because it gets confusing it they didn't lose points
+    group_by(trial_numeric) %>%
+    mutate(total_eaten = max(Eaten)) %>%
+    mutate(Score = if_else(trial_numeric %% 20 == 1 & Eaten == 0, Score - first(Score), Score)) %>%
+    ungroup() %>%
+    select(trial_numeric, Lives, Score, total_eaten, TrialType) %>%
+    distinct() %>%
+    mutate(died_lives = abs(as.numeric(c(diff(Lives), 0)))) %>%
+    mutate(died_lives = if_else(died_lives == 0, 0, 1)) %>%
+    mutate(died_score = c(diff(Score), 0)) %>%
+    mutate(died_score = if_else(died_score < 0 & died_score > -90, 1, 0)) %>%
+    group_by(trial_numeric) %>%
+    mutate(died_score = sum(died_score)) %>%
+    mutate(died_lives = sum(died_lives)) %>%
+    ungroup() %>%
+    mutate(died = if_else(died_score == 1 | died_lives == 1, 1, 0)) %>%
+    select(trial_numeric, died) %>%
+    distinct()
+  
+
+  df_clean <- left_join(df_clean, died_trials)
+    
   return(df_clean)
 }
 
