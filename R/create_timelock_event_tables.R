@@ -136,17 +136,15 @@ create_died_events <- function(df, fname) {
   died_df <- df %>%
     filter(Trial != "ITI") %>%
     filter(trial_numeric != 0) %>%
-    filter(TrialType <= 16) %>%
     mutate(neural_trial_numeric = trial_numeric - 1) %>%
     group_by(neural_trial_numeric) %>%
-    filter(trial_length > 1) %>%
     mutate(Attack = any(Attack))%>%
     mutate(ghost_cross_tmp = if_else(starting_side == "Right" & as.numeric(GhostLocation > 100), 1,
                                      if_else(starting_side == "Left" & as.numeric(GhostLocation < 100), 1, 0))) %>%
     mutate(ghost_cross = sum(ghost_cross_tmp)) %>%
     mutate(Chase = any(Chase)) %>%
     mutate(chase_trial = if_else((Chase == TRUE | Attack == TRUE) & died == 0 & ghost_cross > 3, 1, 0)) %>%
-    select(neural_trial_numeric, TrialType, died, Attack, chase_trial) %>%
+    select(neural_trial_numeric, TrialType, died, Attack, chase_trial, trial_length) %>%
     ungroup() %>%
     distinct()
   
