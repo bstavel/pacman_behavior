@@ -17,38 +17,23 @@ knitr::opts_chunk$set(
 ## libraries ##
 library(tidyverse)
 library(ggplot2)
-library(ggeffects)
 library(magrittr)
-library(ggthemr)
 library(grid)
 library(gtable)
-library(gridExtra)
-library(wesanderson)
-library(ggsci)
-library(zoo)
-library(kableExtra)
-library(lmerTest)
 library(RColorBrewer)
 library(doParallel)
 library(parallel)
 library(foreach)
 library(here)
 library(fs)
-library(ggcorrplot)
-library(viridis)
-library(lmtest)
-library(gt)
-library(survminer)
-library(survival)
 library(scales)
 
 ## hand written functions ##
 source(path(here(), "R", 'mutate_cond.R'))
-source(path(here(), "R", 'create_distance_df.R'))
 source(path(here(), "R", 'clean_behavioral_data.R'))
 
 ## plotting helpers ##
-ggthemr("light")
+# ggthemr("light")
 getPalette = colorRampPalette(brewer.pal(17, "Set1"))
 ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
 
@@ -69,8 +54,8 @@ c25 <- c(
 )
 
 # ## parallelization ##
-# nCores <- 2
-# registerDoParallel(nCores)
+nCores <- 16
+registerDoParallel(nCores)
 
 
 
@@ -99,14 +84,11 @@ theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
 theta_onset_df <- theta_onset_df %>% 
   mutate(trial_time = trial_time -1) %>%
   filter(!grepl("noghost", electrode)) %>%
-  mutate(elec_short = gsub("_.*", "", "J4-J5_hc_trial_theta_away_locked_ghost.csv"))
+  mutate(elec_short = gsub("_.*", "", electrode))
 
 ```
-null_cor <- foreach(h in unique(sub_df$trial_numeric), .inorder=FALSE, .combine = 'rbind') %dopar% {
 
-```{r hc-amyg}
-nCores <- 4
-registerDoParallel(nCores)
+```{r hc-hc-test}
 
 sub_df <- theta_onset_df %>% filter(subject == "SLCH002")
 elec1 <- "J4-J5"
@@ -163,6 +145,63 @@ ggplot() +
   theme(panel.background = element_rect(fill = "white"))
 
 ```
+
+
+
+# test 2
+
+
+```{r hc-hc-test}
+
+sub_df <- theta_onset_df %>% filter(subject == "SLCH002")
+elec1 <- "J6-J7"
+elec2 <- "A2-A3"
+sub <- "SLCH002" 
+true_cor <- NULL
+null_cor <- matrix(nrow = length(unique(sub_df$trial_numeric)), ncol = length(unique(sub_df$trial_numeric)))
+
+for(t in 1:length(unique(sub_df$trial_numeric))){
+  trial <- unique(sub_df$trial_numeric)[t]
+  print(trial)
+  t1 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec1) %>% pull(theta)
+  t2 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec2) %>% pull(theta)
+  true_cor[t] <- cor(t1, t2)
+  
+  #null distribution
+  null_cor[t,] <- foreach(h = 1:length(unique(sub_df$trial_numeric)), .inorder=FALSE, .combine = 'c') %dopar% {
+    null_trial <- unique(sub_df$trial_numeric)[h]
+    if(null_trial > trial){
+      t1 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec1) %>% pull(theta)
+      t2 <- sub_df  %>% filter(trial_numeric == null_trial) %>% filter(elec_short == elec2) %>% pull(theta)
+      return(cor(t1, t2))
+    } else {
+      return(NA)
+    }
+  }
+}  
+
+# save out files
+write.csv(true_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+null_cor <- null_cor[!is.na(null_cor)]
+test_result <- wilcox.test(true_cor, null_cor)
+write.csv(null_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+
+test_result <- wilcox.test(true_cor, null_cor)
+test_result
+```
+
+```{r}
+
+true_cor_df <- tibble("true_cor" = true_cor)
+null_cor_df <- tibble("null_cor" = null_cor)
+
+ggplot() +
+  geom_density(data = null_cor_df, aes(x = null_cor), fill = "grey", color = "black", alpha = .5) +
+  geom_density(data = true_cor_df, aes(x = true_cor), fill = "blue", color = "black", alpha = .5) +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
 
 
 
