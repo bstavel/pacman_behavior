@@ -214,25 +214,30 @@ cing_elecs <- sub_df %>%
   pull(elec_short) %>%
   unique()
 
-tests <- tibble("subject", "elec1", "elec2", "pval")
+elec1_df <- sub_df %>% filter(elec_short == elec1)
+
+tests <- tibble(subject = character(), elec1 = character(), elec2 = character(), pval = numeric())
 for(elec2 in cing_elecs){
+  
+  # filter to elec 2
+  elec2_df <- sub_df %>% filter(elec_short == elec2)
     
+  # prep output
   true_cor <- NULL
   null_cor <- matrix(nrow = length(unique(sub_df$trial_numeric)), ncol = length(unique(sub_df$trial_numeric)))
-  
   for(t in 1:length(unique(sub_df$trial_numeric))){
     trial <- unique(sub_df$trial_numeric)[t]
     print(trial)
-    t1 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec1) %>% pull(theta)
-    t2 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec2) %>% pull(theta)
+    t1 <- elec1_df  %>% filter(trial_numeric == trial)  %>% pull(theta)
+    t2 <- elec2_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec2) %>% pull(theta)
     true_cor[t] <- cor(t1, t2)
     
     #null distribution
     null_cor[t,] <- foreach(h = 1:length(unique(sub_df$trial_numeric)), .inorder=FALSE, .combine = 'c') %dopar% {
       null_trial <- unique(sub_df$trial_numeric)[h]
       if(null_trial > trial){
-        t1 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec1) %>% pull(theta)
-        t2 <- sub_df  %>% filter(trial_numeric == null_trial) %>% filter(elec_short == elec2) %>% pull(theta)
+        t1 <- elec1_df  %>% filter(trial_numeric == trial)  %>% pull(theta)
+        t2 <- elec2_df  %>% filter(trial_numeric == null_trial) %>%  pull(theta)
         return(cor(t1, t2))
       } else {
         return(NA)
@@ -253,6 +258,22 @@ for(elec2 in cing_elecs){
 
 }
 ```
+
+
+```{r visualize}
+sub <- "SLCH002"
+elec1 <- "J6-J7"
+elec2 <- "A3-A4"
+true_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+
+ggplot() +
+  geom_density(data = null_cor_df, aes(x = x), fill = "grey", color = "black", alpha = .5) +
+  geom_density(data = true_cor_df, aes(x = x), fill = "blue", color = "black", alpha = .5) +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
 
 
 
