@@ -1,0 +1,515 @@
+---
+title: "Onset Across Region Analysis"
+output: html_document
+date: "2023-05-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+# Delta
+
+```{r load-delta-data}
+
+## Load Region specific csvs ##
+hc_onset_df <- read_csv(path(here(), "munge", "delta_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "delta_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "delta_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "delta_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "delta_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "delta_behavior_insula_all_subs_onset.csv"))
+
+## Bind together ##
+delta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
+                  amyg_onset_df %>% mutate(region = "amyg"),
+                  ofc_onset_df %>% mutate(region = "ofc"),
+                  cing_onset_df %>% mutate(region = "cing"),
+                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
+                  insula_onset_df %>% mutate(region = "insula"))
+
+```
+
+
+```{r plot-scaled}
+
+delta_onset_plot_df <- delta_onset_df %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  filter(trial_time < 4.5) %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, sub_avg_theta, subject) %>%
+  distinct() %>%
+  group_by(region, trial_time) %>%
+  mutate(region_avg_theta = mean(sub_avg_theta)) %>%
+  group_by(region) %>%
+  mutate(region_avg_theta = scale(region_avg_theta))
+  
+
+delta_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), alpha = .2) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  ggtitle("Delta")
+  
+
+delta_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  facet_wrap(~subject)
+
+```
+
+
+# Theta 
+
+```{r load-theta-data}
+
+## Load Region specific csvs ##
+hc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "theta_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "theta_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "theta_behavior_insula_all_subs_onset.csv"))
+
+## Bind together ##
+theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
+                  amyg_onset_df %>% mutate(region = "amyg"),
+                  ofc_onset_df %>% mutate(region = "ofc"),
+                  cing_onset_df %>% mutate(region = "cing"),
+                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
+                  insula_onset_df %>% mutate(region = "insula"))
+
+```
+
+```{r plot-scaled}
+
+theta_onset_plot_df <- theta_onset_df %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  filter(trial_time < 4.5) %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, sub_avg_theta, subject) %>%
+  distinct() %>%
+  group_by(region, trial_time) %>%
+  mutate(region_avg_theta = mean(sub_avg_theta)) %>%
+  group_by(region) %>%
+  mutate(region_avg_theta = scale(region_avg_theta))
+  
+
+theta_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), alpha = .2) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  ggtitle("Theta")
+  
+
+```
+
+```{r by-subject}
+
+
+theta_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  facet_wrap(~subject)
+
+```
+
+
+# Alpha
+
+```{r load-alpha-data}
+
+## Load Region specific csvs ##
+hc_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_insula_all_subs_onset.csv"))
+
+## Bind together ##
+alpha_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
+                  amyg_onset_df %>% mutate(region = "amyg"),
+                  ofc_onset_df %>% mutate(region = "ofc"),
+                  cing_onset_df %>% mutate(region = "cing"),
+                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
+                  insula_onset_df %>% mutate(region = "insula"))
+
+```
+
+
+```{r plot-scaled}
+
+alpha_onset_plot_df <- alpha_onset_df %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  filter(trial_time < 4.5) %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, sub_avg_theta, subject) %>%
+  distinct() %>%
+  group_by(region, trial_time) %>%
+  mutate(region_avg_theta = mean(sub_avg_theta)) %>%
+  group_by(region) %>%
+  mutate(region_avg_theta = scale(region_avg_theta))
+  
+
+alpha_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), alpha = .2) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  ggtitle("alpha")
+  
+
+```
+```{r by-subject}
+
+
+alpha_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  facet_wrap(~subject)
+
+```
+
+
+# Beta
+
+```{r load-beta-data}
+
+## Load Region specific csvs ##
+hc_onset_df <- read_csv(path(here(), "munge", "beta_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "beta_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "beta_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "beta_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "beta_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "beta_behavior_insula_all_subs_onset.csv"))
+
+## Bind together ##
+beta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
+                  amyg_onset_df %>% mutate(region = "amyg"),
+                  ofc_onset_df %>% mutate(region = "ofc"),
+                  cing_onset_df %>% mutate(region = "cing"),
+                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
+                  insula_onset_df %>% mutate(region = "insula"))
+
+```
+
+
+```{r plot-scaled}
+
+beta_onset_plot_df <- beta_onset_df %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  filter(trial_time < 4.5) %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, sub_avg_theta, subject) %>%
+  distinct() %>%
+  group_by(region, trial_time) %>%
+  mutate(region_avg_theta = mean(sub_avg_theta)) %>%
+  group_by(region) %>%
+  mutate(region_avg_theta = scale(region_avg_theta))
+  
+
+beta_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), beta = .2) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  ggtitle("beta")
+  
+
+```
+
+```{r by-subject}
+
+
+beta_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  facet_wrap(~subject)
+
+```
+
+
+
+
+# Gamma
+
+```{r load-gamma-data}
+
+## Load Region specific csvs ##
+hc_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_insula_all_subs_onset.csv"))
+
+## Bind together ##
+gamma_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
+                  amyg_onset_df %>% mutate(region = "amyg"),
+                  ofc_onset_df %>% mutate(region = "ofc"),
+                  cing_onset_df %>% mutate(region = "cing"),
+                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
+                  insula_onset_df %>% mutate(region = "insula"))
+
+```
+
+
+```{r plot-scaled}
+
+gamma_onset_plot_df <- gamma_onset_df %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  filter(trial_time < 4.5) %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, sub_avg_theta, subject) %>%
+  distinct() %>%
+  group_by(region, trial_time) %>%
+  mutate(region_avg_theta = mean(sub_avg_theta)) %>%
+  group_by(region) %>%
+  mutate(region_avg_theta = scale(region_avg_theta))
+  
+
+gamma_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), gamma = .2) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  ggtitle("gamma")
+  
+
+```
+
+```{r by-subject}
+
+
+gamma_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  facet_wrap(~subject)
+
+```
+
+
+# HFA
+
+```{r load-hfa-data}
+
+## Load Region specific csvs ##
+hc_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_insula_all_subs_onset.csv"))
+
+## Bind together ##
+hfa_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
+                  amyg_onset_df %>% mutate(region = "amyg"),
+                  ofc_onset_df %>% mutate(region = "ofc"),
+                  cing_onset_df %>% mutate(region = "cing"),
+                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
+                  insula_onset_df %>% mutate(region = "insula"))
+
+```
+
+
+```{r plot-scaled}
+
+hfa_onset_plot_df <- hfa_onset_df %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  filter(trial_time < 4.5) %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, sub_avg_theta, subject) %>%
+  distinct() %>%
+  group_by(region, trial_time) %>%
+  mutate(region_avg_theta = mean(sub_avg_theta)) %>%
+  group_by(region) 
+  
+
+hfa_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), hfa = .2) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  ggtitle("hfa")
+  
+
+```
+
+```{r by-subject}
+
+
+hfa_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  facet_wrap(~subject)
+
+```

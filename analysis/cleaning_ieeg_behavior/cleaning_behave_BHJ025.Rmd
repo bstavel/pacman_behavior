@@ -99,12 +99,13 @@ bjh25_data <- read_csv(path(here(), './data/ieeg_behave/BJH025_raw_behave.csv'),
                                                                                               Chase = col_logical(),
                                                                                               Eaten = col_double(),
                                                                                               Score = col_double()))
-
+bjh25_data_raw <- bjh25_data_raw %>%
+    rename(sample = Time) %>%
+    mutate(Time = sample /2000)
 
 ```
 
 ```{r BJH025-data-prep}
-
 # Subject paused to get out of dying and that resulted in an incorrect trial count
 bjh25_data <- bjh25_data %>%
   mutate(Trial = as.numeric(Trial)) %>%
@@ -348,7 +349,7 @@ length(unique(bjh25_data_clean$trial_numeric))
 ```{r save-bad-trials}
 
 # manually add 6, because it looks like th person pressed n to avoid dying...
-bad_trials <- unique(c(no_biscuits_trials, long_trials, 6, 9))
+bad_trials <- unique(c(no_biscuits_trials, long_trials, 5, 9))
 
 bad_df <- data_frame("neural_trial_numeric" = bad_trials)
 

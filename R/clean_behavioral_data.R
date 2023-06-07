@@ -7,6 +7,8 @@ clean_bci_data <- function(df, sample_rate){
     mutate(Time = sample /sample_rate) %>%
     mutate(time_step = c(FALSE, diff(Time))) %>%
     mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
+    # record sampling rate #
+    mutate(sfreq = sample_rate) %>%
     ## grouped by trial variables
     group_by(subject, Trial) %>%
     mutate(jittered_start_location = first(UserLocation)) %>%

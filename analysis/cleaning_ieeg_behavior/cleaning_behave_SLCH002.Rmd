@@ -118,6 +118,9 @@ sl02_data_distance <- create_distance_df_bci(sl02_data_clean)
 # task vars df #
 sl02_all_vars_df <- get_across_task_variables_bci(sl02_data_clean)
 
+# Write to Csv #
+write_csv(sl02_data_clean, path(here(), './data/ieeg_behave/SLCH002_cleaned_behave_data.csv'))
+
 ```
 
 
