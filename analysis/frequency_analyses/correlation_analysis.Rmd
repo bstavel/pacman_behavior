@@ -203,5 +203,57 @@ ggplot() +
 ```
 
 
+```{r hc-cing}
+
+sub_df <- theta_onset_df %>% filter(subject == "SLCH002")
+elec1 <- "J6-J7"
+sub <- "SLCH002"
+
+cing_elecs <- sub_df %>%
+  filter(region == "cing") %>%
+  pull(elec_short) %>%
+  unique()
+
+tests <- tibble("subject", "elec1", "elec2", "pval")
+for(elec2 in cing_elecs){
+    
+  true_cor <- NULL
+  null_cor <- matrix(nrow = length(unique(sub_df$trial_numeric)), ncol = length(unique(sub_df$trial_numeric)))
+  
+  for(t in 1:length(unique(sub_df$trial_numeric))){
+    trial <- unique(sub_df$trial_numeric)[t]
+    print(trial)
+    t1 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec1) %>% pull(theta)
+    t2 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec2) %>% pull(theta)
+    true_cor[t] <- cor(t1, t2)
+    
+    #null distribution
+    null_cor[t,] <- foreach(h = 1:length(unique(sub_df$trial_numeric)), .inorder=FALSE, .combine = 'c') %dopar% {
+      null_trial <- unique(sub_df$trial_numeric)[h]
+      if(null_trial > trial){
+        t1 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(elec_short == elec1) %>% pull(theta)
+        t2 <- sub_df  %>% filter(trial_numeric == null_trial) %>% filter(elec_short == elec2) %>% pull(theta)
+        return(cor(t1, t2))
+      } else {
+        return(NA)
+      }
+    }
+  }  
+  
+  # compute difference
+  null_cor <- null_cor[!is.na(null_cor)]
+  test_result <- wilcox.test(true_cor, null_cor)
+  tests <- rbind(tests, c(sub, elec1, elec2, test_result$pvalue))
+  
+  # save out files
+  write.csv(true_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+  write.csv(null_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+  write.csv(tests, path(here(), "results", "cor_analysis", "correlation_wilcox_test.csv"))
+  
+
+}
+```
+
+
 
 
