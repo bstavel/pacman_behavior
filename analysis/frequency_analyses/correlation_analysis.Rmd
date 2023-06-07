@@ -1,0 +1,168 @@
+---
+title: "Cross Correlation"
+output: html_document
+date: "2023-06-07"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+
+```{r load-theta-data}
+
+## Load Region specific csvs ##
+hc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "theta_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "theta_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "theta_behavior_insula_all_subs_onset.csv"))
+
+## Bind together ##
+theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
+                  amyg_onset_df %>% mutate(region = "amyg"),
+                  ofc_onset_df %>% mutate(region = "ofc"),
+                  cing_onset_df %>% mutate(region = "cing"),
+                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
+                  insula_onset_df %>% mutate(region = "insula"))
+
+theta_onset_df <- theta_onset_df %>% 
+  mutate(trial_time = trial_time -1) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  mutate(elec_short = gsub("_.*", "", "J4-J5_hc_trial_theta_away_locked_ghost.csv"))
+
+```
+null_cor <- foreach(h in unique(sub_df$trial_numeric), .inorder=FALSE, .combine = 'rbind') %dopar% {
+
+```{r hc-amyg}
+nCores <- 4
+registerDoParallel(nCores)
+
+sub_df <- theta_onset_df %>% filter(subject == "SLCH002")
+elec1 <- "J4-J5"
+elec2 <- "J5-J6"
+sub <- "SLCH002" 
+true_cor <- NULL
+null_cor <- matrix(nrow = length(unique(sub_df$trial_numeric)), ncol = length(unique(sub_df$trial_numeric)))
+
+for(t in 1:length(unique(sub_df$trial_numeric))){
+  trial <- unique(sub_df$trial_numeric)[t]
+  print(trial)
+  t1 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(electrode == "J4-J5_hc_trial_theta_away_locked_ghost.csv") %>% pull(theta)
+  t2 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(electrode == "J5-J6_hc_trial_theta_away_locked_ghost.csv") %>% pull(theta)
+  true_cor[t] <- cor(t1, t2)
+  
+  #null distribution
+  null_cor[t,] <- foreach(h = 1:length(unique(sub_df$trial_numeric)), .inorder=FALSE, .combine = 'c') %dopar% {
+    null_trial <- unique(sub_df$trial_numeric)[h]
+    if(null_trial > trial){
+      t1 <- sub_df  %>% filter(trial_numeric == trial) %>% filter(electrode == "J4-J5_hc_trial_theta_away_locked_ghost.csv") %>% pull(theta)
+      t2 <- sub_df  %>% filter(trial_numeric == null_trial) %>% filter(electrode == "J5-J6_hc_trial_theta_away_locked_ghost.csv") %>% pull(theta)
+      return(cor(t1, t2))
+    } else {
+      return(NA)
+    }
+  }
+}  
+
+# save out files
+write.csv(true_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+null_cor <- null_cor[!is.na(null_cor)]
+test_result <- wilcox.test(true_cor, null_cor)
+write.csv(null_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+
+
+```
+
+```{r}
+
+null_cor <- null_cor[!is.na(null_cor)]
+
+test_result <- wilcox.test(true_cor, null_cor)
+```
+
+
+```{r}
+
+true_cor_df <- tibble("true_cor" = true_cor)
+null_cor_df <- tibble("null_cor" = null_cor)
+
+ggplot() +
+  geom_density(data = null_cor_df, aes(x = null_cor), fill = "grey", color = "black", alpha = .5) +
+  geom_density(data = true_cor_df, aes(x = true_cor), fill = "blue", color = "black", alpha = .5) +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
+
+
