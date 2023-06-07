@@ -243,12 +243,12 @@ for(elec2 in cing_elecs){
   # compute difference
   null_cor <- null_cor[!is.na(null_cor)]
   test_result <- wilcox.test(true_cor, null_cor)
-  tests <- rbind(tests, c(sub, elec1, elec2, test_result$pvalue))
+  tests <- rbind(tests, c(sub, elec1, elec2, test_result$p.value))
   
   # save out files
   write.csv(true_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
   write.csv(null_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
-  write.csv(tests, path(here(), "results", "cor_analysis", "correlation_wilcox_test.csv"))
+  write.csv(tests, path(here(), "results", "cor_analysis", paste0(sub, "_correlation_wilcox_test.csv")))
   
 
 }
