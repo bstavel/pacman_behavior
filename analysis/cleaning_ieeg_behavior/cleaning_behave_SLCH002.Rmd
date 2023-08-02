@@ -123,6 +123,23 @@ write_csv(sl02_data_clean, path(here(), './data/ieeg_behave/SLCH002_cleaned_beha
 
 ```
 
+```{r tmp}
+
+turn_times <- sl02_data_distance %>%
+  select(subject, trial_numeric, distance_to_ghost, last_away, away_choice, trial_time, TrialType, points_remaining) %>%
+  group_by(trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  filter(trial_time == max(turnaround_time)) %>%
+  filter(trial_numeric != 0)
+
+turn_times %>%
+  ggplot(., aes(x = trial_time)) +
+  geom_histogram(binwidth = .1) +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
 
 ```{r paused-trials}
 
@@ -266,8 +283,8 @@ bad_trials <- read_csv(path(here(), './data/ieeg_behave/SLCH002_bad_trials.csv')
 
 create_last_away_events(sl02_data_clean, 'SLCH002_last_away_events.csv')
 create_first_dot_events(sl02_data_clean, 'SLCH002_first_dot_events.csv')
+create_first_move_events(sl02_data_clean, 'SLCH002_first_move_events.csv')
 create_died_events(sl02_data_clean, 'SLCH002_died_events.csv')
-
 
 ```
 

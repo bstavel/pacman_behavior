@@ -99,9 +99,9 @@ bjh25_data <- read_csv(path(here(), './data/ieeg_behave/BJH025_raw_behave.csv'),
                                                                                               Chase = col_logical(),
                                                                                               Eaten = col_double(),
                                                                                               Score = col_double()))
-bjh25_data_raw <- bjh25_data_raw %>%
-    rename(sample = Time) %>%
-    mutate(Time = sample /2000)
+# bjh25_data_raw <- bjh25_data_raw %>%
+#     rename(sample = Time) %>%
+#     mutate(Time = sample /2000)
 
 ```
 
@@ -364,6 +364,7 @@ tmp <- read_csv(path(here(), './data/ieeg_behave/BJH025_died_events.csv'))
 
 create_last_away_events(bjh25_data_clean, 'BJH025_last_away_events.csv')
 create_first_dot_events(bjh25_data_clean, 'BJH025_first_dot_events.csv')
+create_first_move_events(bjh25_data_clean, 'BJH025_first_move_events.csv')
 create_died_events(bjh25_data_clean, 'BJH025_died_events.csv')
 
 ```

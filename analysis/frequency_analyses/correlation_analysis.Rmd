@@ -66,22 +66,22 @@ registerDoParallel(nCores)
 ```{r load-theta-data}
 
 ## Load Region specific csvs ##
-hc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_hc_all_subs_onset.csv"))
-amyg_onset_df <- read_csv(path(here(), "munge", "theta_behavior_amyg_all_subs_onset.csv"))
-ofc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_ofc_all_subs_onset.csv"))
-cing_onset_df <- read_csv(path(here(), "munge", "theta_behavior_cing_all_subs_onset.csv"))
-dlpfc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_dlpfc_all_subs_onset.csv"))
-insula_onset_df <- read_csv(path(here(), "munge", "theta_behavior_insula_all_subs_onset.csv"))
+hc_turnaround_df <- read_csv(path(here(), "munge", "theta_hc_all_subs_turnaround.csv"))
+amyg_turnaround_df <- read_csv(path(here(), "munge", "theta_amyg_all_subs_turnaround.csv"))
+ofc_turnaround_df <- read_csv(path(here(), "munge", "theta_ofc_all_subs_turnaround.csv"))
+cing_turnaround_df <- read_csv(path(here(), "munge", "theta_cing_all_subs_turnaround.csv"))
+dlpfc_turnaround_df <- read_csv(path(here(), "munge", "theta_dlpfc_all_subs_turnaround.csv"))
+insula_turnaround_df <- read_csv(path(here(), "munge", "theta_insula_all_subs_turnaround.csv"))
 
 ## Bind together ##
-theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
-                  amyg_onset_df %>% mutate(region = "amyg"),
-                  ofc_onset_df %>% mutate(region = "ofc"),
-                  cing_onset_df %>% mutate(region = "cing"),
-                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
-                  insula_onset_df %>% mutate(region = "insula"))
+theta_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
+                  amyg_turnaround_df %>% mutate(region = "amyg"),
+                  ofc_turnaround_df %>% mutate(region = "ofc"),
+                  cing_turnaround_df %>% mutate(region = "cing"),
+                  dlpfc_turnaround_df %>% mutate(region = "dlpfc"),
+                  insula_turnaround_df %>% mutate(region = "insula"))
 
-theta_onset_df <- theta_onset_df %>% 
+theta_turnaround_df <- theta_turnaround_df %>% 
   mutate(trial_time = trial_time -1) %>%
   filter(!grepl("noghost", electrode)) %>%
   mutate(elec_short = gsub("_.*", "", electrode))
@@ -90,7 +90,7 @@ theta_onset_df <- theta_onset_df %>%
 
 ```{r hc-hc-test}
 
-sub_df <- theta_onset_df %>% filter(subject == "SLCH002")
+sub_df <- theta_turnaround_df %>% filter(subject == "SLCH002")
 elec1 <- "J4-J5"
 elec2 <- "J5-J6"
 sub <- "SLCH002" 
@@ -153,7 +153,7 @@ ggplot() +
 
 ```{r hc-hc-test}
 
-sub_df <- theta_onset_df %>% filter(subject == "SLCH002")
+sub_df <- theta_turnaround_df %>% filter(subject == "SLCH002")
 elec1 <- "J6-J7"
 elec2 <- "A2-A3"
 sub <- "SLCH002" 
@@ -205,7 +205,7 @@ ggplot() +
 
 ```{r hc-cing}
 
-sub_df <- theta_onset_df %>% filter(subject == "SLCH002")
+sub_df <- theta_turnaround_df %>% filter(subject == "SLCH002")
 elec1 <- "J6-J7"
 sub <- "SLCH002"
 
@@ -260,10 +260,130 @@ for(elec2 in cing_elecs){
 ```
 
 
+```{r cing-mean-correl}
+
+sub_list <- c("LL10", "LL12", "LL13", "BJH021", "BJH025", "SLCH002", "BJH016")
+cing_correlation <- tibble(subject = character(), elec1 = character(), elec2 = character(), mean_correl = numeric())
+for(sub in sub_list){
+
+  sub_df <- theta_turnaround_df %>% filter(subject == sub)
+  
+  hc_elecs <- sub_df %>%
+    filter(region == "hc") %>%
+    pull(elec_short) %>%
+    unique()
+  
+  cing_elecs <- sub_df %>%
+    filter(region == "cing") %>%
+    pull(elec_short) %>%
+    unique()
+    
+  for(elec1 in hc_elecs){
+    for(elec2 in cing_elecs){
+      
+      if(sub == "SLCH002" & elec2 == "B4-B5"){
+        next 
+      }
+      
+      true_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+      # null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+      #                              "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+      
+      cing_correlation <- rbind(cing_correlation, c(sub, elec1, elec2, mean(true_cor_df$x)))
+    
+    }
+  
+  }
+
+}
+
+```
+
+
+
+```{r dlpfc-mean-correl}
+
+sub_list <- c("LL10", "LL12", "LL13", "BJH021", "BJH025", "SLCH002", "BJH016")
+dlpfc_correlation <- tibble(subject = character(), elec1 = character(), elec2 = character(), mean_correl = numeric())
+for(sub in sub_list){
+
+  sub_df <- theta_turnaround_df %>% filter(subject == sub)
+  
+  hc_elecs <- sub_df %>%
+    filter(region == "hc") %>%
+    pull(elec_short) %>%
+    unique()
+  
+  dlpfc_elecs <- sub_df %>%
+    filter(region == "dlpfc") %>%
+    pull(elec_short) %>%
+    unique()
+    
+  for(elec1 in hc_elecs){
+    for(elec2 in dlpfc_elecs){
+      
+      true_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+      # null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+      #                              "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+      
+      dlpfc_correlation <- rbind(dlpfc_correlation, c(sub, elec1, elec2, mean(true_cor_df$x)))
+    
+    }
+  
+  }
+
+}
+```
+
+```{r}
+colnames(dlpfc_correlation) <- c("subject", "elec1", "elec2", "correlation")
+colnames(cing_correlation) <- c("subject", "elec1", "elec2", "correlation")
+
+dlpfc_correlation <- dlpfc_correlation %>%
+  mutate(correlation = as.numeric(correlation)) 
+cing_correlation <- cing_correlation %>%
+  mutate(correlation = as.numeric(correlation))
+
+wilcox.test(dlpfc_correlation$correlation, cing_correlation$correlation)
+
+ggplot() +
+  geom_density(data = dlpfc_correlation, aes(x = correlation), fill = "#FFD680", color = "black", alpha = .5) +
+  geom_density(data = cing_correlation, aes(x = correlation), fill = "#CC0029", color = "black", alpha = .5) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Average dlPFC vs Ant. Cingulate Connectivity w/Hipp.")
+
+
+```
+```{r}
+
+correlation_df <- rbind(dlpfc_correlation %>% mutate(region = "dlpfc"),
+                        cing_correlation %>% mutate(region = "cing"))
+
+
+test_correlation_df <- correlation_df %>%
+  group_by(subject) %>%
+  mutate(pval = wilcox.test(correlation ~ region)$p.value) %>%
+  select(subject, region, pval) %>%
+  distinct() %>%
+  mutate(sig = pval < .05)
+
+wilcox.test(dlpfc_correlation$correlation, cing_correlation$correlation)
+
+
+model <- lmerTest::lmer(correlation ~ region + (1|subject), data = correlation_df)
+summary(model)
+
+```
+
+
+
+
 ```{r visualize}
-sub <- "SLCH002"
-elec1 <- "J6-J7"
-elec2 <- "A3-A4"
+sub <- "BJH016"
+elec1 <- "HL5-HL6"
+elec2 <- "CL9-CL10"
 true_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
 null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
 
@@ -274,6 +394,159 @@ ggplot() +
 
 ```
 
+
+```{r count-dlpfc}
+
+dlpfc_counter <- c()
+
+# LL10 dlPFC #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL10_correlation_wilcox_test_dlpfc.csv"), header = T)
+tmp <- results %>%
+  filter(X != 1) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+# LL12 dlPFC #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+# LL13 dlPFC #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL13_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+# BJH021 dlPFC #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+
+# BJH025 dlPFC #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+# SLCH002 dlPFC #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+
+# BJH016 dlPFC #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1) & V1 != 1) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+```
+
+```{r count-cing}
+
+
+
+# LL10 cing #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL10_correlation_wilcox_test_cing.csv"), header = T)
+tmp <- results  %>%
+  filter(X != 1) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+
+table(tmp$pval_fdr < .05)
+
+cing_counter <- c(tmp$pval_fdr < .05)
+
+# LL12 cing #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_wilcox_test_hc_cing.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+
+cing_counter <- c(cing_counter, tmp$pval_fdr < .05)
+
+# LL13 cing #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL13_correlation_wilcox_test_hc_cing.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+cing_counter <- c(cing_counter, tmp$pval_fdr < .05)
+
+# BJH021 cing #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_wilcox_test_hc_cing.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+cing_counter <- c(cing_counter, tmp$pval_fdr < .05)
+
+# BJH025 cing #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_wilcox_test_hc_cing.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+cing_counter <- c(cing_counter, tmp$pval_fdr < .05)
+
+# SLCH002 cing #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_wilcox_test_hc_cing.csv"), header = T)
+tmp <- results %>%
+  filter(X != 1) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+cing_counter <- c(cing_counter, tmp$pval_fdr < .05)
+
+
+# BJH016 cing #
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_wilcox_test_hc_cing.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+cing_counter <- c(cing_counter, tmp$pval_fdr < .05)
+
+
+```
 
 
 

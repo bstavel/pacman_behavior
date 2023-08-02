@@ -144,8 +144,6 @@ delta_onset_plot_df %>%
   facet_wrap(~subject)
 
 ```
-
-
 # Theta 
 
 ```{r load-theta-data}
@@ -171,6 +169,7 @@ theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
 ```{r plot-scaled}
 
 theta_onset_plot_df <- theta_onset_df %>%
+  # filter(subject != "LL10") %>%
   select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
   filter(trial_time < 4.5) %>%
   group_by(region, trial_time, electrode, subject) %>%
@@ -196,14 +195,32 @@ theta_onset_plot_df %>%
   geom_point() +
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
-  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
-  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_color_manual(values = c("#F97791", "#CC0029", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#F97791", "#CC0029", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
   ggtitle("Theta")
   
 
 ```
 
+
 ```{r by-subject}
+
+theta_onset_plot_df <- theta_onset_df %>%
+  # filter(subject != "LL10") %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  filter(trial_time < 4.5) %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, sub_avg_theta, subject) %>%
+  distinct() %>%
+  group_by(region) %>%
+  mutate(sub_avg_theta = scale(sub_avg_theta))
 
 
 theta_onset_plot_df %>%
@@ -212,11 +229,290 @@ theta_onset_plot_df %>%
   geom_point() +
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
-  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
-  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
-  facet_wrap(~subject)
+  scale_color_manual(values = c("#F97791", "#A20021", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  scale_fill_manual(values = c("#F97791", "#A20021", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  facet_wrap(~subject, scales = "free_y")
 
 ```
+
+
+```{r dlpfc}
+
+dlpfc_onset_plot_df <- theta_onset_df %>%
+  filter(region %in% c("dlpfc")) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  mutate(upper_theta = t.test(elec_avg_theta)$conf.int[2], conf.level = .95) %>%
+  mutate(lower_theta = t.test(elec_avg_theta)$conf.int[1], conf.level = .95) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta, upper_theta, lower_theta) %>%
+  # select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() 
+  # group_by(region, trial_time) %>%
+  # mutate(roi_average = mean(sub_avg_theta)) %>%
+  # mutate(upper_theta = t.test(sub_avg_theta)$conf.int[2], conf.level = .95) %>%
+  # mutate(lower_theta = t.test(sub_avg_theta)$conf.int[1], conf.level = .95)
+
+
+dlpfc_onset_plot_df %>%
+  # filter(region == "cing") %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c( "#FFD680")) +
+  scale_fill_manual(values = c("#FFD680")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("dlPFC")
+
+
+hc_onset_plot_df <- theta_onset_df %>%
+  filter(region %in% c("hc")) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  mutate(upper_theta = t.test(elec_avg_theta)$conf.int[2], conf.level = .95) %>%
+  mutate(lower_theta = t.test(elec_avg_theta)$conf.int[1], conf.level = .95) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta, upper_theta, lower_theta) %>%
+  # select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() %>%
+  group_by(subject) %>%
+  mutate(sub_avg_theta = scale(sub_avg_theta))
+  # group_by(region, trial_time) %>%
+  # mutate(roi_average = mean(sub_avg_theta)) %>%
+  # mutate(upper_theta = t.test(sub_avg_theta)$conf.int[2], conf.level = .95) %>%
+  # mutate(lower_theta = t.test(sub_avg_theta)$conf.int[1], conf.level = .95)
+
+
+hc_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c( "#88D1A3")) +
+  scale_fill_manual(values = c("#88D1A3")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("HC")
+
+```
+
+```{r}
+
+hc_ac_onset_plot_df <- theta_onset_df %>%
+  filter(region %in% c("hc", "cing")) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() %>%
+  group_by(region) %>%
+  mutate(sub_avg_theta = scale(sub_avg_theta))
+
+
+hc_ac_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#CC0029", "#88D1A3")) +
+  scale_fill_manual(values = c("#CC0029", "#88D1A3")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("HC + AC")
+
+hc_dlpfc_onset_plot_df <- theta_onset_df %>%
+  filter(region %in% c("hc", "dlpfc")) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() %>%
+  group_by(region) %>%
+  mutate(sub_avg_theta = scale(sub_avg_theta))
+
+
+hc_dlpfc_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#FFD680", "#88D1A3")) +
+  scale_fill_manual(values = c("#FFD680", "#88D1A3")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("HC + dlPFC")
+
+```
+
+
+
+```{r dlpfc-plot}
+
+
+dlpfc_onset_plot_df <- theta_onset_df %>%
+  filter(region %in% c("dlpfc")) %>%
+  filter(trial_time < 4.5) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  select(trial_time, subject, electrode, trial_numeric, theta) %>%
+  group_by(trial_time, subject, electrode) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  group_by(trial_time) %>%
+  mutate(roi_average = mean(sub_avg_theta)) %>%
+  mutate(upper_theta = t.test(sub_avg_theta)$conf.int[2], conf.level = .95) %>%
+  mutate(lower_theta = t.test(sub_avg_theta)$conf.int[1], conf.level = .95) %>%
+  mutate(pval = t.test(sub_avg_theta)$p.value) %>%
+  ungroup() %>%
+  mutate(pval_fdr = p.adjust(pval, method = "fdr")) %>%
+  mutate(sig = if_else((pval_fdr < .05) == T, .2, 1)) %>%
+  mutate(sig_time = if_else((pval_fdr < .05) == T, trial_time, 999))
+
+
+dlpfc_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = roi_average)) +
+  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5, fill = "#FFD680", color = "#FFD680") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point(color = "#FFD680") +
+  geom_line(color = "#FFD680") +
+  geom_line(aes(y = sig), color = "black", size =2) +
+  ylim(-.2, .22) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("dlPFC Theta Power at Trial Onset")
+
+
+```
+
+
+```{r hc}
+
+hc_onset_plot_df <- theta_onset_df %>%
+  filter(region %in% c("hc")) %>%
+  filter(trial_time < 4.5) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  select(trial_time, subject, electrode, trial_numeric, theta) %>%
+  group_by(trial_time, subject, electrode) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  group_by(trial_time) %>%
+  mutate(roi_average = mean(sub_avg_theta)) %>%
+  mutate(upper_theta = t.test(sub_avg_theta)$conf.int[2], conf.level = .95) %>%
+  mutate(lower_theta = t.test(sub_avg_theta)$conf.int[1], conf.level = .95) %>%
+  mutate(pval = t.test(sub_avg_theta)$p.value) %>%
+  ungroup() %>%
+  mutate(pval_fdr = p.adjust(pval, method = "fdr")) %>%
+  mutate(sig = if_else((pval_fdr < .05) == T, .11, 1)) %>%
+  mutate(sig_time = if_else((pval_fdr < .05) == T, trial_time, 999))
+
+
+hc_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = roi_average)) +
+  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5, fill = "#88D1A3", color = "#88D1A3") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point(color = "#88D1A3") +
+  geom_line(color = "#88D1A3") +
+  geom_line(aes(y = sig), color = "black", size =2) +
+  ylim(-.1, .12) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Hippocampal Theta Power at Trial Onset")
+
+
+```
+
+```{r ac}
+
+ac_onset_plot_df <- theta_onset_df %>%
+  filter(region %in% c("cing")) %>%
+  filter(trial_time < 4.5) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  select(trial_time, subject, electrode, trial_numeric, theta) %>%
+  group_by(trial_time, subject, electrode) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  group_by(trial_time) %>%
+  mutate(roi_average = mean(sub_avg_theta)) %>%
+  mutate(upper_theta = t.test(sub_avg_theta)$conf.int[2], conf.level = .95) %>%
+  mutate(lower_theta = t.test(sub_avg_theta)$conf.int[1], conf.level = .95) %>%
+  mutate(pval = t.test(sub_avg_theta)$p.value) %>%
+  ungroup() %>%
+  mutate(pval_fdr = p.adjust(pval, method = "fdr")) %>%
+  mutate(sig = if_else((pval_fdr < .05) == T, .14, 1))%>%
+  mutate(sig_time = if_else((pval_fdr < .05) == T, trial_time, 999))
+
+
+ac_onset_plot_df %>%
+  ggplot(., aes(x = trial_time, y = roi_average)) +
+  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5, fill = "#CC0029", color = "#CC0029") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point(color = "#CC0029") +
+  geom_line(color = "#CC0029") +
+  geom_line(aes(y = sig), color = "black", size =2) +
+  ylim(-.1, .15) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anterior Cingulate Theta Power at Trial Onset")
+
+```
+
+
+
 
 
 # Alpha

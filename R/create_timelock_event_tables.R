@@ -125,6 +125,36 @@ create_first_dot_events <- function(df, fname) {
 }
 
 
+create_first_move_events <- function(df, fname) {
+  
+  first_move_df <- df %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_numeric != 0) %>%
+    mutate(neural_trial_numeric = trial_numeric - 1) %>%
+    group_by(neural_trial_numeric) %>%
+    filter(Direction != "Still") %>%
+    filter(trial_time == min(trial_time)) %>%
+    ungroup() %>%
+    mutate(sample_before = 0) %>%
+    mutate(event = 1) %>%
+    select(neural_trial_numeric, TrialType, sample, sample_before, event)
+  
+  
+  print(anyDuplicated(first_move_df$neural_trial_numeric))
+  
+  
+  first_move_clean_df <- first_move_df %>%
+    ungroup() %>%
+    mutate(sample_before = 0) %>%
+    mutate(event = 1) %>%
+    select(neural_trial_numeric, TrialType, sample, sample_before, event)
+  
+  
+  write_csv(first_move_clean_df, paste0(path(here(), './data/ieeg_behave/', fname)))
+  
+}
+
+
 create_died_events <- function(df, fname) {
   
   # for Died events, we will time lock to end trial, so we do not need to get event samples. 

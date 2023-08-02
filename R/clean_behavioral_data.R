@@ -260,8 +260,8 @@ get_across_task_variables_bci <- function(clean_df){
 ### Prolific
 
 clean_prolific_data <- function(df){
-
- 
+  
+  
   ## IMPORTANT NOTES ##
   # subject 84 and trial 48 somehow managed to press before trial began-- manually need to change startlocation to 63 and starting direction
   # subject 70 on trial 127 also pressed, true start was 57
@@ -282,6 +282,10 @@ clean_prolific_data <- function(df){
                                                          if_else(TrialType %in% c(17, 12, 4), 110,
                                                                  if_else(TrialType %in% c(18, 11, 10, 3, 2), 130,
                                                                          if_else(TrialType %in% c(9, 1), 150, 999))))))) %>%
+    # get correct trial type info (sometimes trial type switches early/ lags)
+    mutate(TrialType = as.numeric(names(sort(table(TrialType),decreasing=TRUE))[1])) %>%
+    # same deal with lives
+    mutate(Lives = as.numeric(names(sort(table(Lives),decreasing=TRUE))[1])) %>%    
     # biscuit location
     mutate(Biscuit1 = if_else(Biscuit1 == FALSE & base_start_location <= 80,  base_start_location + 12, 
                               if_else(Biscuit1 == FALSE & base_start_location > 80, base_start_location -12, 1111)))  %>%
@@ -293,6 +297,16 @@ clean_prolific_data <- function(df){
                               if_else(Biscuit4 == FALSE & base_start_location > 80, base_start_location -42, 1111)))  %>%
     mutate(Biscuit5 = if_else(Biscuit5 == FALSE & base_start_location <= 80,  base_start_location + 52, 
                               if_else(Biscuit5 == FALSE & base_start_location > 80, base_start_location -52, 1111)))  %>%
+    # Fix Direction
+    mutate(move_step = c(0, diff(UserLocation))) %>%
+    mutate(move_direction = if_else(move_step %in% c(-2, -4), "Left",
+                                    if_else(move_step %in% c(2, 4), "Right", 
+                                            if_else(move_step == 0, "Still", "Unsure")))) %>%
+    mutate(Direction = if_else(Direction == 2, "Left", 
+                               if_else(Direction == 11, "Right", 
+                                       if_else(Direction == 4, "Still", "Unsure")))) %>%
+    # get starting side
+    mutate(starting_side = if_else(base_start_location < 95, "Left", "Right")) %>%
     # trial timing information
     mutate(Trial = if_else(Trial == "Trial_1", Trial, if_else(Time == first(Time), "ITI", Trial))) %>%
     mutate_cond(Trial == "ITI", 
@@ -329,6 +343,30 @@ clean_prolific_data <- function(df){
     mutate(died = sum(life_change)) %>%
     select(-life_change) %>%
     ungroup()
+  
+  died_trials <- clean_df %>%
+    filter(Trial != "ITI") %>%
+    # filter out trials where they didn't get any points, because it gets confusing it they didn't lose points
+    group_by(trial_numeric) %>%
+    mutate(total_eaten = max(Eaten)) %>%
+    mutate(Score = if_else(trial_numeric %% 20 == 1 & Eaten == 0, Score - first(Score), Score)) %>%
+    ungroup() %>%
+    select(trial_numeric, Lives, Score, total_eaten, TrialType) %>%
+    distinct() %>%
+    mutate(died_lives = abs(as.numeric(c(diff(Lives), 0)))) %>%
+    mutate(died_lives = if_else(died_lives == 0, 0, 1)) %>%
+    mutate(died_score = c(diff(Score), 0)) %>%
+    mutate(died_score = if_else(died_score < 0 & died_score > -90, 1, 0)) %>%
+    group_by(trial_numeric) %>%
+    mutate(died_score = sum(died_score)) %>%
+    mutate(died_lives = sum(died_lives)) %>%
+    ungroup() %>%
+    mutate(died = if_else(died_score == 1 | died_lives == 1, 1, 0)) %>%
+    select(trial_numeric, died) %>%
+    distinct()
+  
+  
+  clean_df <- left_join(clean_df, died_trials)  
   
   # get rid of paused trials #
   paused_trials <- clean_df %>%

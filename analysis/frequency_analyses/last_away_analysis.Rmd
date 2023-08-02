@@ -1,5 +1,5 @@
 ---
-title: "Onset Across Region Analysis"
+title: "turnaround Across Region Analysis"
 output: html_document
 date: "2023-05-31"
 ---
@@ -82,27 +82,27 @@ c25 <- c(
 ```{r load-delta-data}
 
 ## Load Region specific csvs ##
-hc_onset_df <- read_csv(path(here(), "munge", "delta_behavior_hc_all_subs_onset.csv"))
-amyg_onset_df <- read_csv(path(here(), "munge", "delta_behavior_amyg_all_subs_onset.csv"))
-ofc_onset_df <- read_csv(path(here(), "munge", "delta_behavior_ofc_all_subs_onset.csv"))
-cing_onset_df <- read_csv(path(here(), "munge", "delta_behavior_cing_all_subs_onset.csv"))
-dlpfc_onset_df <- read_csv(path(here(), "munge", "delta_behavior_dlpfc_all_subs_onset.csv"))
-insula_onset_df <- read_csv(path(here(), "munge", "delta_behavior_insula_all_subs_onset.csv"))
+hc_turnaround_df <- read_csv(path(here(), "munge", "delta_behavior_hc_all_subs_turnaround.csv"))
+amyg_turnaround_df <- read_csv(path(here(), "munge", "delta_behavior_amyg_all_subs_turnaround.csv"))
+ofc_turnaround_df <- read_csv(path(here(), "munge", "delta_behavior_ofc_all_subs_turnaround.csv"))
+cing_turnaround_df <- read_csv(path(here(), "munge", "delta_behavior_cing_all_subs_turnaround.csv"))
+dlpfc_turnaround_df <- read_csv(path(here(), "munge", "delta_behavior_dlpfc_all_subs_turnaround.csv"))
+insula_turnaround_df <- read_csv(path(here(), "munge", "delta_behavior_insula_all_subs_turnaround.csv"))
 
 ## Bind together ##
-delta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
-                  amyg_onset_df %>% mutate(region = "amyg"),
-                  ofc_onset_df %>% mutate(region = "ofc"),
-                  cing_onset_df %>% mutate(region = "cing"),
-                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
-                  insula_onset_df %>% mutate(region = "insula"))
+delta_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
+                  amyg_turnaround_df %>% mutate(region = "amyg"),
+                  ofc_turnaround_df %>% mutate(region = "ofc"),
+                  cing_turnaround_df %>% mutate(region = "cing"),
+                  dlpfc_turnaround_df %>% mutate(region = "dlpfc"),
+                  insula_turnaround_df %>% mutate(region = "insula"))
 
 ```
 
 
 ```{r plot-scaled}
 
-delta_onset_plot_df <- delta_onset_df %>%
+delta_turnaround_plot_df <- delta_turnaround_df %>%
   select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
   filter(trial_time < 4.5) %>%
   group_by(region, trial_time, electrode, subject) %>%
@@ -121,7 +121,7 @@ delta_onset_plot_df <- delta_onset_df %>%
   mutate(region_avg_theta = scale(region_avg_theta))
   
 
-delta_onset_plot_df %>%
+delta_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), alpha = .2) +
@@ -133,7 +133,7 @@ delta_onset_plot_df %>%
   ggtitle("Delta")
   
 
-delta_onset_plot_df %>%
+delta_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +
@@ -148,28 +148,80 @@ delta_onset_plot_df %>%
 
 # Theta 
 
+
 ```{r load-theta-data}
 
 ## Load Region specific csvs ##
-hc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_hc_all_subs_onset.csv"))
-amyg_onset_df <- read_csv(path(here(), "munge", "theta_behavior_amyg_all_subs_onset.csv"))
-ofc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_ofc_all_subs_onset.csv"))
-cing_onset_df <- read_csv(path(here(), "munge", "theta_behavior_cing_all_subs_onset.csv"))
-dlpfc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_dlpfc_all_subs_onset.csv"))
-insula_onset_df <- read_csv(path(here(), "munge", "theta_behavior_insula_all_subs_onset.csv"))
+hc_turnaround_df <- read_csv(path(here(), "munge", "theta_hc_all_subs_turnaround.csv"))
+amyg_turnaround_df <- read_csv(path(here(), "munge", "theta_amyg_all_subs_turnaround.csv"))
+ofc_turnaround_df <- read_csv(path(here(), "munge", "theta_ofc_all_subs_turnaround.csv"))
+cing_turnaround_df <- read_csv(path(here(), "munge", "theta_cing_all_subs_turnaround.csv"))
+dlpfc_turnaround_df <- read_csv(path(here(), "munge", "theta_dlpfc_all_subs_turnaround.csv"))
+insula_turnaround_df <- read_csv(path(here(), "munge", "theta_insula_all_subs_turnaround.csv"))
 
 ## Bind together ##
-theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
-                  amyg_onset_df %>% mutate(region = "amyg"),
-                  ofc_onset_df %>% mutate(region = "ofc"),
-                  cing_onset_df %>% mutate(region = "cing"),
-                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
-                  insula_onset_df %>% mutate(region = "insula"))
+theta_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
+                  amyg_turnaround_df %>% mutate(region = "amyg"),
+                  ofc_turnaround_df %>% mutate(region = "ofc"),
+                  cing_turnaround_df %>% mutate(region = "cing"),
+                  dlpfc_turnaround_df %>% mutate(region = "dlpfc"),
+                  insula_turnaround_df %>% mutate(region = "insula"))
+```
+
+```{r hc-cing}
+
+theta_turnaround_plot_df <- theta_turnaround_df %>%
+  # mutate(trial_time = trial_time - 1) %>%
+  filter(region %in% c("hc", "cing")) %>%
+  filter(trial_time < 2 & trial_time > -2) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() 
+
+theta_turnaround_plot_df %>%
+  ggplot(., aes(x = trial_time, y = elec_avg_theta, group = electrode, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c( "#FFA602", "#88D1A3"))  +
+  facet_wrap(~subject, scales = "free_y")+
+  ggtitle("cing ~ hc")
+
+
+theta_turnaround_plot_df <- theta_turnaround_df %>%
+  # mutate(trial_time = trial_time - 1) %>%
+  filter(region %in% c("hc", "dlpfc")) %>%
+  filter(trial_time < 2 & trial_time > -2) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() 
+
+theta_turnaround_plot_df %>%
+  ggplot(., aes(x = trial_time, y = elec_avg_theta, group = electrode, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c( "#FFD680", "#88D1A3"))  +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("dlpfc ~ hc")
 
 ```
+
+
+
 ```{r roi-plot}
 
-theta_onset_plot_df <- theta_onset_df %>%
+theta_turnaround_plot_df <- theta_turnaround_df %>%
   mutate(trial_time = trial_time - 1) %>%
   filter(trial_time < 2 & trial_time > -2) %>%
   select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
@@ -181,16 +233,16 @@ theta_onset_plot_df <- theta_onset_df %>%
   distinct() %>%
   group_by(region, trial_time, subject) %>%
   mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
-  mutate(upper_theta = t.test(elec_avg_theta)$conf.int[2], conf.level = .95) %>%
-  mutate(lower_theta = t.test(elec_avg_theta)$conf.int[1], conf.level = .95) %>%
+  # mutate(upper_theta = t.test(elec_avg_theta)$conf.int[2], conf.level = .95) %>%
+  # mutate(lower_theta = t.test(elec_avg_theta)$conf.int[1], conf.level = .95) %>%
   ungroup() %>%
-  select(region, trial_time, subject, sub_avg_theta, upper_theta, lower_theta) %>%
-  # select(region, trial_time, subject, sub_avg_theta) %>%
+  # select(region, trial_time, subject, sub_avg_theta, upper_theta, lower_theta) %>%
+  select(region, trial_time, subject, sub_avg_theta) %>%
   distinct()
 
-theta_onset_plot_df %>%
+theta_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
-  geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +
   geom_line() +
@@ -200,8 +252,9 @@ theta_onset_plot_df %>%
   facet_wrap(~subject, scales = "free_y")
 
 
-theta_onset_plot_df <- theta_onset_df %>%
-  mutate(trial_time = trial_time - 1) %>%
+theta_turnaround_plot_df <- theta_turnaround_df %>%
+  # filter(!subject %in% c("LL10", "LL13")) %>%
+  # mutate(trial_time = trial_time - 1) %>%
   filter(trial_time < 2 & trial_time > -2) %>%
   select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
   mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
@@ -221,41 +274,307 @@ theta_onset_plot_df <- theta_onset_df %>%
   distinct() %>%
   group_by(region, trial_time) %>%
   mutate(roi_average = mean(sub_avg_theta)) 
+  # mutate(upper_theta = t.test(sub_avg_theta)$conf.int[2], conf.level = .95) %>%
+  # mutate(lower_theta = t.test(sub_avg_theta)$conf.int[1], conf.level = .95)
 
-theta_onset_plot_df %>%
+theta_turnaround_plot_df %>%
+  filter(subject %in% c("LL12", "LL13")) %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c( "#FFD680", "#88D1A3"))  +
+  scale_fill_manual(values = c( "#FFD680", "#88D1A3")) +
+  facet_wrap(~subject, scales = "free_y")
+
+theta_turnaround_plot_df %>%
+  # filter(region == "cing") %>%
   ggplot(., aes(x = trial_time, y = roi_average, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
   scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
-  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) 
+  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
+  ggtitle("Theta Turn Around")
+
+```
+```{r}
 
 
+hc_dlpfc_turnaround_plot_df <- theta_turnaround_df %>%
+  filter(region %in% c("hc", "dlpfc")) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  mutate(upper_theta = t.test(elec_avg_theta)$conf.int[2], conf.level = .95) %>%
+  mutate(lower_theta = t.test(elec_avg_theta)$conf.int[1], conf.level = .95) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta, upper_theta, lower_theta) %>%
+  # select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() %>%
+  group_by(region) %>%
+  mutate(sub_avg_theta = scale(sub_avg_theta))
+  # group_by(region, trial_time) %>%
+  # mutate(roi_average = mean(sub_avg_theta)) %>%
+  # mutate(upper_theta = t.test(sub_avg_theta)$conf.int[2], conf.level = .95) %>%
+  # mutate(lower_theta = t.test(sub_avg_theta)$conf.int[1], conf.level = .95)
 
-theta_onset_plot_df %>%
-  filter(region == "cing") %>%
-  ggplot(., aes(x = trial_time, y = roi_average, color = region, fill = region)) +
+
+hc_dlpfc_turnaround_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
-  scale_color_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) +
-  scale_fill_manual(values = c("#DE4A4D", "#FFA602", "#FFD680", "#88D1A3", "#3D99BA", "#876194")) 
+  scale_color_manual(values = c("#FFD680", "#88D1A3")) +
+  scale_fill_manual(values = c("#FFD680", "#88D1A3")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("HC + dlPFC")
+
+
+hc_insula_turnaround_plot_df <- theta_turnaround_df %>%
+  filter(region %in% c("hc", "insula")) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+   ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() %>%
+  group_by(region) %>%
+  mutate(sub_avg_theta = scale(sub_avg_theta))
+
+
+hc_insula_turnaround_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#88D1A3", "#3D99BA")) +
+  scale_fill_manual(values = c("#88D1A3", "#3D99BA")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("HC + Insula")
+
+```
+
+
+
+
+
+```{r}
+
+
+hc_ac_turnaround_plot_df <- theta_turnaround_df %>%
+  filter(region %in% c("hc", "cing")) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta) %>%
+  # select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() %>%
+  group_by(region) %>%
+  mutate(sub_avg_theta = scale(sub_avg_theta))
+
+
+hc_ac_turnaround_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#CC0029", "#88D1A3")) +
+  scale_fill_manual(values = c("#CC0029", "#88D1A3")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("HC + AC")
+
+hc_dlpfc_turnaround_plot_df <- theta_turnaround_df %>%
+  filter(region %in% c("hc", "dlpfc")) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() %>%
+  group_by(region) %>%
+  mutate(sub_avg_theta = scale(sub_avg_theta))
+
+
+hc_dlpfc_turnaround_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c("#FFD680", "#88D1A3")) +
+  scale_fill_manual(values = c("#FFD680", "#88D1A3")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("HC + dlPFC")
 
 ```
 
 ```{r}
 
-hc_average <- theta_onset_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "hc") %>% pull(roi_average)
-amyg_average <- theta_onset_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "amyg") %>% pull(roi_average)
-ofc_average <- theta_onset_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "ofc") %>% pull(roi_average)
-cing_average <- theta_onset_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "cing") %>% pull(roi_average)
-dlpfc_average <- theta_onset_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "dlpfc") %>% pull(roi_average)
-insula_average <- theta_onset_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "insula") %>% pull(roi_average)
+dlpfc_turnaround_plot_df <- theta_turnaround_df %>%
+  filter(region %in% c("dlpfc")) %>%
+  # mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time < 2 & trial_time > -2) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  mutate(upper_theta = t.test(elec_avg_theta)$conf.int[2], conf.level = .95) %>%
+  mutate(lower_theta = t.test(elec_avg_theta)$conf.int[1], conf.level = .95) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta, upper_theta, lower_theta) %>%
+  # select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() 
+  # group_by(region, trial_time) %>%
+  # mutate(roi_average = mean(sub_avg_theta)) %>%
+  # mutate(upper_theta = t.test(sub_avg_theta)$conf.int[2], conf.level = .95) %>%
+  # mutate(lower_theta = t.test(sub_avg_theta)$conf.int[1], conf.level = .95)
 
 
-cor.test(hc_average, amyg_average)
+dlpfc_turnaround_plot_df %>%
+  # filter(region == "cing") %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c( "#FFD680")) +
+  scale_fill_manual(values = c("#FFD680")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("dlpfc")
+
+
+hc_turnaround_plot_df <- theta_turnaround_df %>%
+  filter(region %in% c("hc")) %>%
+  # mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time < 2 & trial_time > -2) %>%
+  select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  group_by(region, trial_time, electrode, subject) %>%
+  mutate(elec_avg_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, electrode, elec_avg_theta) %>%
+  distinct() %>%
+  group_by(region, trial_time, subject) %>%
+  mutate(sub_avg_theta = mean(elec_avg_theta)) %>%
+  mutate(upper_theta = t.test(elec_avg_theta)$conf.int[2], conf.level = .95) %>%
+  mutate(lower_theta = t.test(elec_avg_theta)$conf.int[1], conf.level = .95) %>%
+  ungroup() %>%
+  select(region, trial_time, subject, sub_avg_theta, upper_theta, lower_theta) %>%
+  # select(region, trial_time, subject, sub_avg_theta) %>%
+  distinct() 
+  # group_by(region, trial_time) %>%
+  # mutate(roi_average = mean(sub_avg_theta)) %>%
+  # mutate(upper_theta = t.test(sub_avg_theta)$conf.int[2], conf.level = .95) %>%
+  # mutate(lower_theta = t.test(sub_avg_theta)$conf.int[1], conf.level = .95)
+
+
+hc_turnaround_plot_df %>%
+  ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
+  # geom_ribbon(aes(ymin = lower_theta, ymax = upper_theta), alpha =.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
+  geom_hline(yintercept = 0, linetype = "dashed", color = 'black') +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = c( "#88D1A3")) +
+  scale_fill_manual(values = c("#88D1A3")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("hc")
+
+```
+
+
+```{r}
+
+for(sub in unique(theta_turnaround_df$subject)){
+  
+ll12_tmp <- theta_turnaround_df %>%
+  filter(subject == sub & region %in% c("dlpfc", "hc")) %>%
+  group_by(trial_time) %>%
+  mutate(case = if_else(grepl("noghost", electrode), "No Ghost", "Ghost")) %>%
+  filter(case == "Ghost") %>%
+  mutate(pval = t.test(theta ~ region)$p.value)
+
+p <- ll12_tmp %>%
+  ggplot(., aes(x = trial_time, y = pval)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = .05) +
+  theme(panel.background = element_rect(fill = "white")) + 
+  ggtitle(sub)
+
+plot(p)
+
+}
+
+```
+
+
+
+
+```{r}
+
+hc_average <- theta_turnaround_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "hc") %>% pull(roi_average)
+amyg_average <- theta_turnaround_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "amyg") %>% pull(roi_average)
+ofc_average <- theta_turnaround_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "ofc") %>% pull(roi_average)
+cing_average <- theta_turnaround_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "cing") %>% pull(roi_average)
+dlpfc_average <- theta_turnaround_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "dlpfc") %>% pull(roi_average)
+insula_average <- theta_turnaround_plot_df %>% select(region, trial_time, roi_average) %>% distinct() %>% filter(region == "insula") %>% pull(roi_average)
+
+
+cor(hc_average, amyg_average)
 cor(hc_average, ofc_average)
 cor(hc_average, cing_average)
 cor(hc_average, dlpfc_average)
@@ -301,7 +620,7 @@ significant <- p_value < 0.05
 
 ```{r plot-scaled}
 
-theta_onset_plot_df <- theta_onset_df %>%
+theta_turnaround_plot_df <- theta_turnaround_df %>%
   filter(region == "hc") %>%
   mutate(trial_time = trial_time - 1) %>%
   filter(trial_time <2 & trial_time > -2) %>%
@@ -327,7 +646,7 @@ theta_onset_plot_df <- theta_onset_df %>%
   distinct()
   
 
-theta_onset_plot_df %>%
+theta_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = sub_avg_theta, color = case, fill = case)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +
@@ -352,7 +671,7 @@ theta_onset_plot_df %>%
 ```{r by-subject}
 
 
-theta_onset_plot_df %>%
+theta_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +
@@ -370,27 +689,27 @@ theta_onset_plot_df %>%
 ```{r load-alpha-data}
 
 ## Load Region specific csvs ##
-hc_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_hc_all_subs_onset.csv"))
-amyg_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_amyg_all_subs_onset.csv"))
-ofc_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_ofc_all_subs_onset.csv"))
-cing_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_cing_all_subs_onset.csv"))
-dlpfc_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_dlpfc_all_subs_onset.csv"))
-insula_onset_df <- read_csv(path(here(), "munge", "alpha_behavior_insula_all_subs_onset.csv"))
+hc_turnaround_df <- read_csv(path(here(), "munge", "alpha_behavior_hc_all_subs_turnaround.csv"))
+amyg_turnaround_df <- read_csv(path(here(), "munge", "alpha_behavior_amyg_all_subs_turnaround.csv"))
+ofc_turnaround_df <- read_csv(path(here(), "munge", "alpha_behavior_ofc_all_subs_turnaround.csv"))
+cing_turnaround_df <- read_csv(path(here(), "munge", "alpha_behavior_cing_all_subs_turnaround.csv"))
+dlpfc_turnaround_df <- read_csv(path(here(), "munge", "alpha_behavior_dlpfc_all_subs_turnaround.csv"))
+insula_turnaround_df <- read_csv(path(here(), "munge", "alpha_behavior_insula_all_subs_turnaround.csv"))
 
 ## Bind together ##
-alpha_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
-                  amyg_onset_df %>% mutate(region = "amyg"),
-                  ofc_onset_df %>% mutate(region = "ofc"),
-                  cing_onset_df %>% mutate(region = "cing"),
-                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
-                  insula_onset_df %>% mutate(region = "insula"))
+alpha_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
+                  amyg_turnaround_df %>% mutate(region = "amyg"),
+                  ofc_turnaround_df %>% mutate(region = "ofc"),
+                  cing_turnaround_df %>% mutate(region = "cing"),
+                  dlpfc_turnaround_df %>% mutate(region = "dlpfc"),
+                  insula_turnaround_df %>% mutate(region = "insula"))
 
 ```
 
 
 ```{r plot-scaled}
 
-alpha_onset_plot_df <- alpha_onset_df %>%
+alpha_turnaround_plot_df <- alpha_turnaround_df %>%
   select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
   filter(trial_time < 4.5) %>%
   group_by(region, trial_time, electrode, subject) %>%
@@ -409,7 +728,7 @@ alpha_onset_plot_df <- alpha_onset_df %>%
   mutate(region_avg_theta = scale(region_avg_theta))
   
 
-alpha_onset_plot_df %>%
+alpha_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), alpha = .2) +
@@ -425,7 +744,7 @@ alpha_onset_plot_df %>%
 ```{r by-subject}
 
 
-alpha_onset_plot_df %>%
+alpha_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +
@@ -443,27 +762,27 @@ alpha_onset_plot_df %>%
 ```{r load-beta-data}
 
 ## Load Region specific csvs ##
-hc_onset_df <- read_csv(path(here(), "munge", "beta_behavior_hc_all_subs_onset.csv"))
-amyg_onset_df <- read_csv(path(here(), "munge", "beta_behavior_amyg_all_subs_onset.csv"))
-ofc_onset_df <- read_csv(path(here(), "munge", "beta_behavior_ofc_all_subs_onset.csv"))
-cing_onset_df <- read_csv(path(here(), "munge", "beta_behavior_cing_all_subs_onset.csv"))
-dlpfc_onset_df <- read_csv(path(here(), "munge", "beta_behavior_dlpfc_all_subs_onset.csv"))
-insula_onset_df <- read_csv(path(here(), "munge", "beta_behavior_insula_all_subs_onset.csv"))
+hc_turnaround_df <- read_csv(path(here(), "munge", "beta_behavior_hc_all_subs_turnaround.csv"))
+amyg_turnaround_df <- read_csv(path(here(), "munge", "beta_behavior_amyg_all_subs_turnaround.csv"))
+ofc_turnaround_df <- read_csv(path(here(), "munge", "beta_behavior_ofc_all_subs_turnaround.csv"))
+cing_turnaround_df <- read_csv(path(here(), "munge", "beta_behavior_cing_all_subs_turnaround.csv"))
+dlpfc_turnaround_df <- read_csv(path(here(), "munge", "beta_behavior_dlpfc_all_subs_turnaround.csv"))
+insula_turnaround_df <- read_csv(path(here(), "munge", "beta_behavior_insula_all_subs_turnaround.csv"))
 
 ## Bind together ##
-beta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
-                  amyg_onset_df %>% mutate(region = "amyg"),
-                  ofc_onset_df %>% mutate(region = "ofc"),
-                  cing_onset_df %>% mutate(region = "cing"),
-                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
-                  insula_onset_df %>% mutate(region = "insula"))
+beta_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
+                  amyg_turnaround_df %>% mutate(region = "amyg"),
+                  ofc_turnaround_df %>% mutate(region = "ofc"),
+                  cing_turnaround_df %>% mutate(region = "cing"),
+                  dlpfc_turnaround_df %>% mutate(region = "dlpfc"),
+                  insula_turnaround_df %>% mutate(region = "insula"))
 
 ```
 
 
 ```{r plot-scaled}
 
-beta_onset_plot_df <- beta_onset_df %>%
+beta_turnaround_plot_df <- beta_turnaround_df %>%
   select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
   filter(trial_time < 4.5) %>%
   group_by(region, trial_time, electrode, subject) %>%
@@ -482,7 +801,7 @@ beta_onset_plot_df <- beta_onset_df %>%
   mutate(region_avg_theta = scale(region_avg_theta))
   
 
-beta_onset_plot_df %>%
+beta_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), beta = .2) +
@@ -499,7 +818,7 @@ beta_onset_plot_df %>%
 ```{r by-subject}
 
 
-beta_onset_plot_df %>%
+beta_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +
@@ -519,27 +838,27 @@ beta_onset_plot_df %>%
 ```{r load-gamma-data}
 
 ## Load Region specific csvs ##
-hc_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_hc_all_subs_onset.csv"))
-amyg_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_amyg_all_subs_onset.csv"))
-ofc_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_ofc_all_subs_onset.csv"))
-cing_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_cing_all_subs_onset.csv"))
-dlpfc_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_dlpfc_all_subs_onset.csv"))
-insula_onset_df <- read_csv(path(here(), "munge", "gamma_behavior_insula_all_subs_onset.csv"))
+hc_turnaround_df <- read_csv(path(here(), "munge", "gamma_behavior_hc_all_subs_turnaround.csv"))
+amyg_turnaround_df <- read_csv(path(here(), "munge", "gamma_behavior_amyg_all_subs_turnaround.csv"))
+ofc_turnaround_df <- read_csv(path(here(), "munge", "gamma_behavior_ofc_all_subs_turnaround.csv"))
+cing_turnaround_df <- read_csv(path(here(), "munge", "gamma_behavior_cing_all_subs_turnaround.csv"))
+dlpfc_turnaround_df <- read_csv(path(here(), "munge", "gamma_behavior_dlpfc_all_subs_turnaround.csv"))
+insula_turnaround_df <- read_csv(path(here(), "munge", "gamma_behavior_insula_all_subs_turnaround.csv"))
 
 ## Bind together ##
-gamma_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
-                  amyg_onset_df %>% mutate(region = "amyg"),
-                  ofc_onset_df %>% mutate(region = "ofc"),
-                  cing_onset_df %>% mutate(region = "cing"),
-                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
-                  insula_onset_df %>% mutate(region = "insula"))
+gamma_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
+                  amyg_turnaround_df %>% mutate(region = "amyg"),
+                  ofc_turnaround_df %>% mutate(region = "ofc"),
+                  cing_turnaround_df %>% mutate(region = "cing"),
+                  dlpfc_turnaround_df %>% mutate(region = "dlpfc"),
+                  insula_turnaround_df %>% mutate(region = "insula"))
 
 ```
 
 
 ```{r plot-scaled}
 
-gamma_onset_plot_df <- gamma_onset_df %>%
+gamma_turnaround_plot_df <- gamma_turnaround_df %>%
   select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
   filter(trial_time < 4.5) %>%
   group_by(region, trial_time, electrode, subject) %>%
@@ -558,7 +877,7 @@ gamma_onset_plot_df <- gamma_onset_df %>%
   mutate(region_avg_theta = scale(region_avg_theta))
   
 
-gamma_onset_plot_df %>%
+gamma_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), gamma = .2) +
@@ -575,7 +894,7 @@ gamma_onset_plot_df %>%
 ```{r by-subject}
 
 
-gamma_onset_plot_df %>%
+gamma_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +
@@ -593,27 +912,27 @@ gamma_onset_plot_df %>%
 ```{r load-hfa-data}
 
 ## Load Region specific csvs ##
-hc_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_hc_all_subs_onset.csv"))
-amyg_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_amyg_all_subs_onset.csv"))
-ofc_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_ofc_all_subs_onset.csv"))
-cing_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_cing_all_subs_onset.csv"))
-dlpfc_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_dlpfc_all_subs_onset.csv"))
-insula_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_insula_all_subs_onset.csv"))
+hc_turnaround_df <- read_csv(path(here(), "munge", "hfa_behavior_hc_all_subs_turnaround.csv"))
+amyg_turnaround_df <- read_csv(path(here(), "munge", "hfa_behavior_amyg_all_subs_turnaround.csv"))
+ofc_turnaround_df <- read_csv(path(here(), "munge", "hfa_behavior_ofc_all_subs_turnaround.csv"))
+cing_turnaround_df <- read_csv(path(here(), "munge", "hfa_behavior_cing_all_subs_turnaround.csv"))
+dlpfc_turnaround_df <- read_csv(path(here(), "munge", "hfa_behavior_dlpfc_all_subs_turnaround.csv"))
+insula_turnaround_df <- read_csv(path(here(), "munge", "hfa_behavior_insula_all_subs_turnaround.csv"))
 
 ## Bind together ##
-hfa_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
-                  amyg_onset_df %>% mutate(region = "amyg"),
-                  ofc_onset_df %>% mutate(region = "ofc"),
-                  cing_onset_df %>% mutate(region = "cing"),
-                  dlpfc_onset_df %>% mutate(region = "dlpfc"),
-                  insula_onset_df %>% mutate(region = "insula"))
+hfa_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
+                  amyg_turnaround_df %>% mutate(region = "amyg"),
+                  ofc_turnaround_df %>% mutate(region = "ofc"),
+                  cing_turnaround_df %>% mutate(region = "cing"),
+                  dlpfc_turnaround_df %>% mutate(region = "dlpfc"),
+                  insula_turnaround_df %>% mutate(region = "insula"))
 
 ```
 
 
 ```{r plot-scaled}
 
-hfa_onset_plot_df <- hfa_onset_df %>%
+hfa_turnaround_plot_df <- hfa_turnaround_df %>%
   select(region, trial_time, electrode, subject, trial_numeric, theta) %>%
   filter(trial_time < 4.5) %>%
   group_by(region, trial_time, electrode, subject) %>%
@@ -631,7 +950,7 @@ hfa_onset_plot_df <- hfa_onset_df %>%
   group_by(region) 
   
 
-hfa_onset_plot_df %>%
+hfa_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = region_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   # geom_ribbon(aes(ymin = conf_lower, ymax = conf_upper), hfa = .2) +
@@ -648,7 +967,7 @@ hfa_onset_plot_df %>%
 ```{r by-subject}
 
 
-hfa_onset_plot_df %>%
+hfa_turnaround_plot_df %>%
   ggplot(., aes(x = trial_time, y = sub_avg_theta, color = region, fill = region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = 'black') +
   geom_point() +

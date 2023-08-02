@@ -134,14 +134,14 @@ create_distance_prolific <- function(df){
     filter(Trial != "ITI") %>%
     filter(TrialType <= 16) %>%
     mutate(trial_numeric = factor(trial_numeric)) %>%
-    filter(died == 0) %>%
+    # filter(died == 0) %>%
     group_by(subject, Trial) %>%
     # user movement and distance measures
     mutate(distance_to_ghost = abs(GhostLocation - UserLocation)) %>%
     mutate(min_distance = min(distance_to_ghost)) %>%
-    mutate(towards_ghost = if_else(Direction == 2 & GhostLocation < UserLocation, "Towards", 
-                                   if_else(Direction == 11 & GhostLocation > UserLocation, "Towards",
-                                           if_else(Direction == 4, "Still", "Away")))) %>%
+    mutate(towards_ghost = if_else(Direction == "Left" & GhostLocation < UserLocation, "Towards", 
+                                   if_else(Direction == "Right" & GhostLocation > UserLocation, "Towards",
+                                           if_else(Direction == "Still", "Still", "Away")))) %>%
     mutate(away_choice_tmp = c(0, diff(factor(towards_ghost)))) %>%
     mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_ghost == "Away") | 
                                     (away_choice_tmp == -1 & towards_ghost == "Away"), distance_to_ghost, 0)) %>%
@@ -181,7 +181,7 @@ create_distance_prolific <- function(df){
                                                              if_else(Eaten == 3, abs(UserLocation - Biscuit4), 
                                                                      if_else(Eaten == 4, abs(UserLocation - Biscuit5), 0)))))) %>%
     mutate(cdf_distance = distributions3::cdf(threat_function, distance_to_ghost/100)) %>%
-    mutate(Direction = if_else(Direction == 4, "Still", if_else(Direction == 11, "Left", "Right"))) %>%
+    filter(Direction != "Unsure") %>%
     mutate(Direction = factor(Direction)) %>%
     mutate(discounted_reward = if_else(Eaten == 5, 0, points_remaining * 1/distance_to_next_reward)) %>%
     ungroup()

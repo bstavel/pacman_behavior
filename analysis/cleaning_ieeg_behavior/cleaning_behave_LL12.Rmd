@@ -324,6 +324,7 @@ bad_trials <- read_csv(path(here(), './data/ieeg_behave/LL12_bad_trials.csv'))
 
 create_last_away_events(ll12_data_clean, 'LL12_last_away_events.csv')
 create_first_dot_events(ll12_data_clean, 'LL12_first_dot_events.csv')
+create_first_move_events(ll12_data_clean, 'LL12_first_move_events.csv')
 create_died_events(ll12_data_clean, 'LL12_died_events.csv')
 
 ```

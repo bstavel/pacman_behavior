@@ -91,45 +91,45 @@ Run by knitting
 
 ```{r merge-delta-data-and-combine-hc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -137,56 +137,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "hc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "delta_behavior_hc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "delta_hc_all_subs_turnaround.csv"))
 
 ```
 
 
 ```{r merge-delta-data-and-combine-ofc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -194,11 +194,11 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "delta_behavior_ofc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "delta_ofc_all_subs_turnaround.csv"))
 
 
 ```
@@ -206,45 +206,45 @@ write_csv(onset_df, path(here(), "munge", "delta_behavior_ofc_all_subs_onset.csv
 
 ```{r merge-delta-data-and-combine-ac}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -252,11 +252,11 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "cing",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "delta_behavior_cing_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "delta_cing_all_subs_turnaround.csv"))
 
 
 ```
@@ -264,45 +264,45 @@ write_csv(onset_df, path(here(), "munge", "delta_behavior_cing_all_subs_onset.cs
 
 ```{r merge-delta-data-and-combine-amyg}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -310,56 +310,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "delta_behavior_amyg_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "delta_amyg_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-delta-data-and-combine-dlpfc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -367,11 +367,11 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "delta_behavior_dlpfc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "delta_dlpfc_all_subs_turnaround.csv"))
 
 
 ```
@@ -379,43 +379,43 @@ write_csv(onset_df, path(here(), "munge", "delta_behavior_dlpfc_all_subs_onset.c
 
 ```{r merge-delta-data-and-combine-insula}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_delta", keyword_exclude = "999")
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll12_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll12_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "delta_behavior_insula_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "delta_insula_all_subs_turnaround.csv"))
 
 
 ```
@@ -424,45 +424,45 @@ write_csv(onset_df, path(here(), "munge", "delta_behavior_insula_all_subs_onset.
 
 ```{r merge-theta-data-and-combine-hc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -470,55 +470,55 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "hc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "theta_behavior_hc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "theta_hc_all_subs_turnaround.csv"))
 
 ```
 
 ```{r merge-theta-data-and-combine-ofc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -526,56 +526,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "theta_behavior_ofc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "theta_ofc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-theta-data-and-combine-ac}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -583,56 +583,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "cing",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "theta_behavior_cing_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "theta_cing_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-theta-data-and-combine-amyg}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -640,56 +640,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "theta_behavior_amyg_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "theta_amyg_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-theta-data-and-combine-dlpfc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -697,54 +697,54 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "theta_behavior_dlpfc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "theta_dlpfc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-theta-data-and-combine-insula}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_theta", keyword_exclude = "999")
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll12_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll12_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "theta_behavior_insula_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "theta_insula_all_subs_turnaround.csv"))
 
 
 ```
@@ -753,45 +753,45 @@ write_csv(onset_df, path(here(), "munge", "theta_behavior_insula_all_subs_onset.
 
 ```{r merge-alpha-data-and-combine-hc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -799,55 +799,55 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "hc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "alpha_behavior_hc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "alpha_hc_all_subs_turnaround.csv"))
 
 ```
 
 ```{r merge-alpha-data-and-combine-ofc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -855,56 +855,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "alpha_behavior_ofc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "alpha_ofc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-alpha-data-and-combine-ac}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -912,56 +912,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "cing",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "alpha_behavior_cing_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "alpha_cing_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-alpha-data-and-combine-amyg}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -969,56 +969,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "alpha_behavior_amyg_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "alpha_amyg_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-alpha-data-and-combine-dlpfc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -1026,54 +1026,54 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "alpha_behavior_dlpfc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "alpha_dlpfc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-alpha-data-and-combine-insula}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_alpha", keyword_exclude = "999")
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll12_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll12_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "alpha_behavior_insula_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "alpha_insula_all_subs_turnaround.csv"))
 
 
 ```
@@ -1082,45 +1082,45 @@ write_csv(onset_df, path(here(), "munge", "alpha_behavior_insula_all_subs_onset.
 
 ```{r merge-beta-data-and-combine-hc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -1128,55 +1128,55 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "hc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "beta_behavior_hc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "beta_hc_all_subs_turnaround.csv"))
 
 ```
 
 ```{r merge-beta-data-and-combine-ofc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -1184,56 +1184,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "beta_behavior_ofc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "beta_ofc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-beta-data-and-combine-ac}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -1241,56 +1241,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "cing",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "beta_behavior_cing_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "beta_cing_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-beta-data-and-combine-amyg}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -1298,56 +1298,56 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "beta_behavior_amyg_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "beta_amyg_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-beta-data-and-combine-dlpfc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll10_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL10", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+ll13_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "LL13", 
                                                   sample_freq = 512, 
                                                   timelock_folder = "last_away",
@@ -1355,54 +1355,54 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll10_turnaround_df, ll12_turnaround_df, ll13_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "beta_behavior_dlpfc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "beta_dlpfc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-beta-data-and-combine-insula}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+ll12_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "LL12", 
                                                   sample_freq = 512,  
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_beta", keyword_exclude = "999")
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll12_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df,
+                  ll12_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "beta_behavior_insula_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "beta_insula_all_subs_turnaround.csv"))
 
 
 ```
@@ -1412,26 +1412,26 @@ write_csv(onset_df, path(here(), "munge", "beta_behavior_insula_all_subs_onset.c
 
 ```{r merge-gamma-data-and-combine-hc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1439,36 +1439,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "gamma_behavior_hc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "gamma_hc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-gamma-data-and-combine-amyg}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1476,36 +1476,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "gamma_behavior_amyg_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "gamma_amyg_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-gamma-data-and-combine-ofc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1513,36 +1513,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "gamma_behavior_ofc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "gamma_ofc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-gamma-data-and-combine-cing}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1550,36 +1550,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "gamma_behavior_cing_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "gamma_cing_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-gamma-data-and-combine-dlpfc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1587,36 +1587,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "gamma_behavior_dlpfc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "gamma_dlpfc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-gamma-data-and-combine-insula}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_gamma", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1624,10 +1624,10 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "gamma_behavior_insula_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "gamma_insula_all_subs_turnaround.csv"))
 
 
 ```
@@ -1637,26 +1637,26 @@ write_csv(onset_df, path(here(), "munge", "gamma_behavior_insula_all_subs_onset.
 
 ```{r merge-hfa-data-and-combine-hc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "hc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1664,36 +1664,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "hfa_behavior_hc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "hfa_hc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-hfa-data-and-combine-amyg}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "amyg", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1701,36 +1701,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "hfa_behavior_amyg_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "hfa_amyg_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-hfa-data-and-combine-ofc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "ofc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1738,36 +1738,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "hfa_behavior_ofc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "hfa_ofc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-hfa-data-and-combine-cing}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "cing", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1775,36 +1775,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "hfa_behavior_cing_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "hfa_cing_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-hfa-data-and-combine-dlpfc}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "dlpfc", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1812,36 +1812,36 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "hfa_behavior_dlpfc_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "hfa_dlpfc_all_subs_turnaround.csv"))
 
 
 ```
 
 ```{r merge-hfa-data-and-combine-insula}
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+#  turnaround Data
+slch2_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "SLCH002", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
   
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh16_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH016", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh21_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH021", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
                                                   keyword_include = "trial_hfa", keyword_exclude = "999")
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+bjh25_turnaround_df <- compile_ieeg_csv_files(roi = "insula", 
                                                   sub = "BJH025", 
                                                   sample_freq = 1000, 
                                                   timelock_folder = "last_away",
@@ -1849,10 +1849,10 @@ bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula",
 
 
 # Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df)
+turnaround_df <- rbind(slch2_turnaround_df, bjh16_turnaround_df, bjh21_turnaround_df, bjh25_turnaround_df)
 
 # save #
-write_csv(onset_df, path(here(), "munge", "hfa_behavior_insula_all_subs_onset.csv"))
+write_csv(turnaround_df, path(here(), "munge", "hfa_insula_all_subs_turnaround.csv"))
 
 
 ```
