@@ -24,13 +24,13 @@ nCores <- 16
 registerDoParallel(nCores)
 
 
-## Load Region specific csvs ##
-hc_onset_df <- read_csv(path(here(), "munge", "theta_hc_all_subs_onset.csv"))
-amyg_onset_df <- read_csv(path(here(), "munge", "theta_amyg_all_subs_onset.csv"))
-ofc_onset_df <- read_csv(path(here(), "munge", "theta_ofc_all_subs_onset.csv"))
-cing_onset_df <- read_csv(path(here(), "munge", "theta_cing_all_subs_onset.csv"))
-dlpfc_onset_df <- read_csv(path(here(), "munge", "theta_dlpfc_all_subs_onset.csv"))
-insula_onset_df <- read_csv(path(here(), "munge", "theta_insula_all_subs_onset.csv"))
+## Load Region specific csvs ## 
+hc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "theta_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "theta_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "theta_behavior_insula_all_subs_onset.csv"))
 
 ## Bind together ##
 theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
