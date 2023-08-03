@@ -29,6 +29,7 @@ compute_lfp_correlation <- function(sub_list, roi1, roi2, freq_df){
       
       # loop over all elecs in roi2
       for(elec2 in roi2_elecs){
+        print(paste("Correlation Between", elec1, "and", elec2))
         
         # filter to elec2 of roi2 elecs
         elec2_df <- sub_df %>% filter(elec_short == elec2) %>% filter(region == roi2)
@@ -42,7 +43,6 @@ compute_lfp_correlation <- function(sub_list, roi1, roi2, freq_df){
           
           # compute true correlations during trial t
           trial <- unique(sub_df$trial_numeric)[t]
-          print(trial)
           t1 <- elec1_df  %>% filter(trial_numeric == trial)  %>% pull(theta)
           t2 <- elec2_df  %>% filter(trial_numeric == trial) %>% pull(theta)
           true_cor[t] <- cor(t1, t2)
