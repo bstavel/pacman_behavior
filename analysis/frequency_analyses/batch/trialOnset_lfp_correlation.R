@@ -42,7 +42,8 @@ theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
 
 # Only First Second
 theta_onset_df <- theta_onset_df %>%
-  filter(trial_time >= 0 & trial_time < 1)
+  filter(trial_time >= 0 & trial_time < 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode))
 
 ## Subject List ##
 sub_list <- c("LL10", "LL13", "LL12", "BJH021", "BJH025", "SLCH002", "BJH016")
