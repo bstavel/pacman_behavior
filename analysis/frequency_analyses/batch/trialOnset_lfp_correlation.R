@@ -43,14 +43,16 @@ theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
 # Only First Second
 theta_onset_df <- theta_onset_df %>%
   filter(trial_time >= 0 & trial_time < 1) %>%
-  mutate(elec_short = gsub("_.*", "", electrode))
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!(subject == "LL13" & elec_short == "LH1-LH2"))
 
 ## Subject List ##
 sub_list <- c("LL10", "LL13", "LL12", "BJH021", "BJH025", "SLCH002", "BJH016")
+sub_list_short <- c("LL13", "LL12", "BJH021", "BJH025", "SLCH002", "BJH016")
 
 
 ## Compute Correlation ##
-compute_lfp_correlation(sub_list, "dlpfc", "hc", theta_onset_df)
+compute_lfp_correlation(sub_list_short, "dlpfc", "hc", theta_onset_df)
 compute_lfp_correlation(sub_list, "dlpfc", "amyg", theta_onset_df)
 compute_lfp_correlation(sub_list, "dlpfc", "ofc", theta_onset_df)
 compute_lfp_correlation(sub_list, "dlpfc", "cing", theta_onset_df)
