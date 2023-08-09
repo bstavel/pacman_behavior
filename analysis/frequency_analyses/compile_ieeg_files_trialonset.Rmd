@@ -471,7 +471,7 @@ ll13_onset_df <- compile_ieeg_csv_files(roi = "hc",
 
 # Bind together
 onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+                  ll10_onset_df, ll12_onset_df, ll13_onset_df %>% filter(elec_short != "LH1-LH2"))
 
 # save #
 write_csv(onset_df, path(here(), "munge", "theta_behavior_hc_all_subs_onset.csv"))
