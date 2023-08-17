@@ -188,7 +188,7 @@ pilot_all_vars_df <- pilot_all_vars_df %>%
 
 ```
 
-```{r save-files}
+```{r save-files, eval =T}
 
 write_csv(pilot_behave_data_clean, path(here(), "munge", "prolific", "cleaned_pilot_behavior.csv"))
 write_csv(pilot_game_data_clean, path(here(), "munge", "prolific", "cleaned_pilot_game_data.csv"))
@@ -307,6 +307,150 @@ pilot_game_data_distance %>%
   theme(panel.background = element_rect(fill = "white"), axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
   ggtitle("Subject Variability in Minimum Distance", subtitle = "Random sample of 20 subjects shows that the within subject variability \nin min distance to ghost each trial is usually less than across subject variability")
 
+
+```
+
+### When analyzing last away data should we include trials where the ghost started a chase?
+
+Arg for excluding such trials: If the person turns after a ghost has initiated a chase or attack, they are turning because they realized they are in danger. It is no longer really about approach/avoid they are under an active threat. 
+
+Arg for including such trials: These are the trials where the person gets pretty close to the ghost. We are throwing out data with meaningful choices and reducing our variability by throwing them out. 
+
+Obviously, the main thing is that it depends on the question. This came up in the context of Jules analysis of last_away, but it is also relevant for the modeling of turn around points. When modeling turn around points, it would be best to keep the data but have a variable that tracks whether or not a ghost or chase has been initiated. But that will also take more careful thinking, because if you feed the model before a chase then the model will not know if there will be a chase. But it could soak up variance that is being attributed to reward or threat, so is probably important.
+
+In regards to last_away, the question is what drives how close people are willing to get to the ghost. If the ghost has initiated an action, we would predict that would want to make people stay far away from the ghost, but in particular the rational choice is to leave immediately regardless of distance. So I am inclined to keep excluding the trials. 
+
+Interestingly, when I compare excluding/including the distance for some subjects the average distance stays similar and for some subjects it differs wildly. I try to explore why this is below. 
+
+```{r dsitance-with-or-without-chaseattack-trials}
+
+clean_distance_bob_data <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  mutate(dist_ghost_bob = distance_to_ghost) %>%
+  select(subject, trial_numeric, dist_ghost_bob)
+  
+
+clean_distance_data <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0)%>%
+  select(subject, trial_numeric, distance_to_ghost)
+
+distance_compare <- full_join(clean_distance_data, clean_distance_bob_data)
+
+subs <- sample(clean_distance_data$subject, 10)
+
+distance_compare %>%
+  filter(subject %in% subs) %>%
+  pivot_longer(cols = c(distance_to_ghost, dist_ghost_bob), values_to = "distance", names_to = "type") %>%
+  ggplot(., aes(x = subject, y = distance, fill = type )) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+tmp_33_bob <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  filter(subject== "Subject_33") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_33 <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0) %>%
+  filter(subject== "Subject_33") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+
+tmp_14_bob <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  filter(subject== "Subject_14") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_14 <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0) %>%
+  filter(subject== "Subject_14") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_29_bob <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  filter(subject== "Subject_29") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_29 <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0) %>%
+  filter(subject== "Subject_29") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+
+tmp_42_bob <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  filter(subject== "Subject_42") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_42 <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0) %>%
+  filter(subject== "Subject_42") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+summary(lm(last_away ~ rewardgroup, data = tmp_33_bob))
+summary(lm(last_away ~ rewardgroup, data = tmp_33))
+
+summary(lm(last_away ~ rewardgroup, data = tmp_14_bob))
+summary(lm(last_away ~ rewardgroup, data = tmp_14))
+
+summary(lm(last_away ~ rewardgroup, data = tmp_29_bob))
+summary(lm(last_away ~ rewardgroup, data = tmp_29))
+
+summary(lm(last_away ~ rewardgroup, data = tmp_42_bob))
+summary(lm(last_away ~ rewardgroup, data = tmp_42))
+
+# subject 33 stayed further back than other subjects
+tmp_33_bob %>%
+  ggplot(aes(x = dots_eaten)) +
+  geom_bar() +
+  theme(panel.background = element_rect(fill = "white"))
+
+# What made them go for the 4th reward? it doesn't seem to matter if the reward was large or not#
+tmp_33_bob %>%
+  mutate(reward_4_large = if_else(reward_groups %in% c(2, 4), "large", "small")) %>%
+  ggplot(., aes(x = factor(dots_eaten), y = last_away, fill = reward_4_large)) +
+  geom_boxplot(notch = F) +
+  geom_point(aes(color = reward_4_large), color = "black", position = position_dodge(width = .8)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("4 dot large") + labs(fill = "")
+
+tmp_33_bob %>%
+  mutate(reward_4_large = if_else(reward_groups %in% c(2, 4), "large", "small")) %>%
+  ggplot(., aes(x = factor(dots_eaten), y = last_away, fill = rewardgroup)) +
+  geom_boxplot(notch = F) +
+  geom_point(aes(color = rewardgroup), color = "black", position = position_dodge(width = .8)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("last two dots large") + labs(fill = "")
+
+# Was it the direction of the ghost
+tmp2_33_bob <- pilot_game_data_distance %>%
+  filter(attack_chase_bob == 'Bob' & dots_eaten >= 3) %>%
+  filter(subject== "Subject_33") %>%
+  filter(Eaten > 2) %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small")) %>%
+  group_by(trial_numeric) %>%
+  mutate(ghost_dir_at_dot_3 = first(ghost_direction)) %>%
+  select(trial_numeric, Eaten, Lives, ghost_dir_at_dot_3) %>%
+  distinct() 
+
+tmp2_33_bob %>%
+  ggplot(., aes(fill = ghost_dir_at_dot_3, x = factor(Eaten)))+
+  geom_bar(position= position_dodge2()) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+tmp2_33_bob %>%
+  ggplot(., aes(fill = factor(Lives), x = factor(Eaten)))+
+  geom_bar(position= position_dodge2()) +
+  theme(panel.background = element_rect(fill = "white"))
+
+# Found it! This subject would only get the 4th dot if they had full lives, they never lost a minigame!
+pilot_game_data_distance %>%
+  filter(subject== "Subject_33") %>%
+  filter(trial_flip == 1) %>%
+  ggplot(., aes(fill = factor(Lives), x = factor(dots_eaten)))+
+  geom_bar(position= position_dodge2()) +
+  theme(panel.background = element_rect(fill = "white"))
 
 ```
 
