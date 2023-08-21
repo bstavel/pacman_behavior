@@ -7,7 +7,7 @@ create_distance_df_bci <- function(df, ghost = TRUE){
     distance_df <- df %>%
       filter(Trial != "ITI") %>%
       filter(TrialType <= 16) %>% #  ghost trials only
-      filter(died == 0) %>%
+      filter(attack_chase_bob == 'Bob') %>%
       group_by(trial_numeric) %>%
       # user movement and distance measures
       mutate(distance_to_ghost = abs(GhostLocation - UserLocation)) %>%
@@ -134,7 +134,7 @@ create_distance_prolific <- function(df){
     filter(Trial != "ITI") %>%
     filter(TrialType <= 16) %>%
     mutate(trial_numeric = factor(trial_numeric)) %>%
-    # filter(died == 0) %>%
+    filter(attack_chase_bob == 'Bob') %>%
     group_by(subject, Trial) %>%
     # user movement and distance measures
     mutate(distance_to_ghost = abs(GhostLocation - UserLocation)) %>%
