@@ -53,9 +53,9 @@ sub_list_short <- c("LL13", "LL12", "BJH021", "BJH025", "SLCH002", "BJH016")
 
 ## Compute Correlation ##
 # compute_lfp_correlation(sub_list_short, "dlpfc", "hc", theta_onset_df)
-compute_lfp_correlation(sub_list, "hc", "amyg", theta_onset_df)
 compute_lfp_correlation(sub_list, "hc", "ofc", theta_onset_df)
 compute_lfp_correlation(sub_list, "hc", "cing", theta_onset_df)
+compute_lfp_correlation(sub_list, "hc", "amyg", theta_onset_df)
 compute_lfp_correlation(sub_list, "hc", "insula", theta_onset_df)
 
 

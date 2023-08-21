@@ -65,13 +65,20 @@ compute_lfp_correlation <- function(sub_list, roi1, roi2, freq_df){
         # compute difference
         null_cor <- null_cor[!is.na(null_cor)]
         test_result <- wilcox.test(true_cor, null_cor, conf.int = TRUE)
-        tests <- rbind(tests, c(sub, elec1, elec2, test_result$estimate, test_result$statistic, test_result$p.value))
+        new_data <- tibble(
+          subject = sub,
+          elec1 = elec1,
+          elec2 = elec2,
+          estimate = test_result$estimate,
+          statistics = test_result$statistic,
+          pval = test_result$p.value
+        )
+        tests <- bind_rows(tests, new_data)
         
         # save out files
         write_csv(true_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
         write_csv(null_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
         write_csv(tests, path(here(), "results", "cor_analysis", paste0(sub, "_correlation_wilcox_test_", roi1, "_", roi2, ".csv")))
-        
         
       }
       
