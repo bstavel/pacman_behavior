@@ -71,9 +71,14 @@ clean_bci_data <- function(df, sample_rate){
     # filter out trials where they didn't get any points, because it gets confusing it they didn't lose points
     group_by(trial_numeric) %>%
     mutate(total_eaten = max(Eaten)) %>%
+    mutate(score_orig = Score) %>%
     mutate(Score = if_else(trial_numeric %% 20 == 1 & Eaten == 0, Score - first(Score), Score)) %>%
+    mutate(Lives = if_else(trial_numeric %% 20 == 1, 3, Lives)) %>%
+    mutate(escape = if_else(UserLocation < 10, 1,
+                            if_else(UserLocation > 170, 1, 0))) %>%
+    mutate(escaped = if_else(sum(escape) > 0, 1, 0)) %>% 
     ungroup() %>%
-    select(trial_numeric, Lives, Score, total_eaten, TrialType) %>%
+    select(trial_numeric, Lives, Score, total_eaten, TrialType, score_orig, escaped) %>%
     distinct() %>%
     mutate(died_lives = abs(as.numeric(c(diff(Lives), 0)))) %>%
     mutate(died_lives = if_else(died_lives == 0, 0, 1)) %>%
@@ -83,7 +88,7 @@ clean_bci_data <- function(df, sample_rate){
     mutate(died_score = sum(died_score)) %>%
     mutate(died_lives = sum(died_lives)) %>%
     ungroup() %>%
-    mutate(died = if_else(died_score == 1 | died_lives == 1, 1, 0)) %>%
+    mutate(died = if_else(escaped == 0 & (died_score == 1 | died_lives == 1 | trial_numeric == max(df_clean$trial_numeric)), 1, 0)) %>%
     select(trial_numeric, died) %>%
     distinct()
   

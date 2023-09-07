@@ -1,0 +1,770 @@
+---
+title: "Cleaning BJH029"
+output: html_document
+date: "2023-09-01"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'create_timelock_event_tables.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+## BJH029
+
+```{r BJH029-data-load}
+
+bjh29_data <- read_csv(path(here(), './data/ieeg_behave/BJH029_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+```
+
+```{r BJH029-data-prep}
+
+# clean Biscuits #
+bjh29_data_clean <- clean_bci_data(bjh29_data, 2000)
+
+# create distance df #
+bjh29_data_distance <- create_distance_df_bci(bjh29_data_clean)
+
+# task vars df #
+bjh29_all_vars_df <- get_across_task_variables_bci(bjh29_data_clean)
+
+```
+
+
+```{r}
+
+bjh29_all_vars_df %>%
+  ggplot(., aes(x = block, y = block_deaths)) +
+  geom_point(size = 3) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+bjh29_all_vars_df %>%
+  ggplot(., aes(x = block, y = average_dots_per_block)) +
+  geom_point(size = 3) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+
+```{r trials-no-biscuits}
+
+
+bjh29_data_clean %>%
+  filter(Trial != "ITI") %>%
+  group_by(trial_numeric) %>%
+  mutate(total_eaten = max(Eaten)) %>%
+  filter(total_eaten == 0) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+no_biscuits_trials <- bjh29_data_clean %>%
+  filter(Trial != "ITI") %>%
+  group_by(trial_numeric) %>%
+  mutate(total_eaten = max(Eaten)) %>%
+  select(trial_numeric, total_eaten) %>%
+  distinct() %>%
+  filter(total_eaten == 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  # exclude fake trial 0 
+  filter(neural_trial_numeric >= 0) %>%
+  ungroup() %>%
+  pull(neural_trial_numeric)
+
+
+
+```
+
+
+```{r how-long-do-trials-last}
+
+
+bjh29_all_vars_df %>%
+  ggplot(., aes(x = trial_length)) +
+  geom_histogram() +
+  geom_vline(xintercept =10) +
+  theme(panel.background = element_rect(fill = "white"))
+
+# No trials longer than 10 seconds
+# bjh29_data_clean %>%
+#   filter(Trial != "ITI") %>%
+#   group_by(trial_numeric) %>%
+#   filter(trial_length > 10) %>%
+#   pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+#   ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+#   geom_hline(yintercept = 170, color = "black") +
+#   geom_hline(yintercept = 10, color = "black") +
+#   geom_point() +
+#   geom_line() +
+#   theme(panel.background = element_rect(fill = "white")) +
+#   facet_wrap(~trial_numeric)
+
+```
+
+
+```{r compile-bad-trials}
+
+# already in neural trial form
+bad_trials <- c(no_biscuits_trials)
+
+
+```
+
+
+## all other trials look good!
+
+```{r all-other-trials}
+
+# no ghost trials
+bjh29_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(TrialType > 16) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  ylim(0, 200) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~neural_trial_numeric)
+
+
+# first 100 trials
+bjh29_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(neural_trial_numeric < 100) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  ylim(0, 200) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~neural_trial_numeric)
+
+# 100-200 trials
+bjh29_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(neural_trial_numeric >= 100 & neural_trial_numeric < 200) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~neural_trial_numeric)
+
+
+# 200-300 trials
+bjh29_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(neural_trial_numeric >= 200 & neural_trial_numeric < 300) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~neural_trial_numeric)
+
+
+
+
+
+```
+
+```{r save-bad-trials}
+
+
+bad_trials <- c(no_biscuits_trials)
+
+bad_df <- data_frame("neural_trial_numeric" = bad_trials)
+
+write_csv(bad_df, path(here(), './data/ieeg_behave/BJH029_bad_trials.csv'))
+
+```
+
+```{r time-lock-events, fig.width = 16, fig.height = 16}
+
+bad_df <- read_csv(path(here(), './data/ieeg_behave/BJH029_bad_trials.csv'))
+
+create_last_away_events(bjh29_data_clean, 'BJH029_last_away_events.csv')
+create_first_dot_events(bjh29_data_clean, 'BJH029_first_dot_events.csv')
+create_first_move_events(bjh29_data_clean, 'BJH029_first_move_events.csv')
+create_died_events(bjh29_data_clean, 'BJH029_died_events.csv')
+
+```
+
+
+```{r trial-onset-files-for-kia}
+
+# clean epochs #
+clean_epochs <- c(0,
+ 1,
+ 2,
+ 6,
+ 7,
+ 8,
+ 9,
+ 13,
+ 14,
+ 15,
+ 16,
+ 17,
+ 18,
+ 19,
+ 20,
+ 21,
+ 22,
+ 23,
+ 24,
+ 25,
+ 26,
+ 29,
+ 28,
+ 29,
+ 30,
+ 33,
+ 34,
+ 35,
+ 36,
+ 37,
+ 38,
+ 39,
+ 40,
+ 41,
+ 42,
+ 43,
+ 44,
+ 45,
+ 46,
+ 47,
+ 48,
+ 49,
+ 50,
+ 51,
+ 52,
+ 53,
+ 54,
+ 58,
+ 59,
+ 60,
+ 61,
+ 62,
+ 63,
+ 64,
+ 65,
+ 66,
+ 67,
+ 68,
+ 69,
+ 70,
+ 71,
+ 72,
+ 73,
+ 74,
+ 75,
+ 76,
+ 77,
+ 78,
+ 79,
+ 80,
+ 81,
+ 82,
+ 83,
+ 84,
+ 85,
+ 86,
+ 87,
+ 88,
+ 89,
+ 90,
+ 91,
+ 92,
+ 93,
+ 94,
+ 95,
+ 96,
+ 97,
+ 98,
+ 99,
+ 100,
+ 101,
+ 102,
+ 103,
+ 104,
+ 105,
+ 106,
+ 107,
+ 108,
+ 109,
+ 110,
+ 111,
+ 112,
+ 113,
+ 114,
+ 115,
+ 116,
+ 117,
+ 118,
+ 119,
+ 120,
+ 121,
+ 122,
+ 123,
+ 124,
+ 125,
+ 126,
+ 129,
+ 128,
+ 129,
+ 130,
+ 131,
+ 132,
+ 133,
+ 140,
+ 141,
+ 142,
+ 143,
+ 144,
+ 145,
+ 146,
+ 147,
+ 148,
+ 149,
+ 150,
+ 151,
+ 152,
+ 153,
+ 154,
+ 155,
+ 156,
+ 157,
+ 158,
+ 159,
+ 160,
+ 161,
+ 165,
+ 166,
+ 167,
+ 168,
+ 169,
+ 170,
+ 171,
+ 172,
+ 173,
+ 174,
+ 175,
+ 176,
+ 177,
+ 178,
+ 179,
+ 180,
+ 181,
+ 182,
+ 183,
+ 184,
+ 185,
+ 186,
+ 187,
+ 188,
+ 189,
+ 190,
+ 191,
+ 192,
+ 193,
+ 194,
+ 195,
+ 196,
+ 197,
+ 198,
+ 199,
+ 200,
+ 201,
+ 202,
+ 203,
+ 204,
+ 205,
+ 206,
+ 207,
+ 208,
+ 209,
+ 210,
+ 211,
+ 212,
+ 213,
+ 214,
+ 215,
+ 216,
+ 217,
+ 218,
+ 219,
+ 220,
+ 224,
+ 225,
+ 226,
+ 229,
+ 231,
+ 232,
+ 233,
+ 234,
+ 235,
+ 236,
+ 237,
+ 238,
+ 239)
+
+# filter to last_away_events
+trial_onset_info <- bjh29_all_vars_df %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) 
+
+# now that it has the same indices as the neural data, filter to good epochs
+clean_epochs_index1 <- clean_epochs + 1
+trial_onset_info_clean <- trial_onset_info[clean_epochs_index1, ]
+
+# save it out #
+write_csv(trial_onset_info_clean, path(here(), 'data/ieeg_behave/BJH029_trial_info_trial_onset_events_only.csv'))
+
+```
+
+```{r last-away-files-for-kia}
+# last away events #
+last_away_events <- read_csv(path(here(), './data/ieeg_behave/BJH029_last_away_events.csv'))
+
+# noisy epochs #
+clean_epochs <- c(0,
+ 1,
+ 4,
+ 5,
+ 6,
+ 7,
+ 8,
+ 10,
+ 11,
+ 12,
+ 13,
+ 14,
+ 15,
+ 16,
+ 17,
+ 18,
+ 19,
+ 20,
+ 21,
+ 22,
+ 23,
+ 24,
+ 25,
+ 29,
+ 30,
+ 31,
+ 32,
+ 33,
+ 34,
+ 35,
+ 36,
+ 37,
+ 38,
+ 39,
+ 40,
+ 41,
+ 42,
+ 43,
+ 44,
+ 45,
+ 46,
+ 47,
+ 48,
+ 52,
+ 53,
+ 54,
+ 55,
+ 56,
+ 57,
+ 58,
+ 59,
+ 60,
+ 61,
+ 62,
+ 63,
+ 64,
+ 65,
+ 66,
+ 67,
+ 68,
+ 69,
+ 70,
+ 71,
+ 72,
+ 73,
+ 74,
+ 75,
+ 76,
+ 77,
+ 78,
+ 79,
+ 80,
+ 81,
+ 82,
+ 83,
+ 84,
+ 85,
+ 86,
+ 87,
+ 88,
+ 89,
+ 90,
+ 91,
+ 92,
+ 93,
+ 94,
+ 95,
+ 96,
+ 97,
+ 98,
+ 99,
+ 100,
+ 101,
+ 102,
+ 103,
+ 104,
+ 105,
+ 106,
+ 107,
+ 108,
+ 109,
+ 110,
+ 111,
+ 112,
+ 113,
+ 114,
+ 115,
+ 116,
+ 117,
+ 118,
+ 119,
+ 123,
+ 126,
+ 127,
+ 128,
+ 129,
+ 130,
+ 131,
+ 132,
+ 133,
+ 134,
+ 135,
+ 136,
+ 137,
+ 138,
+ 139,
+ 140,
+ 141,
+ 142,
+ 143,
+ 147,
+ 148,
+ 149,
+ 150,
+ 151,
+ 152,
+ 153,
+ 154,
+ 155,
+ 156,
+ 157,
+ 158,
+ 159,
+ 160,
+ 161,
+ 162,
+ 163,
+ 164,
+ 165,
+ 166,
+ 167,
+ 168,
+ 169,
+ 170,
+ 171,
+ 172,
+ 173,
+ 174,
+ 175,
+ 176,
+ 177,
+ 178,
+ 179,
+ 180,
+ 181,
+ 182,
+ 183,
+ 184,
+ 185,
+ 186,
+ 187,
+ 188,
+ 189,
+ 190,
+ 191,
+ 192,
+ 193,
+ 194,
+ 195,
+ 196,
+ 197,
+ 201,
+ 202,
+ 203,
+ 207,
+ 208,
+ 209,
+ 210,
+ 211,
+ 212)
+
+# filter to last_away_events
+last_way_trial_info <- bjh29_all_vars_df %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(neural_trial_numeric %in% last_away_events$neural_trial_numeric)
+
+# now that it has the same indices as the neural data, filter to good epochs
+clean_epochs_index1 <- clean_epochs + 1
+last_way_trial_info_clean <- last_way_trial_info[clean_epochs_index1, ]
+
+# save it out #
+write_csv(last_way_trial_info_clean, path(here(), 'data/ieeg_behave/BJH029_trial_info_last_away_events_only.csv'))
+
+```
+
+
+```{r longest-trial}
+
+# read in bad df
+bad_df <- read_csv(path(here(), './data/ieeg_behave/BJH029_bad_trials.csv'))
+
+
+trial_times <- bjh29_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+  select(trial_length, trial_numeric) %>%
+  distinct()
+
+max(trial_times$trial_length)
+```
+

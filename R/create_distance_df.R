@@ -134,7 +134,7 @@ create_distance_prolific <- function(df){
     filter(Trial != "ITI") %>%
     filter(TrialType <= 16) %>%
     mutate(trial_numeric = factor(trial_numeric)) %>%
-    filter(attack_chase_bob == 'Bob') %>%
+    # filter(attack_chase_bob == 'Bob') %>%
     group_by(subject, Trial) %>%
     # user movement and distance measures
     mutate(distance_to_ghost = abs(GhostLocation - UserLocation)) %>%

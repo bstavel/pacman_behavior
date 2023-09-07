@@ -1,0 +1,588 @@
+---
+title: "JMBayes"
+output: html_document
+date: "2023-07-26"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+Okay, I need to come up with a model fitting framework. I will use DIC to compare models, but I need to figure out what my approach is for going through the different options.
+
+First, I think we should add in Lives and possibly Score, because I know this definitely effects the players choices. Is it possible to include interactions within this framework, not sure.
+
+Then I think I want to gather a full list of options for operationalizing reward and compare that in a couple of subjects. I think starting out with ~5 subjects is optimal because I don't have a good prior about whether or not people are solving it in the same way and if I move to a hierarcical modeling option then I have to disentangle how well the model is doing as parsing subejct variance as well as parsing the different reward options. 
+
+Cognitive Strategies for Reward
+
+* go out and get a certain amount of reward and then come back
+* try to get as much reward as possible until the ghost gets to close and then turn around
+* pay attention to how close the next reward is and how big it is
+
+Possible quantifications of reward
+
+* amount of dots remaining
+* amount of points remaining
+* discounted by distance number of points remaining 
+* number of big rewards left, number of small rewards left
+* 5 different variables for the distance to each reward
+* 5 different variables for the amount each reward/ if it is remaining
+
+In general variables should be mean-centered:
+
+The Cox PH submodel can be formulated as
+
+ℎ𝑖(𝑡)=ℎ0(𝑡)exp(𝛾𝑇𝑤𝑖),
+
+where ℎ0(𝑡) is the baseline hazard function at time 𝑡 and 𝑤𝑖is a vector of baseline predictors with corresponding regression coefficients 𝛾
+The submodel has two distinct parts. First, ℎ0(𝑡) describes the hazard (e.g., risk of the event occurring, given it has not yet occurred) when all covariates 𝑤𝑖 have value zero. This baseline hazard function is assumed invariant across all individuals ( ℎ0(𝑡) does not depend on 𝑖). 
+Second, the effect parameters 𝛾𝑇𝑤𝑖describe how the hazard varies as a function of the explanatory covariates 𝑤𝑖.
+
+```{r load-data}
+
+pilot_behave_data_clean <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior.csv"))
+pilot_game_data_clean <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data.csv"))
+pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+pilot_all_vars_df <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data.csv"))
+
+```
+
+
+```{r}
+
+pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, last_away) %>%
+  distinct() %>%
+  filter(subject %in% sample(subject, 5)) %>%
+  ggplot(., aes(x = subject, y = last_away)) +
+  # geom_point(alpha = .3) +
+  # geom_violin() +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  ylab("Distance to Ghost at Turnaround") + xlab("Subjects") +
+  theme(panel.background = element_rect(fill = "white"), axis.ticks.x = element_blank()) +
+  ggtitle("Subject Variability in Turning Distance", subtitle = "Random sample of 5 subjects shows that the within subject variability \nin turn around time is usually less than across subject variability")
+
+
+
+```
+
+## Random Permuted
+
+check to make sure the shuffling works by comparing distance to ghost at turnaround in shuffled vs real
+
+
+```{r random-time-series}
+
+random_time_series <- function(n, low_val, high_val) {
+  timeseries = numeric(n)
+  timeseries[1] = sample(low_val:high_val, 1)
+  
+  for (i in 2:n) {
+    change = sample(c(-2, 2), 1)
+    
+    # Check boundaries and adjust if necessary
+    if (timeseries[i-1] + change < 0) {
+      change = 2
+    } else if (timeseries[i-1] + change > 100) {
+      change = -2
+    }
+    
+    timeseries[i] = timeseries[i-1] + change
+  }
+  return(timeseries)
+
+}
+# Plotting the timeseries
+plot(random_time_series(50, 0, 100), type = 'l', ylim = c(0, 100), xlab = "Time", ylab = "Value")
+
+```
+
+
+```{r permuted}
+
+# filter to single subject and reset time to be from when they started moving #
+permuted_sub_df <- pilot_game_data_distance %>%
+  filter(subject == "Subject_38") %>%
+  filter(Direction != "Still") %>%
+  filter(dots_eaten != 0) %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time = trial_time - first(trial_time)) %>%
+  mutate(distance_to_ghost = random_time_series(length(distance_to_ghost), 0, 100)) %>%
+  mutate(points_remaining = sample(permuted_sub_df$points_remaining, length(points_remaining))) %>%
+  mutate(final_reward = if_else(reward_groups >2, "big", "small")) %>%
+  ungroup() %>%
+  select(subject, trial_numeric, distance_to_ghost, last_away, 
+         away_choice, trial_time, TrialType, points_remaining)
+
+# get hold out trials #
+set.seed(56)
+hold_out_trials <- sample(unique(permuted_sub_df$trial_numeric), 20)
+
+# create the survival dataframe
+permuted_sub_cox_df <- permuted_sub_df %>%
+  group_by(trial_numeric) %>%
+  filter(away_choice == last_away & away_choice != 0) %>%
+  filter(trial_time == last(trial_time)) %>%
+  mutate(Time = trial_time) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, Time, event) %>%
+  filter(!trial_numeric %in% hold_out_trials)
+
+# created longitudinal data frame #
+all_permuted_sub_df <- permuted_sub_df %>%
+  group_by(trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  filter(trial_time <= max(turnaround_time)) %>%
+  mutate(Time = last(trial_time)) %>%
+  ungroup() 
+
+# exclude hold out subjects #  
+permuted_sub_df <-  all_permuted_sub_df %>%
+  filter(trial_numeric %in% permuted_sub_cox_df$trial_numeric)
+
+test_permuted_sub_df <-  all_permuted_sub_df %>%
+  filter(trial_numeric %in% hold_out_trials)
+
+# test to see permutation worked #
+permuted_sub_df %>%
+  filter(event == 1) %>%
+  ggplot(., aes(x = distance_to_ghost)) +
+  geom_histogram(binwidth = 2) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+```{r permuted-jmbayes}
+
+# longitudinal model #
+MixedModelFit2 <- mvglmer(list(distance_to_ghost ~ trial_time + (trial_time | trial_numeric),
+                               points_remaining ~ trial_time + (trial_time | trial_numeric)), 
+                          data = permuted_sub_df, families = list(gaussian, gaussian))
+
+# survival model #
+CoxFit <- coxph(Surv(Time, event) ~ 1, data = permuted_sub_cox_df, model = TRUE)
+
+
+JMFit1 <- mvJointModelBayes(MixedModelFit2, CoxFit, timeVar = "trial_time")
+summary(JMFit1)
+
+
+```
+
+```{r permuted-auc-roc}
+
+
+roc <- rocJM(JMFit1, test_permuted_sub_df, Tstart = .5, Dt = 1, idVar = 'trial_numeric')
+plot(roc)   
+
+aucJM(JMFit1, permuted_sub_df, Tstart = .5, Dt = 1, idVar = 'trial_numeric')
+
+
+```
+```{r}
+
+pilot_game_data_distance %>%
+  filter(subject == "Subject_38") %>%
+  mutate(final_reward = if_else(reward_groups >2, "big", "small")) %>%
+  select(trial_numeric, dots_eaten, subject, final_reward, reward_groups) %>%
+  distinct() %>%
+  ggplot(., aes(fill = factor(reward_groups), x = dots_eaten)) +
+  geom_bar(position = position_dodge()) + 
+  theme(panel.background = element_rect(fill = "white"))
+
+pilot_game_data_distance %>%
+  select(trial_numeric, dots_eaten, subject) %>%
+  distinct() %>%
+  filter(subject == "Subject_38") %>%
+  ggplot(., aes(x =dots_eaten)) +
+  geom_histogram(binwidth = 1) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+pilot_game_data_distance %>%
+  filter(subject == "Subject_38") %>%
+  filter(Direction != "Still") %>%
+  ggplot(., aes(x = factor(Lives), y = distance_to_ghost)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+ sub_df <- pilot_game_data_distance %>%
+  filter(subject == "Subject_38") %>%
+  filter(Direction != "Still") %>%
+  filter(dots_eaten != 0) %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time = trial_time - first(trial_time)) %>%
+  mutate(final_reward = if_else(reward_groups >2, "big", "small")) %>%
+  mutate(Bisc4_tmp = if_else(Biscuit4 == 1111, UserLocation, Biscuit4)) %>%
+  mutate(Bisc4 = if_else(Biscuit4 == 1111, 1, 0)) %>%
+  mutate(dist_to_dot_4 = abs(Bisc4_tmp - UserLocation)) %>%
+  mutate(Eaten_rev = 5 - Eaten) %>%
+  mutate(last_big_reward = if_else(reward_groups %in% c(3, 4), Biscuit5, if_else(reward_groups == 2, Biscuit4, Biscuit3))) %>%
+  mutate(dist_last_big_rtmp = if_else(last_big_reward == 1111, UserLocation, last_big_reward)) %>%
+  mutate(dist_last_big_r = abs(dist_last_big_rtmp - UserLocation)) %>%
+  ungroup() 
+ 
+ 
+ sub_df %>%
+   filter(trial_numeric %in% sample(trial_numeric, 5)) %>%
+   ggplot(., aes(x = trial_time, y = dist_last_big_r)) +
+   geom_point() +
+   geom_line() +
+   theme(panel.background = element_rect(fill = "white")) +
+   facet_wrap(~trial_numeric)
+
+
+correlation_mat <- cor(sub_df %>% select(distance_to_ghost, trial_time, Bisc4, Eaten_rev, dist_to_dot_4, points_remaining, Eaten, discounted_reward, distance_to_next_reward, points_aquired, dist_last_big_r))
+
+ggcorrplot(correlation_mat)
+
+```
+
+
+## Real Data
+
+
+```{r joint-modeling-threat-only}
+
+
+### Prep Data 
+
+# filter to single subject and reset time to be from when they started moving #
+sub_df <- pilot_game_data_distance %>%
+  filter(subject == "Subject_38") %>%
+  filter(Direction != "Still") %>%
+  # filter(dots_eaten != 0) %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time = trial_time - first(trial_time)) %>%
+  mutate(final_reward = if_else(reward_groups >2, "big", "small")) %>%
+  mutate(Bisc4_tmp = if_else(Biscuit4 == 1111, UserLocation, Biscuit4)) %>%
+  mutate(dist_to_dot_4 = abs(Bisc4_tmp - UserLocation)) %>%
+  mutate(Bisc4_tmp = if_else(Biscuit4 == 1111, UserLocation, Biscuit4)) %>%
+  mutate(dist_to_dot_4 = abs(Bisc4_tmp - UserLocation)) %>%
+  ungroup() %>%
+  select(subject, trial_numeric, distance_to_ghost, last_away, 
+         away_choice, trial_time, TrialType, dist_to_dot_4) %>%
+  mutate(EVENT = 1)
+
+# get hold out trials #
+set.seed(56)
+hold_out_trials <- sample(unique(sub_df$trial_numeric), 20)
+
+# create the survival dataframe
+sub_cox_df <- sub_df %>%
+  group_by(trial_numeric) %>%
+  filter(away_choice == last_away & away_choice != 0) %>%
+  filter(trial_time == last(trial_time)) %>%
+  mutate(Time = trial_time) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, Time, event, EVENT) %>%
+  filter(Time > 0) %>% # get rid of trials where they chose to leave from the moment they started moving
+  filter(!trial_numeric %in% hold_out_trials)
+
+# created longitudinal data frame #
+all_trials_long_sub_df <- sub_df %>%
+  group_by(trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  filter(trial_time <= max(turnaround_time)) %>%
+  mutate(Time = last(trial_time)) %>%
+  ungroup() 
+
+# exclude hold out subjects #  
+trian_sub_long_df <-  all_trials_long_sub_df %>%
+  filter(trial_numeric %in% sub_cox_df$trial_numeric)
+
+test_long_sub_df <-  all_trials_long_sub_df %>%
+  filter(trial_numeric %in% hold_out_trials) %>%
+  filter(Time > 0)
+
+### Fit Models ###
+
+# longitudinal model #
+MixedModelFit2 <- lme(distance_to_ghost ~ trial_time, data = trian_sub_long_df, random = ~trial_time | trial_numeric)
+summary(MixedModelFit2)
+
+# survival model #
+CoxFit <- coxph(Surv(Time, EVENT) ~ 1, data = sub_cox_df)
+
+# joint model #
+JMFit1 <- jm(CoxFit, MixedModelFit2, time_var = "trial_time", data_Surv = sub_cox_df, n_burnin = 1000, n_iter = 30000, n_chains =8)
+summary(JMFit1)
+
+### traceplot ###
+traceplot(JMFit1)
+
+### densplot ###
+densplot(JMFit1)
+
+### cumuplot ###
+cumuplot(JMFit1)
+
+### gelman_diag ###
+gelman_diag(JMFit1)
+
+### AUC and ROC ###
+tvAUC(JMFit1, test_long_sub_df, Tstart = .5, Thoriz = 1.2, idVar = 'trial_numeric')
+
+roc <- tvROC(JMFit1, newdata = test_long_sub_df, Tstart = .5, Thoriz = 1.2, idVar = 'trial_numeric')
+plot(roc) 
+
+### Calibration Plot ###
+calibration_plot(JMFit1, newdata = test_long_sub_df, Tstart = .5, Thoriz = 1.2, idVar = 'trial_numeric')
+
+calibration_metrics(JMFit1, newdata = test_long_sub_df, Tstart = .5, Dt = .7)
+
+### Brier Scores ###
+tvBrier(JMFit1, newdata = test_long_sub_df, Tstart = .5, Dt = .7)
+
+tvBrier(JMFit1, newdata = test_long_sub_df, Tstart = .5, Dt = .7, integrated = T)
+
+### Held Out Trials ###
+
+test_trials <- sort(sample(hold_out_trials, 3))
+
+test_three_trials <- test_long_sub_df %>% 
+  filter(trial_numeric %in% test_trials) %>%
+  filter(trial_time < .5) %>%
+  select(-Time, -EVENT)
+
+
+trial_1 <- test_long_sub_df %>% filter(trial_numeric == test_trials[1]) %>% filter(trial_time < .5)
+trial_2 <- test_long_sub_df %>% filter(trial_numeric == test_trials[2]) %>% filter(trial_time < .5)
+trial_3 <- test_long_sub_df %>% filter(trial_numeric == test_trials[3]) %>% filter(trial_time < .5)
+
+test_three_preds <- predict(JMFit1, 
+          newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+          idVar = "trial_numeric", times = seq(0, 2.5, .05))
+
+
+
+ggthemr("solarized")
+ggplot() +
+  geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5) +
+  geom_point(data = test_three_preds, aes(x = trial_time, y = pred_CIF, color = factor(trial_numeric))) +
+  # geom_ribbon(data = test_three_preds, aes(x = trial_time, ymin = low_CIF, ymax = upp_CIF, fill = factor(trial_numeric)), alpha = .5) +
+  geom_vline(xintercept = test_long_sub_df %>% filter(trial_numeric == test_trials[1]) %>% pull(Time) %>% unique()) +
+  geom_vline(xintercept = test_long_sub_df %>% filter(trial_numeric == test_trials[2]) %>% pull(Time) %>% unique(),
+             color = "#E68D81") +
+  geom_vline(xintercept = test_long_sub_df %>% filter(trial_numeric == test_trials[3]) %>% pull(Time) %>% unique()
+             , color = "#5EB7AB") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(0, 1) + xlim(0, 2.5) +
+  ggtitle("Prediction on three held out trials") +
+  labs(x = "Time", y = "Probability of Turning Around")
+
+```
+
+
+```{r joint-modeling-threat-only}
+
+
+### Prep Data 
+
+# filter to single subject and reset time to be from when they started moving #
+sub_df <- pilot_game_data_distance %>%
+  filter(subject == "Subject_38") %>%
+  filter(Direction != "Still") %>%
+  # filter(dots_eaten != 0) %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time = trial_time - first(trial_time)) %>%
+  mutate(final_reward = if_else(reward_groups >2, "big", "small")) %>%
+  mutate(Bisc4_tmp = if_else(Biscuit4 == 1111, UserLocation, Biscuit4)) %>%
+  mutate(dist_to_dot_4 = abs(Bisc4_tmp - UserLocation)) %>%
+  mutate(Bisc4_tmp = if_else(Biscuit4 == 1111, UserLocation, Biscuit4)) %>%
+  mutate(dist_to_dot_4 = abs(Bisc4_tmp - UserLocation)) %>%
+  mutate(last_big_reward = if_else(reward_groups %in% c(3, 4), Biscuit5, if_else(reward_groups == 2, Biscuit4, Biscuit3))) %>%
+  mutate(dist_last_big_rtmp = if_else(last_big_reward == 1111, UserLocation, last_big_reward)) %>%
+  mutate(dist_last_big_r = abs(dist_last_big_rtmp - UserLocation)) %>%
+  ungroup() %>%
+  select(subject, trial_numeric, distance_to_ghost, last_away, final_reward, points_remaining, dist_last_big_r,
+         away_choice, trial_time, TrialType, dist_to_dot_4) %>%
+  mutate(EVENT = 1)
+
+# get hold out trials #
+set.seed(56)
+hold_out_trials <- sample(unique(sub_df$trial_numeric), 20)
+
+# create the survival dataframe
+sub_cox_df <- sub_df %>%
+  group_by(trial_numeric) %>%
+  filter(away_choice == last_away & away_choice != 0) %>%
+  filter(trial_time == last(trial_time)) %>%
+  mutate(Time = trial_time) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, Time, event, EVENT) %>%
+  filter(Time > 0) %>% # get rid of trials where they chose to leave from the moment they started moving
+  filter(!trial_numeric %in% hold_out_trials)
+
+# created longitudinal data frame #
+all_trials_long_sub_df <- sub_df %>%
+  group_by(trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  filter(trial_time <= max(turnaround_time)) %>%
+  mutate(Time = last(trial_time)) %>%
+  ungroup() 
+
+# exclude hold out subjects #  
+trian_sub_long_df <-  all_trials_long_sub_df %>%
+  filter(trial_numeric %in% sub_cox_df$trial_numeric)
+
+test_long_sub_df <-  all_trials_long_sub_df %>%
+  filter(trial_numeric %in% hold_out_trials) %>%
+  filter(Time > 0)
+
+### Fit Models ###
+
+# longitudinal model #
+distGhost_lme <- lme(distance_to_ghost ~ trial_time, data = trian_sub_long_df, random = ~trial_time | trial_numeric)
+lastR_lme <- lme(dist_last_big_r ~ trial_time, data = trian_sub_long_df, random = ~trial_time | trial_numeric)
+
+# survival model #
+CoxFit <- coxph(Surv(Time, EVENT) ~ 1, data = sub_cox_df)
+
+# joint model #
+JMFit1 <- jm(CoxFit, list(distGhost_lme, lastR_lme), time_var = "trial_time", data_Surv = sub_cox_df, n_burnin = 1000, n_iter = 30000, n_chains =8)
+summary(JMFit1)
+
+### traceplot ###
+traceplot(JMFit1)
+
+### densplot ###
+# densplot(JMFit1)
+
+### cumuplot ###
+# cumuplot(JMFit1)
+
+### gelman_diag ###
+# gelman_diag(JMFit1)
+
+### AUC and ROC ###
+tvAUC(JMFit1, test_long_sub_df, Tstart = .5, Thoriz = 1.2, idVar = 'trial_numeric')
+
+roc <- tvROC(JMFit1, newdata = test_long_sub_df, Tstart = .5, Thoriz = 1.2, idVar = 'trial_numeric')
+plot(roc) 
+
+### Calibration Plot ###
+calibration_plot(JMFit1, newdata = test_long_sub_df, Tstart = .5, Thoriz = 1.2, idVar = 'trial_numeric')
+
+calibration_metrics(JMFit1, newdata = test_long_sub_df, Tstart = .5, Dt = .7)
+
+### Brier Scores ###
+tvBrier(JMFit1, newdata = test_long_sub_df, Tstart = .5, Dt = .7)
+
+tvBrier(JMFit1, newdata = test_long_sub_df, Tstart = .5, Dt = .7, integrated = T)
+
+### Held Out Trials ###
+
+test_trials <- sort(sample(hold_out_trials, 3))
+
+test_three_trials <- test_long_sub_df %>% 
+  filter(trial_numeric %in% test_trials) %>%
+  filter(trial_time < .5) %>%
+  select(-Time, -EVENT)
+
+
+trial_1 <- test_long_sub_df %>% filter(trial_numeric == test_trials[1]) %>% filter(trial_time < .5)
+trial_2 <- test_long_sub_df %>% filter(trial_numeric == test_trials[2]) %>% filter(trial_time < .5)
+trial_3 <- test_long_sub_df %>% filter(trial_numeric == test_trials[3]) %>% filter(trial_time < .5)
+
+test_three_preds <- predict(JMFit1, 
+          newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+          idVar = "trial_numeric", times = seq(0, 2.5, .05))
+
+
+
+ggthemr("solarized")
+ggplot() +
+  geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5) +
+  geom_point(data = test_three_preds, aes(x = trial_time, y = pred_CIF, color = factor(trial_numeric))) +
+  # geom_ribbon(data = test_three_preds, aes(x = trial_time, ymin = low_CIF, ymax = upp_CIF, fill = factor(trial_numeric)), alpha = .5) +
+  geom_vline(xintercept = test_long_sub_df %>% filter(trial_numeric == test_trials[1]) %>% pull(Time) %>% unique()) +
+  geom_vline(xintercept = test_long_sub_df %>% filter(trial_numeric == test_trials[2]) %>% pull(Time) %>% unique(),
+             color = "#E68D81") +
+  geom_vline(xintercept = test_long_sub_df %>% filter(trial_numeric == test_trials[3]) %>% pull(Time) %>% unique()
+             , color = "#5EB7AB") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(0, 1) + xlim(0, 2.5) +
+  ggtitle("Prediction on three held out trials") +
+  labs(x = "Time", y = "Probability of Turning Around")
+
+```
+

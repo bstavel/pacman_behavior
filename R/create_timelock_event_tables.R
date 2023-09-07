@@ -41,7 +41,7 @@ create_last_away_events <- function(df, fname) {
     filter(trial_length <= 10) %>%
     filter(trial_numeric != 0) %>%
     mutate(neural_trial_numeric = trial_numeric - 1) %>%
-    filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
     filter(trial_numeric < 100) %>%
     pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
     ggplot(., aes(x = trial_time, y = location, color = unit)) +
@@ -59,7 +59,7 @@ create_last_away_events <- function(df, fname) {
     filter(trial_length <= 10) %>%
     filter(trial_numeric != 0) %>%
     mutate(neural_trial_numeric = trial_numeric - 1) %>%
-    filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
     filter(trial_numeric > 100 & trial_numeric <=200) %>%
     pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
     ggplot(., aes(x = trial_time, y = location, color = unit)) +
@@ -77,7 +77,7 @@ create_last_away_events <- function(df, fname) {
     filter(trial_length <= 10) %>%
     filter(trial_numeric != 0) %>%
     mutate(neural_trial_numeric = trial_numeric - 1) %>%
-    filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
     filter(trial_numeric > 200) %>%
     pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
     ggplot(., aes(x = trial_time, y = location, color = unit)) +
@@ -173,7 +173,7 @@ create_died_events <- function(df, fname) {
                                      if_else(starting_side == "Left" & as.numeric(GhostLocation < 100), 1, 0))) %>%
     mutate(ghost_cross = sum(ghost_cross_tmp)) %>%
     mutate(Chase = any(Chase)) %>%
-    mutate(chase_trial = if_else((Chase == TRUE | Attack == TRUE) & died == 0 & ghost_cross > 3, 1, 0)) %>%
+    mutate(chase_trial = if_else(TrialType <= 16 & (Chase == TRUE | Attack == TRUE) & died == 0 & ghost_cross > 3, 1, 0)) %>%
     select(neural_trial_numeric, TrialType, died, Attack, chase_trial, trial_length) %>%
     ungroup() %>%
     distinct()
@@ -195,7 +195,7 @@ create_died_events <- function(df, fname) {
     filter(Trial != "ITI") %>%
     mutate(neural_trial_numeric = trial_numeric - 1) %>%
     filter(neural_trial_numeric %in% chase_trials) %>%
-    filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
     pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
     ggplot(., aes(x = trial_time, y = location, color = unit)) +
     geom_hline(yintercept = 170, color = "black") +
@@ -210,7 +210,7 @@ create_died_events <- function(df, fname) {
     filter(Trial != "ITI") %>%
     mutate(neural_trial_numeric = trial_numeric - 1) %>%
     filter(neural_trial_numeric %in% attack_trials) %>%
-    filter(!(neural_trial_numeric %in% bad_trials$neural_trial_numeric)) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
     pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
     ggplot(., aes(x = trial_time, y = location, color = unit)) +
     geom_hline(yintercept = 170, color = "black") +

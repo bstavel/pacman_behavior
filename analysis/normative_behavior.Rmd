@@ -322,12 +322,12 @@ In regards to last_away, the question is what drives how close people are willin
 
 Interestingly, when I compare excluding/including the distance for some subjects the average distance stays similar and for some subjects it differs wildly. I try to explore why this is below. 
 
-```{r dsitance-with-or-without-chaseattack-trials}
+```{r dsitance-with-or-without-chaseattack-trials, fig.width=10, fig.height=5, warning = F}
 
 clean_distance_bob_data <- pilot_game_data_distance %>%
   filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
-  mutate(dist_ghost_bob = distance_to_ghost) %>%
-  select(subject, trial_numeric, dist_ghost_bob)
+  mutate(dist_ghost_nobob = distance_to_ghost) %>%
+  select(subject, trial_numeric, dist_ghost_nobob)
   
 
 clean_distance_data <- pilot_game_data_distance %>%
@@ -340,8 +340,8 @@ subs <- sample(clean_distance_data$subject, 10)
 
 distance_compare %>%
   filter(subject %in% subs) %>%
-  pivot_longer(cols = c(distance_to_ghost, dist_ghost_bob), values_to = "distance", names_to = "type") %>%
-  ggplot(., aes(x = subject, y = distance, fill = type )) +
+  pivot_longer(cols = c(distance_to_ghost, dist_ghost_nobob), values_to = "last_away", names_to = "type") %>%
+  ggplot(., aes(x = subject, y = last_away, fill = type )) +
   geom_boxplot(notch = T) +
   theme(panel.background = element_rect(fill = "white"))
 

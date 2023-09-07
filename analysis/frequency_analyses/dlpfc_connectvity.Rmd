@@ -1,0 +1,1467 @@
+---
+title: "mfg_connectivity_results"
+output:
+  html_document:
+    code_folding: hide
+date: "2023-08-17"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(grid)
+library(gtable)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(scales)
+library(ggthemr)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 16
+# registerDoParallel(nCores)
+
+
+
+```
+
+## dlPFC ~ Hippocampus
+
+```{r count-hc}
+
+
+# LL10 hc #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL10_correlation_wilcox_test_dlpfc_hc.csv"),  
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(results$pval_fdr < .05)
+
+# LL12 hc #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+# LL13 hc #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL13_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# BJH021 hc #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# BJH025 hc #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# SLCH002 hc #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+
+# BJH016 hc #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+print("Total")
+table(hc_counter)
+```
+
+## dlPFC ~ Amyg
+
+```{r count-amyg}
+
+
+# LL10 amyg #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL10_correlation_wilcox_test_dlpfc_amyg.csv"),  
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(results$pval_fdr < .05)
+
+# LL12 amyg #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_wilcox_test_dlpfc_amyg.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, results$pval_fdr < .05)
+
+# LL13 amyg #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL13_correlation_wilcox_test_dlpfc_amyg.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, results$pval_fdr < .05)
+
+
+# BJH021 amyg #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_wilcox_test_dlpfc_amyg.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, results$pval_fdr < .05)
+
+
+# BJH025 amyg #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_wilcox_test_dlpfc_amyg.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, results$pval_fdr < .05)
+
+
+# SLCH002 amyg #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_wilcox_test_dlpfc_amyg.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, results$pval_fdr < .05)
+
+
+
+# BJH016 amyg #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_wilcox_test_dlpfc_amyg.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, results$pval_fdr < .05)
+
+print("Total")
+table(amyg_counter)
+```
+
+## dlPFC ~ OFC
+
+```{r count-ofc}
+
+
+# LL10 ofc #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL10_correlation_wilcox_test_dlpfc_ofc.csv"),  
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(results$pval_fdr < .05)
+
+# LL12 ofc #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_wilcox_test_dlpfc_ofc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, results$pval_fdr < .05)
+
+# LL13 ofc #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL13_correlation_wilcox_test_dlpfc_ofc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, results$pval_fdr < .05)
+
+
+# BJH021 ofc #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_wilcox_test_dlpfc_ofc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, results$pval_fdr < .05)
+
+
+# BJH025 ofc #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_wilcox_test_dlpfc_ofc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, results$pval_fdr < .05)
+
+
+# SLCH002 ofc #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_wilcox_test_dlpfc_ofc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, results$pval_fdr < .05)
+
+
+
+# BJH016 ofc #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_wilcox_test_dlpfc_ofc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, results$pval_fdr < .05)
+
+print("Total")
+table(ofc_counter)
+
+```
+
+## dlPFC ~ Cing
+
+```{r count-cing}
+
+
+# LL10 cing #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL10_correlation_wilcox_test_dlpfc_cing.csv"),  
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(results$pval_fdr < .05)
+
+# LL12 cing #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_wilcox_test_dlpfc_cing.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, results$pval_fdr < .05)
+
+# LL13 cing #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL13_correlation_wilcox_test_dlpfc_cing.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, results$pval_fdr < .05)
+
+
+# BJH021 cing #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_wilcox_test_dlpfc_cing.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, results$pval_fdr < .05)
+
+
+# BJH025 cing #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_wilcox_test_dlpfc_cing.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, results$pval_fdr < .05)
+
+
+# SLCH002 cing #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_wilcox_test_dlpfc_cing.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, results$pval_fdr < .05)
+
+
+
+# BJH016 cing #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_wilcox_test_dlpfc_cing.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, results$pval_fdr < .05)
+
+print("Total")
+table(cing_counter)
+
+```
+
+## dlPFC ~ Insula
+
+```{r count-insula}
+
+
+
+# LL12 insula #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_wilcox_test_dlpfc_insula.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(results$pval_fdr < .05)
+
+
+# BJH021 insula #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_wilcox_test_dlpfc_insula.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, results$pval_fdr < .05)
+
+
+# BJH025 insula #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_wilcox_test_dlpfc_insula.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, results$pval_fdr < .05)
+
+
+# SLCH002 insula #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_wilcox_test_dlpfc_insula.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, results$pval_fdr < .05)
+
+
+
+# BJH016 insula #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_wilcox_test_dlpfc_insula.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, results$pval_fdr < .05)
+
+print("Total")
+table(insula_counter)
+
+```
+
+```{r combine}
+
+
+
+```
+
+
+## Visualization 
+
+```{r load-theta-data}
+
+## Load Region specific csvs ## 
+hc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "theta_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "theta_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "theta_behavior_insula_all_subs_onset.csv"))
+
+## Bind together ##
+theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
+                             amyg_onset_df %>% mutate(region = "amyg"),
+                             ofc_onset_df %>% mutate(region = "ofc"),
+                             cing_onset_df %>% mutate(region = "cing"),
+                             dlpfc_onset_df %>% mutate(region = "dlpfc"),
+                             insula_onset_df %>% mutate(region = "insula"))
+
+# Only First Second
+theta_onset_df <- theta_onset_df %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!(subject == "LL13" & elec_short == "LH1-LH2"))
+
+```
+
+
+```{r dlpfc}
+
+theta_onset_df %>%
+  filter(trial_time < 2) %>%
+  filter(region == "dlpfc") %>%
+  group_by(subject, elec_short, trial_time) %>%
+  mutate(theta_elec_mean = mean(theta)) %>%
+  select(-theta, -trial_numeric) %>%
+  distinct() %>%
+  group_by(subject, trial_time) %>%
+  mutate(theta_sub_mean = mean(theta_elec_mean)) %>%
+  select(-theta_elec_mean, -elec_short) %>%
+  distinct() %>% 
+  group_by(trial_time) %>%
+  mutate(theta_mean = mean(theta_sub_mean)) %>%
+  ggplot(., aes(x = trial_time, y = theta_mean)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = 1, color = "black", linetype = "dashed") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Average MFG Timecourse")
+
+theta_onset_df %>%
+  filter(trial_time < 2) %>%
+  filter(region %in% c('hc', "dlpfc")) %>%
+  group_by(subject, elec_short, trial_time, region) %>%
+  mutate(theta_elec_mean = mean(theta)) %>%
+  select(-theta, -trial_numeric) %>%
+  distinct() %>%
+  group_by(subject, trial_time, region) %>%
+  mutate(theta_sub_mean = mean(theta_elec_mean)) %>%
+  select(-theta_elec_mean, -elec_short) %>%
+  distinct() %>% 
+  group_by(trial_time, region) %>%
+  mutate(theta_mean = mean(theta_sub_mean)) %>%
+  ggplot(., aes(x = trial_time, y = theta_sub_mean, color = region)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = 1, color = "black", linetype = "dashed") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y") +
+  ggtitle("Average MFG + HC Timecourse")
+
+```
+
+## Correlation Strengths
+
+
+```{r hc-mean-correl, eval = F}
+
+sub_list <- c("LL10", "LL12", "LL13", "BJH021", "BJH025", "SLCH002", "BJH016")
+dlpfc_correlation <- tibble(subject = character(), elec1 = character(), elec2 = character(), mean_correl = numeric())
+for(sub in sub_list){
+
+  sub_df <- theta_onset_df %>% filter(subject == sub)
+  
+  dlpfc_elecs <- sub_df %>%
+    filter(region == "dlpfc") %>%
+    pull(elec_short) %>%
+    unique()
+  
+  hc_elecs <- sub_df %>%
+    filter(region == "hc") %>%
+    pull(elec_short) %>%
+    unique()
+    
+  for(elec1 in dlpfc_elecs){
+    for(elec2 in hc_elecs){
+      
+      true_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+      # null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+      #                              "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+      
+      dlpfc_correlation <- rbind(dlpfc_correlation, c(sub, elec1, elec2, mean(true_cor_df$x)))
+    
+    }
+  
+  }
+
+}
+
+write_csv(dlpfc_correlation, path(here(), "results", "cor_analysis", "mean_dlpfc_hc_correlation.csv"))
+dlpfc_correlation <- read_csv(path(here(), "results", "cor_analysis", "mean_dlpfc_hc_correlation.csv"))
+
+```
+
+```{r amyg-mean-correl, eval = F}
+
+sub_list <- c("LL10", "LL12", "LL13", "BJH021", "BJH025", "SLCH002", "BJH016")
+amyg_correlation <- tibble(subject = character(), elec1 = character(), elec2 = character(), mean_correl = numeric())
+for(sub in sub_list){
+
+  sub_df <- theta_onset_df %>% filter(subject == sub)
+  
+  dlpfc_elecs <- sub_df %>%
+    filter(region == "dlpfc") %>%
+    pull(elec_short) %>%
+    unique()
+  
+  amyg_elecs <- sub_df %>%
+    filter(region == "amyg") %>%
+    pull(elec_short) %>%
+    unique()
+    
+  for(elec1 in dlpfc_elecs){
+    for(elec2 in amyg_elecs){
+      
+      true_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+      # null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+      #                              "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+      
+      amyg_correlation <- rbind(amyg_correlation, c(sub, elec1, elec2, mean(true_cor_df$x)))
+    
+    }
+  
+  }
+
+}
+
+write_csv(amyg_correlation, path(here(), "results", "cor_analysis", "mean_dlpfc_amyg_correlation.csv"))
+```
+
+```{r ofc-mean-correl, eval =F}
+
+sub_list <- c("LL10", "LL12", "LL13", "BJH021", "BJH025", "SLCH002", "BJH016")
+ofc_correlation <- tibble(subject = character(), elec1 = character(), elec2 = character(), mean_correl = numeric())
+for(sub in sub_list){
+
+  sub_df <- theta_onset_df %>% filter(subject == sub)
+  
+  dlpfc_elecs <- sub_df %>%
+    filter(region == "dlpfc") %>%
+    pull(elec_short) %>%
+    unique()
+  
+  ofc_elecs <- sub_df %>%
+    filter(region == "ofc") %>%
+    pull(elec_short) %>%
+    unique()
+    
+  for(elec1 in dlpfc_elecs){
+    for(elec2 in ofc_elecs){
+      
+      true_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+      # null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+      #                              "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+      
+      ofc_correlation <- rbind(ofc_correlation, c(sub, elec1, elec2, mean(true_cor_df$x)))
+    
+    }
+  
+  }
+
+}
+
+write_csv(ofc_correlation, path(here(), "results", "cor_analysis", "mean_dlpfc_ofc_correlation.csv"))
+```
+
+```{r cing-mean-correl, eval = F}
+
+sub_list <- c("LL10", "LL12", "LL13", "BJH021", "BJH025", "SLCH002", "BJH016")
+cing_correlation <- tibble(subject = character(), elec1 = character(), elec2 = character(), mean_correl = numeric())
+for(sub in sub_list){
+
+  sub_df <- theta_onset_df %>% filter(subject == sub)
+  
+  dlpfc_elecs <- sub_df %>%
+    filter(region == "dlpfc") %>%
+    pull(elec_short) %>%
+    unique()
+  
+  cing_elecs <- sub_df %>%
+    filter(region == "cing") %>%
+    pull(elec_short) %>%
+    unique()
+    
+  for(elec1 in dlpfc_elecs){
+    for(elec2 in cing_elecs){
+      
+      if(sub == "SLCH002" & elec2 == "B4-B5"){
+        next 
+      }
+      
+      true_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+      # null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+      #                              "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+      
+      cing_correlation <- rbind(cing_correlation, c(sub, elec1, elec2, mean(true_cor_df$x)))
+    
+    }
+  
+  }
+
+}
+
+write_csv(cing_correlation, path(here(), "results", "cor_analysis", "mean_dlpfc_cing_correlation.csv"))
+
+```
+
+```{r insula-mean-correl, eval = F}
+
+sub_list <- c("LL10", "LL12", "LL13", "BJH021", "BJH025", "SLCH002", "BJH016")
+insula_correlation <- tibble(subject = character(), elec1 = character(), elec2 = character(), mean_correl = numeric())
+for(sub in sub_list){
+
+  sub_df <- theta_onset_df %>% filter(subject == sub)
+  
+  dlpfc_elecs <- sub_df %>%
+    filter(region == "dlpfc") %>%
+    pull(elec_short) %>%
+    unique()
+  
+  insula_elecs <- sub_df %>%
+    filter(region == "insula") %>%
+    pull(elec_short) %>%
+    unique()
+    
+  for(elec1 in dlpfc_elecs){
+    for(elec2 in insula_elecs){
+      
+      true_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
+      # null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+      #                              "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
+      
+      insula_correlation <- rbind(insula_correlation, c(sub, elec1, elec2, mean(true_cor_df$x)))
+    
+    }
+  
+  }
+
+}
+
+write_csv(insula_correlation, path(here(), "results", "cor_analysis", "mean_dlpfc_insula_correlation.csv"))
+```
+
+
+
+```{r read-in-csvs}
+# load #
+hc_correlation <- read_csv(path(here(), "results", "cor_analysis", "mean_dlpfc_hc_correlation.csv"))
+cing_correlation <- read_csv(path(here(), "results", "cor_analysis", "mean_dlpfc_cing_correlation.csv"))
+amyg_correlation <- read_csv(path(here(), "results", "cor_analysis", "mean_dlpfc_amyg_correlation.csv"))
+ofc_correlation <- read_csv(path(here(), "results", "cor_analysis", "mean_dlpfc_ofc_correlation.csv"))
+insula_correlation <- read_csv(path(here(), "results", "cor_analysis", "mean_dlpfc_insula_correlation.csv"))
+
+# rename cols #
+colnames(hc_correlation) <- c("subject", "elec1", "elec2", "correlation")
+colnames(cing_correlation) <- c("subject", "elec1", "elec2", "correlation")
+colnames(amyg_correlation) <- c("subject", "elec1", "elec2", "correlation")
+colnames(ofc_correlation) <- c("subject", "elec1", "elec2", "correlation")
+colnames(insula_correlation) <- c("subject", "elec1", "elec2", "correlation")
+
+# add roi info #
+hc_correlation <- hc_correlation %>%
+  mutate(correlation = as.numeric(correlation)) %>%
+  mutate(region = "hc")
+cing_correlation <- cing_correlation %>%
+  mutate(correlation = as.numeric(correlation))%>%
+  mutate(region = "cing")
+amyg_correlation <- amyg_correlation %>%
+  mutate(correlation = as.numeric(correlation))%>%
+  mutate(region = "amyg")
+ofc_correlation <- ofc_correlation %>%
+  mutate(correlation = as.numeric(correlation))%>%
+  mutate(region = "ofc")
+insula_correlation <- insula_correlation %>%
+  mutate(correlation = as.numeric(correlation))%>%
+  mutate(region = "insula")
+
+```
+ OFC has way less correlations
+
+```{r density-plots, fig.width= 10, fig.height=8}
+
+
+dlpfc_correlations <- rbind(amyg_correlation, cing_correlation, hc_correlation, insula_correlation, ofc_correlation)
+
+dlpfc_correlations %>%
+  ggplot(., aes(x = correlation, fill = region)) +
+  geom_density(color = "black", alpha = .7) +
+  # geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Average ROI Connectivity w/ MFG.") +
+  scale_fill_manual(values = c("#F97791", "#CC0029", "#FFD680",  "#3D99BA", "#876194")) +
+  scale_x_continuous(breaks = c(0, .2, .4))
+
+dlpfc_correlations %>%
+  filter(region == c("ofc")) %>%
+  ggplot(., aes(x = correlation, fill = region)) +
+  geom_density(color = "black", alpha = .7) +
+  # geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Average ROI Connectivity w/ MFG.") +
+  scale_fill_manual(values = c("#876194")) +
+  scale_x_continuous(breaks = c(0, .2, .4))
+
+dlpfc_correlations %>%
+  filter(region == c("insula")) %>%
+  ggplot(., aes(x = correlation, fill = region)) +
+  geom_density(color = "black", alpha = .7) +
+  # geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Average ROI Connectivity w/ MFG.") +
+  scale_fill_manual(values = c("#3D99BA")) +
+  scale_x_continuous(breaks = c(0, .2, .4))
+
+dlpfc_correlations %>%
+  filter(region == c("hc")) %>%
+  ggplot(., aes(x = correlation, fill = region)) +
+  geom_density(color = "black", alpha = .7) +
+  # geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Average ROI Connectivity w/ MFG.") +
+  scale_fill_manual(values = c("#FFD680")) +
+  scale_x_continuous(breaks = c(0, .2, .4))
+
+dlpfc_correlations %>%
+  filter(region == c("cing")) %>%
+  ggplot(., aes(x = correlation, fill = region)) +
+  geom_density(color = "black", alpha = .7) +
+  # geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Average ROI Connectivity w/ MFG.") +
+  scale_fill_manual(values = c("#CC0029")) +
+  scale_x_continuous(breaks = c(0, .2, .4))
+
+dlpfc_correlations %>%
+  filter(region == "amyg") %>%
+  ggplot(., aes(x = correlation, fill = region)) +
+  geom_density(color = "black", alpha = .7) +
+  # geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Average ROI Connectivity w/ MFG.") +
+  scale_fill_manual(values = c("#F97791")) +
+  scale_x_continuous(breaks = c(0, .2, .4))
+```
+
+
+```{r subject-connect, fig.width= 8, fig.height=18}
+dlpfc_correlations %>%
+  # filter(region == c("cing", "insula", "dlpfc")) %>%
+  ggplot(., aes(x = correlation, fill = region)) +
+  geom_density(color = "black", alpha = .5) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Average ROI Connectivity w/ MFG") +
+  scale_fill_manual(values = c("#F97791", "#CC0029", "#FFD680",  "#3D99BA", "#876194")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 1)
+
+
+
+```
+
+
+```{r hc-dlpfc-connectivity}
+# load data #
+hc_dlpfc_onset <- read_csv(path(here(), "results", "cor_analysis", "mean_dlpfc_hc_correlation.csv"))
+hc_dlpfc_turnaround <- read_csv(path(here(), "results", "cor_analysis", "mean_hc_dlpfc_correlation.csv"))
+
+# fix names #
+colnames(hc_dlpfc_onset) <- c("subject", "elec1", "elec2", "correlation")
+
+# filter to SLCH002, with biggest difference
+hc_dlpfc_onset <- hc_dlpfc_onset %>% filter(subject == "SLCH002") %>% rename(onset = correlation, elec1 = elec2, elec2 = elec1)
+hc_dlpfc_turnaround <- hc_dlpfc_turnaround %>% filter(subject == "SLCH002") %>% rename(turnaround = correlation)
+
+
+# merge
+hc_dlpfc_df <- inner_join(hc_dlpfc_turnaround, hc_dlpfc_onset)
+  
+```
+
+```{r}
+
+hc_dlpfc_df %>%
+  pivot_longer(cols = c(onset, turnaround), names_to = "case", values_to = "correlation") %>%
+  ggplot(., aes(x = correlation, fill = case)) +
+  geom_density(color = "black") +
+  facet_wrap(~case) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+
+
+```{r}
+
+hc_dlpfc_df %>%
+  ggplot(., aes(x = turnaround, y = onset)) +
+  geom_abline(slope = 1, intercept = 0, color = "grey") +
+  geom_vline(xintercept = 0.05, color = "black", linetype = "dashed") +
+  geom_hline(yintercept = 0.05, color = "black", linetype = "dashed") +
+  geom_point() +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(-.05, .18) + xlim(-0.05, .18)
+
+```
+
+## High Turnaround, Low Onset
+
+```{r onset-average-responses}
+
+# look at example elec pair where turnaround average cor was .16 and onset average cor was .05
+
+ex_hc_elec <- hc_dlpfc_df %>%
+  filter(turnaround > .15) %>%
+  pull(elec1)
+
+ex_dlpfc_elec <- hc_dlpfc_df %>%
+  filter(turnaround > .15) %>%
+  pull(elec2)
+
+
+theta_onset_ex <- theta_onset_df %>%
+  filter(subject == "SLCH002" & elec_short %in% c(ex_hc_elec, ex_dlpfc_elec)) %>%
+  group_by(elec_short, trial_time) %>%
+  mutate(mean_theta = mean(theta))
+
+mean_hc_theta <- theta_onset_ex %>% filter(region == "hc") %>% pull(mean_theta)
+mean_dlpfc_theta <- theta_onset_ex %>% filter(region == "dlpfc") %>% pull(mean_theta)
+
+theta_onset_ex %>%
+  filter(trial_time >= 0 & trial_time < 1) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle(paste0("Average Theta Correlation at Onset: ", round(cor(mean_hc_theta, mean_dlpfc_theta), 3)))
+
+
+
+```
+
+
+```{r turnaround-average-responses}
+
+# load turnaround data
+
+hc_turnaround_df <- read_csv(path(here(), "munge", "theta_hc_all_subs_turnaround.csv"))
+dlpfc_turnaround_df <- read_csv(path(here(), "munge", "theta_dlpfc_all_subs_turnaround.csv"))
+
+## Bind together ##
+theta_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
+                  dlpfc_turnaround_df %>% mutate(region = "dlpfc"))
+
+theta_turnaround_df <- theta_turnaround_df %>% 
+  mutate(trial_time = trial_time -1) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  mutate(elec_short = gsub("_.*", "", electrode))
+
+
+# look at example elec pair where turnaround average cor was .16 and onset average cor was .05
+
+ex_hc_elec <- hc_dlpfc_df %>%
+  filter(turnaround > .15) %>%
+  pull(elec1)
+
+ex_dlpfc_elec <- hc_dlpfc_df %>%
+  filter(turnaround > .15) %>%
+  pull(elec2)
+
+
+theta_turn_ex <- theta_turnaround_df %>%
+  filter(subject == "SLCH002" & elec_short %in% c(ex_hc_elec, ex_dlpfc_elec)) %>%
+  group_by(elec_short, trial_time) %>%
+  mutate(mean_theta = mean(theta))
+
+mean_hc_theta <- theta_turn_ex %>% filter(region == "hc") %>% pull(mean_theta)
+mean_dlpfc_theta <- theta_turn_ex %>% filter(region == "dlpfc") %>% pull(mean_theta)
+
+theta_turn_ex %>%
+  # filter(trial_time >= 0 & trial_time < 1) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle(paste0("Average Theta Correlation at Turnaround: ", round(cor(mean_hc_theta, mean_dlpfc_theta), 3)))
+
+
+
+```
+
+```{r, warning = F}
+# read in trial by trial correlation data for the example electrodes
+ex_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste("SLCH002", ex_dlpfc_elec, "to", ex_hc_elec, "true_cor.csv", sep = "_")))
+
+
+null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste("SLCH002", ex_dlpfc_elec, "to", ex_hc_elec, "null_cor.csv", sep = "_")))
+
+
+ex_cor_df %>%
+  ggplot(., aes(x = x, fill = "ex")) +
+  # geom_density(color = "black") +
+  geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1) +
+  ggtitle("Correlations at Onset")
+
+ggplot() +
+  geom_density(data = null_cor_df, aes(x = x), color = "black", fill = "grey", alpha = .7) +
+  geom_density(data = ex_cor_df, aes(x = x, fill = "true"), color = "black", alpha = .7) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1) +
+  ggtitle("Correlations at Onset")
+
+
+ggplot() +
+  geom_histogram(data = null_cor_df, aes(x = x, y = ..density..), color = "black", fill = "grey", alpha = .8, binwidth = .05) +
+  geom_histogram(data = ex_cor_df, aes(x = x, y = ..density.., fill = "ex"), color = "black", alpha = .8, binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  xlim(-1, 1) +
+  ggtitle("Example Elec Pair True vs Null Correlations at Onset")
+
+
+```
+
+```{r, warning = F}
+# read in trial by trial correlation data for the example electrodes
+ex_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", "sfn_submission", paste("SLCH002", ex_hc_elec, "to", ex_dlpfc_elec, "true_cor.csv", sep = "_")))
+
+
+null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", "sfn_submission", paste("SLCH002", ex_hc_elec, "to", ex_dlpfc_elec, "null_cor.csv", sep = "_")))
+
+
+ex_cor_df %>%
+  ggplot(., aes(x = x, fill = "ex")) +
+  # geom_density(color = "black") +
+  geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1)  +
+  ggtitle("Correlations at Turnaround")
+
+ggplot() +
+  geom_density(data = null_cor_df, aes(x = x), color = "black", fill = "grey", alpha = .7) +
+  geom_density(data = ex_cor_df, aes(x = x, fill = "true"), color = "black", alpha = .7) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1) +
+  ggtitle("Correlations at Turnaround")
+
+
+ggplot() +
+  geom_histogram(data = null_cor_df, aes(x = x, y = ..density..), color = "black", fill = "grey", alpha = .8, binwidth = .05) +
+  geom_histogram(data = ex_cor_df, aes(x = x, y = ..density.., fill = "ex"), color = "black", alpha = .8, binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  xlim(-1, 1) +
+  ggtitle("Example Elec Pair True vs Null Correlations at Turnaround")
+
+
+```
+
+
+## Low Turnaround, Low Onset
+
+```{r onset-average-responses}
+
+# look at example elec pair where turnaround average cor was .001 and onset average cor was .03
+ex_hc_elec <- hc_dlpfc_df %>%
+  filter(turnaround < .02) %>%
+  pull(elec1)
+
+ex_dlpfc_elec <- hc_dlpfc_df %>%
+  filter(turnaround < .02) %>%
+  pull(elec2)
+
+
+
+theta_onset_ex <- theta_onset_df %>%
+  filter(subject == "SLCH002" & elec_short %in% c(ex_hc_elec, ex_dlpfc_elec)) %>%
+  group_by(elec_short, trial_time) %>%
+  mutate(mean_theta = mean(theta))
+
+mean_hc_theta <- theta_onset_ex %>% filter(region == "hc") %>% pull(mean_theta)
+mean_dlpfc_theta <- theta_onset_ex %>% filter(region == "dlpfc") %>% pull(mean_theta)
+
+theta_onset_ex %>%
+  filter(trial_time >= 0 & trial_time < 1) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle(paste0("Average Theta Correlation at Onset: ", round(cor(mean_hc_theta, mean_dlpfc_theta), 3)))
+
+
+
+```
+
+
+```{r turnaround-average-responses}
+
+theta_turn_ex <- theta_turnaround_df %>%
+  filter(subject == "SLCH002" & elec_short %in% c(ex_hc_elec, ex_dlpfc_elec)) %>%
+  group_by(elec_short, trial_time) %>%
+  mutate(mean_theta = mean(theta))
+
+mean_hc_theta <- theta_turn_ex %>% filter(region == "hc") %>% pull(mean_theta)
+mean_dlpfc_theta <- theta_turn_ex %>% filter(region == "dlpfc") %>% pull(mean_theta)
+
+theta_turn_ex %>%
+  # filter(trial_time >= 0 & trial_time < 1) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle(paste0("Average Theta Correlation at Turnaround: ", round(cor(mean_hc_theta, mean_dlpfc_theta), 3)))
+
+
+
+```
+
+```{r, warning = F}
+# read in trial by trial correlation data for the example electrodes
+ex_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste("SLCH002", ex_dlpfc_elec, "to", ex_hc_elec, "true_cor.csv", sep = "_")))
+
+
+null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste("SLCH002", ex_dlpfc_elec, "to", ex_hc_elec, "null_cor.csv", sep = "_")))
+
+
+ex_cor_df %>%
+  ggplot(., aes(x = x, fill = "ex")) +
+  # geom_density(color = "black") +
+  geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1) +
+  ggtitle("Correlations at Onset")
+
+ggplot() +
+  geom_density(data = null_cor_df, aes(x = x), color = "black", fill = "grey", alpha = .7) +
+  geom_density(data = ex_cor_df, aes(x = x, fill = "true"), color = "black", alpha = .7) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1) +
+  ggtitle("Correlations at Onset")
+
+
+ggplot() +
+  geom_histogram(data = null_cor_df, aes(x = x, y = ..density..), color = "black", fill = "grey", alpha = .8, binwidth = .05) +
+  geom_histogram(data = ex_cor_df, aes(x = x, y = ..density.., fill = "ex"), color = "black", alpha = .8, binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  xlim(-1, 1) +
+  ggtitle("Example Elec Pair True vs Null Correlations at Onset")
+
+
+```
+
+```{r, warning = F}
+# read in trial by trial correlation data for the example electrodes
+ex_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", "sfn_submission", paste("SLCH002", ex_hc_elec, "to", ex_dlpfc_elec, "true_cor.csv", sep = "_")))
+
+
+null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", "sfn_submission", paste("SLCH002", ex_hc_elec, "to", ex_dlpfc_elec, "null_cor.csv", sep = "_")))
+
+
+ex_cor_df %>%
+  ggplot(., aes(x = x, fill = "ex")) +
+  # geom_density(color = "black") +
+  geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1)  +
+  ggtitle("Correlations at Turnaround")
+
+ggplot() +
+  geom_density(data = null_cor_df, aes(x = x), color = "black", fill = "grey", alpha = .7) +
+  geom_density(data = ex_cor_df, aes(x = x, fill = "true"), color = "black", alpha = .7) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1) +
+  ggtitle("Correlations at Turnaround")
+
+
+ggplot() +
+  geom_histogram(data = null_cor_df, aes(x = x, y = ..density..), color = "black", fill = "grey", alpha = .8, binwidth = .05) +
+  geom_histogram(data = ex_cor_df, aes(x = x, y = ..density.., fill = "ex"), color = "black", alpha = .8, binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  xlim(-1, 1) +
+  ggtitle("Example Elec Pair True vs Null Correlations at Turnaround")
+
+
+```
+
+
+## High Turnaround, High Onset
+
+```{r onset-average-responses}
+
+# look at example elec pair where turnaround average cor was .16 and onset average cor was .05
+
+ex_hc_elec <- hc_dlpfc_df %>%
+  filter(onset > .14) %>%
+  pull(elec1)
+
+ex_dlpfc_elec <- hc_dlpfc_df %>%
+  filter(onset > .14) %>%
+  pull(elec2)
+
+
+theta_onset_ex <- theta_onset_df %>%
+  filter(subject == "SLCH002" & elec_short %in% c(ex_hc_elec, ex_dlpfc_elec)) %>%
+  group_by(elec_short, trial_time) %>%
+  mutate(mean_theta = mean(theta))
+
+mean_hc_theta <- theta_onset_ex %>% filter(region == "hc") %>% pull(mean_theta)
+mean_dlpfc_theta <- theta_onset_ex %>% filter(region == "dlpfc") %>% pull(mean_theta)
+
+theta_onset_ex %>%
+  filter(trial_time >= 0 & trial_time < 1) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle(paste0("Average Theta Correlation at Onset: ", round(cor(mean_hc_theta, mean_dlpfc_theta), 3)))
+
+
+
+```
+
+
+```{r turnaround-average-responses}
+
+
+
+
+theta_turn_ex <- theta_turnaround_df %>%
+  filter(subject == "SLCH002" & elec_short %in% c(ex_hc_elec, ex_dlpfc_elec)) %>%
+  group_by(elec_short, trial_time) %>%
+  mutate(mean_theta = mean(theta))
+
+mean_hc_theta <- theta_turn_ex %>% filter(region == "hc") %>% pull(mean_theta)
+mean_dlpfc_theta <- theta_turn_ex %>% filter(region == "dlpfc") %>% pull(mean_theta)
+
+theta_turn_ex %>%
+  # filter(trial_time >= 0 & trial_time < 1) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle(paste0("Average Theta Correlation at Turnaround: ", round(cor(mean_hc_theta, mean_dlpfc_theta), 3)))
+
+
+
+```
+
+```{r, warning = F}
+# read in trial by trial correlation data for the example electrodes
+ex_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste("SLCH002", ex_dlpfc_elec, "to", ex_hc_elec, "true_cor.csv", sep = "_")))
+
+
+null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste("SLCH002", ex_dlpfc_elec, "to", ex_hc_elec, "null_cor.csv", sep = "_")))
+
+
+ex_cor_df %>%
+  ggplot(., aes(x = x, fill = "ex")) +
+  # geom_density(color = "black") +
+  geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1) +
+  ggtitle("Correlations at Onset")
+
+ggplot() +
+  geom_density(data = null_cor_df, aes(x = x), color = "black", fill = "grey", alpha = .7) +
+  geom_density(data = ex_cor_df, aes(x = x, fill = "true"), color = "black", alpha = .7) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1) +
+  ggtitle("Correlations at Onset")
+
+
+ggplot() +
+  geom_histogram(data = null_cor_df, aes(x = x, y = ..density..), color = "black", fill = "grey", alpha = .8, binwidth = .05) +
+  geom_histogram(data = ex_cor_df, aes(x = x, y = ..density.., fill = "ex"), color = "black", alpha = .8, binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  xlim(-1, 1) +
+  ggtitle("Example Elec Pair True vs Null Correlations at Onset")
+
+
+```
+
+```{r, warning = F}
+# read in trial by trial correlation data for the example electrodes
+ex_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", "sfn_submission", paste("SLCH002", ex_hc_elec, "to", ex_dlpfc_elec, "true_cor.csv", sep = "_")))
+
+
+null_cor_df <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", "sfn_submission", paste("SLCH002", ex_hc_elec, "to", ex_dlpfc_elec, "null_cor.csv", sep = "_")))
+
+
+ex_cor_df %>%
+  ggplot(., aes(x = x, fill = "ex")) +
+  # geom_density(color = "black") +
+  geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1)  +
+  ggtitle("Correlations at Turnaround")
+
+ggplot() +
+  geom_density(data = null_cor_df, aes(x = x), color = "black", fill = "grey", alpha = .7) +
+  geom_density(data = ex_cor_df, aes(x = x, fill = "true"), color = "black", alpha = .7) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 1) +
+  ggtitle("Correlations at Turnaround")
+
+
+ggplot() +
+  geom_histogram(data = null_cor_df, aes(x = x, y = ..density..), color = "black", fill = "grey", alpha = .8, binwidth = .05) +
+  geom_histogram(data = ex_cor_df, aes(x = x, y = ..density.., fill = "ex"), color = "black", alpha = .8, binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  xlim(-1, 1) +
+  ggtitle("Example Elec Pair True vs Null Correlations at Turnaround")
+
+
+```
+
+

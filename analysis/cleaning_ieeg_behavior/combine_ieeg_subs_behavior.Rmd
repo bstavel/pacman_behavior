@@ -1,0 +1,347 @@
+---
+title: "Approach/Avoid Behavior Prep"
+output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+# Prep for theta ~ behavioral analyses
+
+Takes the behavoioral data and theta power data and combines them by trial type (ghost vs no ghost), as well as combined. 
+
+Run by knitting
+
+## Load Data
+
+```{r SLCH002-data-load}
+
+sl02_data <- read_csv(path(here(), './data/ieeg_behave/SLCH002_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+bjh16_data <- read_csv(path(here(), './data/ieeg_behave/BJH016_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+bjh21_data <- read_csv(path(here(), './data/ieeg_behave/BJH021_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+bjh25_data <- read_csv(path(here(), './data/ieeg_behave/BJH016_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+ll10_data <- read_csv(path(here(), './data/ieeg_behave/LL10_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+ll12_data <- read_csv(path(here(), './data/ieeg_behave/LL12_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+ll13_data <- read_csv(path(here(), './data/ieeg_behave/LL13_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+
+
+
+```
+
+## Prep Behavioral Data
+
+```{r SLCH002-data-prep}
+
+
+# clean df #
+sl02_data_clean <- clean_bci_data(sl02_data, 2000)
+
+# create distance df # 
+sl02_data_distance <- create_distance_df_bci(sl02_data_clean)
+sl02_data_distance_no_ghost <- create_distance_df_bci(sl02_data_clean, ghost = F)
+
+```
+
+```{r BJH016-data-prep}
+
+
+# clean df #
+bjh16_data_clean <- clean_bci_data(bjh16_data, 2000)
+
+# create distance df # 
+bjh16_data_distance <- create_distance_df_bci(bjh16_data_clean)
+bjh16_data_distance_no_ghost <- create_distance_df_bci(bjh16_data_clean, ghost = F)
+
+```
+```{r BJH0121-data-prep}
+
+
+# clean df #
+bjh21_data_clean <- clean_bci_data(bjh21_data, 2000)
+
+# create distance df # 
+bjh21_data_distance <- create_distance_df_bci(bjh21_data_clean)
+bjh21_data_distance_no_ghost <- create_distance_df_bci(bjh21_data_clean, ghost = F)
+
+```
+
+```{r BJH025-data-prep}
+
+## Prep #
+# Subject paused to get out of dying and that resulted in an incorrect trial count
+bjh25_data <- bjh25_data %>%
+  mutate(Trial = as.numeric(Trial)) %>%
+  filter(Trial != 7) %>%
+  mutate(Trial = if_else(Trial < 7, Trial, Trial -1)) %>%
+  mutate(Trial = as.character(Trial))
+
+# clean df #
+bjh25_data_clean <- clean_bci_data(bjh25_data, 2000)
+
+# create distance df # 
+bjh25_data_distance <- create_distance_df_bci(bjh25_data_clean)
+bjh25_data_distance_no_ghost <- create_distance_df_bci(bjh25_data_clean, ghost = F)
+
+
+```
+
+
+```{r LL10-data-prep}
+
+
+# clean df #
+ll10_data_clean <- clean_bci_data(ll10_data, 512)
+
+# create distance df # 
+ll10_data_distance <- create_distance_df_bci(ll10_data_clean)
+ll10_data_distance_no_ghost <- create_distance_df_bci(ll10_data_clean, ghost = F)
+
+```
+
+```{r LL12-data-prep}
+
+
+# clean df #
+ll12_data_clean <- clean_bci_data(ll12_data, 512)
+
+# create distance df # 
+ll12_data_distance <- create_distance_df_bci(ll12_data_clean)
+ll12_data_distance_no_ghost <- create_distance_df_bci(ll12_data_clean, ghost = F)
+
+```
+
+```{r LL13-data-prep}
+
+
+# clean df #
+ll13_data_clean <- clean_bci_data(ll13_data, 512)
+
+# create distance df # 
+ll13_data_distance <- create_distance_df_bci(ll13_data_clean)
+ll13_data_distance_no_ghost <- create_distance_df_bci(ll13_data_clean, ghost = F)
+
+```
+
+## All subjects behavior data
+
+```{r all_subs_behavior}
+
+all_subs_data_clean <- rbind(sl02_data_clean, bjh16_data_clean, bjh21_data_clean, bjh25_data_clean,
+                             ll10_data_clean, ll12_data_clean, ll13_data_clean)
+
+all_subs_dist_data_clean <- rbind(sl02_data_distance, bjh16_data_distance, bjh21_data_distance,
+                                  bjh25_data_distance, ll10_data_distance, ll12_data_distance, ll13_data_distance)
+
+write_csv(all_subs_data_clean, path(here(), "munge", "all_subs_behavior_df.csv"))
+write_csv(all_subs_dist_data_clean, path(here(), "munge", "all_subs_distance_df.csv"))
+
+```
