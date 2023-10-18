@@ -1,0 +1,1265 @@
+---
+title: "Insula Theta"
+output: html_document
+date: "2023-09-21"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+```{r load-data}
+
+# ieeg data #
+insula_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_insula_all_subs_iti_onset.csv"))
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_g_dist %>% 
+  select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
+
+```
+
+```{r, fig.width=20, fig.height=40}
+
+avg_insula_theta_data <- insula_theta_data %>%
+  rename(theta = theta) %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() 
+
+avg_insula_theta_data %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 6) +
+  ylim(-1.5, 1.5)
+
+```
+
+
+```{r, fig.width= 12, fig.height=12}
+
+
+avg_insula_theta_data %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_theta = mean(mean_elec_theta)) %>%
+  ungroup() %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+avg_insula_theta_data %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta)) %>%
+  ungroup() %>%
+  select(-mean_elec_theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(mean_sub_theta)) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta)) +
+  geom_point(color = "black") +
+  geom_line(color = "black") +
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+```
+
+
+
+```{r merge-with-behavior, fig.width= 12, fig.height=12}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+# validate we get the same ieeg data by comparing with above plots
+avg_insula_theta_behave_df <- insula_theta_behave_df %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_elec_theta = mean(theta, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T)) %>%
+  ungroup() %>%
+  select(-mean_elec_theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(mean_sub_theta, na.rm = T))
+
+
+avg_insula_theta_behave_df %>%
+  ggplot(., aes(x = trial_time, y = mean_theta)) +
+  geom_point(color = "black") +
+  geom_line(color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 5)
+
+
+```
+
+## Whole Trial
+
+```{r points-only-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining)  %>%
+  mutate(points_remaining = rescale(points_remaining)) 
+
+
+points_r_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(insula_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  points_r_results_only <- rbind(points_r_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r distance_to_ghost-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+
+dist_to_g_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(insula_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  dist_to_g_results_only <- rbind(dist_to_g_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r combined-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+dist_to_g_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+points_r_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+for(step in sort(unique(insula_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+  # add to results
+  dist_to_g_results <- rbind(dist_to_g_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+  
+  # add to results
+  points_r_results <- rbind(points_r_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[3, "Estimate"],
+                             `Std. Error` = model_1$coefficients[3, "Std. Error"],
+                             df = model_1$coefficients[3, "df"],
+                             `t value` = model_1$coefficients[3, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[3, "Pr(>|t|)"]
+                           ))
+
+  
+
+}
+
+
+
+```
+
+```{r viz-models, fig.height=8, fig.width=12}
+
+model_results_whole_trial <- rbind(dist_to_g_results_only %>% mutate(case = "dist_only") %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time))),
+                       dist_to_g_results %>% mutate(case = "dist") %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time))),
+                       points_r_results_only %>% mutate(case = "points_only") %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time))),
+                       points_r_results %>% mutate(case = "points") %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time))))
+
+
+model_results_whole_trial %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3.5) + ylim(-2, 2)
+
+
+plot <- model_results_whole_trial %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  filter(model == "Combined") %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3.5) + ylim(-1.5, 1.5) +
+  ggtitle("Insula Theta, Trial Onset")
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "insula_theta_trial_onset.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+```
+
+## Onset Before Turn
+
+```{r points-only-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  filter(move_time < 3) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining)  %>%
+  mutate(points_remaining = rescale(points_remaining)) 
+
+
+points_r_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(insula_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  points_r_results_only <- rbind(points_r_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r distance_to_ghost-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  filter(move_time < 3) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+
+dist_to_g_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(insula_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  dist_to_g_results_only <- rbind(dist_to_g_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r combined-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  filter(move_time < 3) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+dist_to_g_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+points_r_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+for(step in sort(unique(insula_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+  # add to results
+  dist_to_g_results <- rbind(dist_to_g_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+  
+  # add to results
+  points_r_results <- rbind(points_r_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[3, "Estimate"],
+                             `Std. Error` = model_1$coefficients[3, "Std. Error"],
+                             df = model_1$coefficients[3, "df"],
+                             `t value` = model_1$coefficients[3, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[3, "Pr(>|t|)"]
+                           ))
+
+  
+
+}
+
+
+
+```
+
+```{r viz-models}
+
+model_results_onset_before_turn <- rbind(dist_to_g_results_only %>% mutate(case = "dist_only") %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time))),
+                       dist_to_g_results %>% mutate(case = "dist") %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time))),
+                       points_r_results_only %>% mutate(case = "points_only") %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time))),
+                       points_r_results %>% mutate(case = "points") %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time))))
+
+ggthemr("light")
+model_results_onset_before_turn %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3)
+
+
+plot <- model_results_onset_before_turn %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  filter(model == "Combined") %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3.5) +
+  ggtitle("insuladala Theta, Trial Onset, Before Turn")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "insula_theta_trial_onset_before_turn.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+```
+
+
+
+## Approach Only
+
+```{r points-only-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turn_time = round(trial_time - max(turnaround_time), 2)) %>%
+  ungroup() %>%
+  filter(turn_time > -2 & turn_time < 2) %>%
+  select(subject, elec_id, theta, trial_numeric, turn_time, points_remaining)  %>%
+  mutate(points_remaining = rescale(points_remaining)) 
+
+
+points_r_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(insula_theta_lme_df$turn_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(turn_time == step)
+  
+  model_1 <- summary(lmer(theta ~ points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  points_r_results_only <- rbind(points_r_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r distance_to_ghost-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turn_time = round(trial_time - max(turnaround_time), 2)) %>%
+  ungroup() %>%
+  filter(turn_time > -2 & turn_time < 2) %>%
+  select(subject, elec_id, theta, trial_numeric, turn_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+
+dist_to_g_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(insula_theta_lme_df$turn_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(turn_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  dist_to_g_results_only <- rbind(dist_to_g_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r combined-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turn_time = round(trial_time - max(turnaround_time), 2)) %>%
+  ungroup() %>%
+  filter(turn_time > -2 & turn_time < 2) %>%
+  select(subject, elec_id, theta, trial_numeric, turn_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+dist_to_g_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+points_r_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+for(step in sort(unique(insula_theta_lme_df$turn_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(turn_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+  # add to results
+  dist_to_g_results <- rbind(dist_to_g_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+  
+  # add to results
+  points_r_results <- rbind(points_r_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[3, "Estimate"],
+                             `Std. Error` = model_1$coefficients[3, "Std. Error"],
+                             df = model_1$coefficients[3, "df"],
+                             `t value` = model_1$coefficients[3, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[3, "Pr(>|t|)"]
+                           ))
+
+  
+
+}
+
+
+
+```
+
+```{r viz-models}
+
+model_results <- rbind(dist_to_g_results_only %>% mutate(case = "dist_only") %>% mutate(turn_time = sort(unique(insula_theta_lme_df$turn_time))),
+                       dist_to_g_results %>% mutate(case = "dist") %>% mutate(turn_time = sort(unique(insula_theta_lme_df$turn_time))),
+                       points_r_results_only %>% mutate(case = "points_only") %>% mutate(turn_time = sort(unique(insula_theta_lme_df$turn_time))),
+                       points_r_results %>% mutate(case = "points") %>% mutate(turn_time = sort(unique(insula_theta_lme_df$turn_time))))
+
+
+plot <- model_results %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  filter(model == "Combined") %>%
+  ggplot(., aes(x = turn_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black"))  +
+  xlim(-2, 2) +
+  ggtitle("Insula Theta, Turnaround")
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "insula_theta_trial_turnaround.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+```
+
+
+
+## Pacman Location
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, UserLocation)  %>%
+  mutate(UserLocation = rescale(UserLocation))
+
+
+userloc_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(insula_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ UserLocation + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  userloc_results_only <- rbind(userloc_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_userloc <- userloc_results_only %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_userloc %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#65ADC1") +
+  geom_line(color = "#65ADC1") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3.5) +ylim(-1.2, 1.2) +
+  ggtitle("insuladala Theta, Pacman Location")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "insula_theta_trial_pacman_location.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+## Ghost Location
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, GhostLocation)  %>%
+  mutate(GhostLocation = rescale(GhostLocation))
+
+
+ghostloc_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(insula_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ GhostLocation + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  ghostloc_results_only <- rbind(ghostloc_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_ghostloc <- ghostloc_results_only %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_ghostloc %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  mutate(sig = if_else(pval_fdr < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#EF7474") +
+  geom_line(color = "#EF7474") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3.5) +ylim(-1, 1) +
+  ggtitle("insuladala Theta, Ghost Location")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "insula_theta_trial_ghost_location.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+
+
+
+## Combined value
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+insula_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+insula_theta_lme_df <- insula_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  ungroup() %>%
+  mutate(combined_value = rescale(combined_value))
+
+
+value_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(insula_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ combined_value + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  value_results_only <- rbind(value_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_value <- value_results_only %>% mutate(move_time = sort(unique(insula_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_value %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_ribbon(aes(ymin = Estimate - 1.96*`Std. Error`, ymax = Estimate + 1.96*`Std. Error`), alpha = .3, fill = "#D1B5F4") +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#D1B5F4") +
+  geom_line(color = "#D1B5F4") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3.5) +ylim(-2, 2) +
+  ggtitle("Insula Theta, Combined Value")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "insula_theta_trial_combined_value.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+```{r random-effects}
+
+time_step_df <- insula_theta_lme_df %>%
+    filter(move_time == step)
+  
+model_1 <- lmer(theta ~ combined_value + (1|subject/elec_id), data = time_step_df)
+
+model_2 <- lm(theta ~ combined_value, data = time_step_df)
+
+summary(model_1)  
+summary(model_2)  
+
+random_effs <- ranef(model_1)
+fixed_effs <- fixef(model_1)
+
+
+plot_model(model_1, type = "est")
+plot_model(model_1, type = "re")
+
+
+(pp <- plot_model(model_1,type="pred",
+       terms=c("combined_value","subject"),pred.type="re")) +
+  ylim(0, 2)
+
+time_step_df %>%
+  ggplot(., aes(x = combined_value, y = theta)) +
+  geom_point(aes(color = subject), alpha = .3) +
+  geom_smooth(method = "lm", color = "black", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  # facet_wrap(~subject) +
+  ylim(-2, 5) + xlim(0, 1)
+
+
+# by subject
+summary(lm(theta ~ combined_value, data = time_step_df %>% filter(subject == "BJH016")))
+summary(lm(theta ~ combined_value, data = time_step_df %>% filter(subject == "BJH021")))
+summary(lm(theta ~ combined_value, data = time_step_df %>% filter(subject == "BJH025")))
+summary(lm(theta ~ combined_value, data = time_step_df %>% filter(subject == "SLCH002")))
+summary(lm(theta ~ combined_value, data = time_step_df %>% filter(subject == "LL12")))
+
+```
+
+
+```{r}
+
+combined_value_df <- all_subs_g_dist %>%
+  filter(Direction != "Still") %>%
+  select(subject, trial_numeric, trial_time, points_remaining, distance_to_ghost)  %>%
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  ungroup() %>%
+  mutate(combined_value = rescale(combined_value))
+
+combined_value_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_comb_value = mean(combined_value)) %>%
+  ungroup() %>%
+  select(trial_time, subject, mean_comb_value) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_comb_value)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~subject) +
+  xlim(0, 7)
+
+
+combined_value_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(trial_numeric %in% sample(trial_numeric, 8)) %>%
+  ggplot(., aes(x = trial_time, y = combined_value, color = factor(trial_numeric))) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~subject) +
+  xlim(0, 7)
+
+
+```
+
+```{r}
+
+
+
+```
+
+
+
+
+```{r save}
+
+write_csv(model_results_whole_trial, path(here(), "results", "insula_theta_model_results_whole_trial.csv"))
+write_csv(model_results, path(here(), "results", "insula_theta_model_results_turnarouns.csv"))
+write_csv(model_results_value, path(here(), "results", "insula_theta_model_results_integrated_value.csv"))
+
+
+```

@@ -1,0 +1,218 @@
+---
+title: "Theta LFP Correlations Visualization"
+output: html_document
+date: "2023-10-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 5,  # set default width of figures
+  fig.height = 8,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)   # cache results
+
+### libraries ###
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(grid)
+library(gtable)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(scales)
+library(ggthemr)
+library(knitr)
+library(network)
+library(ggnetwork)
+
+### hand written functions ###
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+### plotting helpers ###
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ### parallelization ###
+# nCores <- 16
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+```{r load-data}
+
+all_results <- read_csv(path(here(), "results", "sub_normalized_lfp_connectivity_summary.csv"))
+
+
+```
+```{r prep-data}
+
+all_results_clean <- separate(all_results, case, into = c("col1", "region1", "region2", "case"), sep = "-")
+
+all_results_clean <- all_results_clean %>%
+  mutate(case = if_else(region2 == "onset" & case == "noghost", "onset-noghost", case)) %>%
+  mutate(region2 = if_else(region2 == "onset" & case == "onset-noghost", "dlpfc", region2)) %>%
+  filter(region2 != "sfn" & region2 != "after" & case != "onset-noghost") %>%
+  mutate(case = if_else(region2 == "before", "before_and_after_turnaround", case)) %>%
+  mutate(region2 = if_else(region2 == "before", "dlpfc", region2)) %>%
+  select(-col1)
+
+```
+
+
+```{r onset-counters, fig.width=6, fig.height=6}
+
+onset_data <- all_results_clean %>%
+  filter(case == "onset") %>%
+  select(-case)
+
+# edges
+edges <- onset_data
+
+# nodes
+nodes <- data.frame(
+  id = 1:6,
+  label = c("dlPFC", "HC", "OFC", "Ant. Cing.", "Amyg.", "Insula")
+)
+
+# Create a network object
+net <- network(edges, vertex.attr = nodes, directed = FALSE)
+
+# Convert the network object to a ggnetwork object
+net <- ggnetwork(net, layout = "circle")
+
+# Plot the graph using ggplot2
+plot <- ggplot(data = net, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(linewidth = percent, color = percent), alpha = 0.5) +
+  geom_nodes(color = "black") +
+  geom_nodetext(aes(label = label), vjust = -1.5, color = "black") +
+  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), limits = c(0, .7)) +
+  scale_linewidth_continuous(range(1, 6), guide = "none", limits = c(0, .7)) +
+  theme_void() +
+  theme(plot.background = element_rect(fill = "white"), legend.position = "top") +
+  ggtitle("Connectivity During Onset")
+
+ggsave(path(here(), "figures", "connectivity", "trial_onset_connectivity_sub_corrected.png"),
+         plot = plot,
+         width = 6,
+         height = 8,
+         units = "in",
+         dpi = 300)
+
+```
+
+
+
+```{r before-only-counters, fig.width=6, fig.height=6}
+
+before_turn_data <- all_results_clean %>%
+  filter(case == "before_only") %>%
+  select(-case)
+
+# edges
+edges <- before_turn_data
+
+# nodes
+nodes <- data.frame(
+  id = 1:6,
+  label = c("dlPFC", "HC", "OFC", "Ant. Cing.", "Amyg.", "Insula")
+)
+
+# Create a network object
+net <- network(edges, vertex.attr = nodes, directed = FALSE)
+
+# Convert the network object to a ggnetwork object
+net <- ggnetwork(net, layout = "circle")
+
+# Plot the graph using ggplot2
+plot <- ggplot(data = net, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(linewidth = percent, color = percent), alpha = 0.5) +
+  geom_nodes(color = "black") +
+  geom_nodetext(aes(label = label), vjust = -1.5, color = "black") +
+  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), limits = c(0, .7)) +
+  scale_linewidth_continuous(range(1, 6), guide = "none", limits = c(0, .7)) +
+  theme_void() +
+  theme(plot.background = element_rect(fill = "white"), legend.position = "top") +
+  ggtitle("Connectivity 1s Before Turn")
+
+
+ggsave(path(here(), "figures", "connectivity", "before_turn_connectivity_sub_corrected.png"),
+         plot = plot,
+         width = 6,
+         height = 8,
+         units = "in",
+         dpi = 300)
+```
+
+
+```{r before_after_turn_data-counters, fig.width=6, fig.height=6}
+
+before_after_turn_data <- all_results_clean %>%
+  filter(case == "before_and_after_turnaround") %>%
+  select(-case)
+
+# edges
+edges <- before_after_turn_data
+
+# nodes
+nodes <- data.frame(
+  id = 1:6,
+  label = c("dlPFC", "HC", "OFC", "Ant. Cing.", "Amyg.", "Insula")
+)
+
+# Create a network object
+net <- network(edges, vertex.attr = nodes, directed = FALSE)
+
+# Convert the network object to a ggnetwork object
+net <- ggnetwork(net, layout = "circle")
+
+# Plot the graph using ggplot2
+plot <- ggplot(data = net, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(linewidth = percent, color = percent), alpha = 0.5) +
+  geom_nodes(color = "black") +
+  geom_nodetext(aes(label = label), vjust = -1.5, color = "black") +
+  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), limits = c(0, .7)) +
+  scale_linewidth_continuous(range(1, 6), guide = "none", limits = c(0, .7)) +
+  theme_void() +
+  theme(plot.background = element_rect(fill = "white"), legend.position = "top") +
+  ggtitle("Connectivity 1s Before and 1s After Turn")
+
+
+ggsave(path(here(), "figures", "connectivity", "before_and_after_connectivity_sub_corrected.png"),
+         plot = plot,
+         width = 6,
+         height = 8,
+         units = "in",
+         dpi = 300)
+
+```
+
+

@@ -1,0 +1,1186 @@
+---
+title: "dlPFC ~ HC Connectivity comparisons"
+output: 
+  html_document:
+    code_folding: hide
+date: "2023-09-20"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(grid)
+library(gtable)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(scales)
+library(ggthemr)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 16
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+# Onset Analysis - 1 second after trial onset
+
+```{r count-hc}
+
+
+# LL10 hc #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL10_correlation_wilcox_test_dlpfc_hc.csv"),  
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(results$pval_fdr < .05)
+
+# LL12 hc #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+# LL13 hc #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL13_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# BJH021 hc #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# BJH025 hc #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# SLCH002 hc #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+
+# BJH016 hc #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_wilcox_test_dlpfc_hc.csv"), 
+                    col_names = F, col_types = cols(.default = "c", X1 = col_skip()))
+colnames(results) <- c("subject", "elec1", "elec2", "estimate",   "statistics", "pval") 
+results <- results  %>%
+  filter(!grepl("^X.", pval)) %>%
+  mutate(across(c(estimate, statistics, pval), as.numeric)) %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+print("Total")
+table(hc_counter)
+```
+
+# Last Away Analysis - 1 second after turn?
+
+```{r count-hc, warning=FALSE}
+
+
+# LL10 hc #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL10_correlation_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(results$pval_fdr < .05)
+
+# LL12 hc #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+# LL13 hc #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL13_correlation_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# BJH021 hc #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# BJH025 hc #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# SLCH002 hc #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+
+# BJH016 hc #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+print("Total")
+table(hc_counter)
+```
+
+
+# Last Away Analysis - 2 seconds
+
+```{r count-hc}
+
+
+# LL10 hc #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL10_correlation_before_and_after_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(results$pval_fdr < .05)
+
+# LL12 hc #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL12_correlation_before_and_after_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+# LL13 hc #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "LL13_correlation_before_and_after_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# BJH021 hc #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH021_correlation_before_and_after_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# BJH025 hc #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH025_correlation_before_and_after_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+# SLCH002 hc #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_before_and_after_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+
+# BJH016 hc #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "BJH016_correlation_before_and_after_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, results$pval_fdr < .05)
+
+
+print("Total")
+table(hc_counter)
+```
+
+# Last Away Analysis - 4 seconds
+
+```{r count-dlpfc}
+
+dlpfc_counter <- c()
+
+# LL10 dlPFC #
+print("LL10")
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis","sfn_submission",
+                         "LL10_correlation_wilcox_test_dlpfc.csv"), header = T)
+tmp <- results %>%
+  filter(X != 1) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+# sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+# LL12 dlPFC #
+print("LL12")
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","LL12_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+# sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+# LL13 dlPFC #
+print("LL13")
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","LL13_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+# sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+# BJH021 dlPFC #
+print("BJH021")
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","BJH021_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+# sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+
+# BJH025 dlPFC #
+print("BJH025")
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","BJH025_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+# sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+# SLCH002 dlPFC #
+print("SLCH002")
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","SLCH002_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1)) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+# sum(as.numeric(tmp$pval_fdr < .05))/nrow(tmp)
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+
+# BJH016 dlPFC #
+print("BJH016")
+results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","BJH016_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+tmp <- results %>%
+  filter(!is.na(V1) & V1 != 1) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+table(tmp$pval_fdr < .05)
+
+dlpfc_counter <- c(dlpfc_counter, tmp$pval_fdr < .05)
+
+print("Total")
+table(dlpfc_counter)
+
+
+```
+```{r two-vs-four}
+
+# 2 second version #
+results_short <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "SLCH002_correlation_before_and_after_turnaround_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results_short <- results_short  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+# 4 second version #
+results_long <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","SLCH002_correlation_wilcox_test_hc_dlpfc.csv"), header = F)
+results_long <- results_long %>%
+  filter(!is.na(V1)) %>%
+  select(-V1) %>%
+  mutate(V5 = as.numeric( V5)) %>%
+  mutate(pval_fdr = p.adjust(V5, "fdr"))
+colnames(results_long) <- c("subject", "elec2", "elec1", "pval", "pval_fdr")
+
+# combine #
+combined_corrs <- rbind(results_short %>% mutate(case = "short") %>% select(-estimate, -statistics),
+                        results_long %>% mutate(case = "long"))
+
+combined_corrs_wide <- combined_corrs %>%
+  select(-pval) %>%
+  pivot_wider(names_from = case, values_from = pval_fdr)
+
+combined_corrs_wide %>%
+  ggplot(., aes(x = short, y = long)) +
+  geom_point() +
+  theme(panel.background = element_rect(fill = "white"))
+
+# example elecs to understand #
+# C10-C11
+# J5-J6
+
+```
+
+```{r}
+
+## Load Region specific csvs ## 
+hc_turnaround_df <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "theta_hc_all_subs_turnaround.csv"))
+amyg_turnaround_df <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "theta_amyg_all_subs_turnaround.csv"))
+ofc_turnaround_df <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "theta_ofc_all_subs_turnaround.csv"))
+cing_turnaround_df <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "theta_cing_all_subs_turnaround.csv"))
+dlpfc_turnaround_df <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "theta_dlpfc_all_subs_turnaround.csv"))
+insula_turnaround_df <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "theta_insula_all_subs_turnaround.csv"))
+
+## Bind together ##
+theta_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
+                        amyg_turnaround_df %>% mutate(region = "amyg"),
+                        ofc_turnaround_df %>% mutate(region = "ofc"),
+                        cing_turnaround_df %>% mutate(region = "cing"),
+                        dlpfc_turnaround_df %>% mutate(region = "dlpfc"),
+                        insula_turnaround_df %>% mutate(region = "insula"))
+
+# Short
+theta_turnaround_short_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -1 & trial_time < 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "C10-C11"))
+
+# long
+theta_turnaround_long_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  # filter(trial_time >= -2 & trial_time <= 2) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "C10-C11"))
+
+# correlations strengths #
+short_cor <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", paste("SLCH002", "C10-C11", "to", "J5-J6", "true_cor_before_and_after_turnaround_.csv", sep = "_")))
+
+long_cor <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", "sfn_submission",paste("SLCH002", "J5-J6", "to", "C10-C11", "true_cor.csv", sep = "_")))
+
+colnames(short_cor) <- c("trial", "corr")
+colnames(long_cor) <- c("trial", "corr")
+
+correlations_ex_elec <- rbind(short_cor %>% mutate(case = "short"),
+                              long_cor %>% mutate(case = "long"))
+
+```
+
+
+```{r}
+# are correlations correlated?
+correlations_ex_elec_wide <- correlations_ex_elec %>%
+  pivot_wider(names_from = case, values_from = corr) 
+
+correlations_ex_elec_wide %>%
+  ggplot(., aes(x = short, y = long)) +
+  geom_point() +
+  theme(panel.background = element_rect(fill = "white"))
+
+# are the correlations strength exactly what we think they should be?
+short_3_df <- theta_turnaround_short_df %>%
+  filter(trial_numeric == 3) %>%
+  select(-electrode, -region) %>%
+  pivot_wider(names_from = elec_short, values_from = theta)
+
+cor(short_3_df$`J5-J6`, short_3_df$`C10-C11`)
+
+long_3_df <- theta_tuThat irnaround_long_df %>%
+  filter(trial_numeric == 3) %>%
+  select(-electrode, -region) %>%
+  pivot_wider(names_from = elec_short, values_from = theta)
+
+cor(long_3_df$`J5-J6`, long_3_df$`C10-C11`)
+
+
+# new correlations
+cor_tmp <- c()
+dlpfc_trials <- theta_turnaround_short_df %>% filter(elec_short == "C10-C11") %>% pull(trial_numeric) %>% unique()
+hc_trials <- theta_turnaround_short_df %>% filter(elec_short == "J5-J6") %>% pull(trial_numeric) %>% unique()
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_short_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`C10-C11`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`C10-C11`)) 
+  }
+
+
+}
+
+correlations_ex_elec_wide$short_new <- cor_tmp
+
+
+# 2 seconds before, 1 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -2 & trial_time <= 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "C10-C11"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`C10-C11`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`C10-C11`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_before <- cor_tmp
+
+
+# 2 seconds before, 0 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -2 & trial_time <= 0) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "C10-C11"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`C10-C11`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`C10-C11`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_before_only <- cor_tmp
+
+
+# 1 seconds before, 2 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -1 & trial_time <= 2) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "C10-C11"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`C10-C11`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`C10-C11`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_after <- cor_tmp
+
+# 0 seconds before, 2 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= 0 & trial_time <= 2) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "C10-C11"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`C10-C11`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`C10-C11`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_after_only <- cor_tmp
+
+# 0 seconds before, 1 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= 0 & trial_time <= 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "C10-C11"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`C10-C11`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`C10-C11`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$one_after <- cor_tmp
+
+# 0 seconds before, 0 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -1 & trial_time <= 0) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "C10-C11"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`C10-C11`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`C10-C11`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$one_before <- cor_tmp
+
+```
+
+
+```{r}
+
+correlations_ex_elec_wide %>%
+  pivot_longer(names_to = "time_window", values_to = "corr", cols = c(short, short_new, twoS_before, twoS_before_only, twoS_after, twoS_after_only)) %>%
+  ggplot(., aes(x = long, y = corr, color = time_window, fill = time_window)) +
+  geom_point() +
+  geom_smooth(method = "lm", alpha = 0) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(-1, 1) +xlim(-1, 1)
+
+```
+```{r}
+correlations_ex_elec_wide %>%
+  pivot_longer(names_to = "time_window", values_to = "corr", cols = c(-trial)) %>%
+  ggplot(., aes(x = corr, color = time_window, fill = time_window)) +
+  geom_density(alpha = .5) +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~time_window) +
+  scale_color_viridis(option = "H", discrete = T) +
+  scale_fill_viridis(option = "H", discrete = T)
+
+
+```
+
+```{r}
+# dlpfc vs hc #
+correlations_ex_elec_wide %>%
+  pivot_longer(names_to = "time_window", values_to = "corr", cols = c(-trial)) %>%
+  group_by(time_window) %>%
+  mutate(mean_cor = mean(corr, na.rm = T)) %>%
+  select(time_window, mean_cor) %>%
+  distinct() %>%
+  arrange(desc(mean_cor))
+
+
+```
+## OFC
+
+Let's look at example: B9-B10
+
+```{r}
+
+# Short
+theta_turnaround_short_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -1 & trial_time < 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B9-B10"))
+
+# long
+theta_turnaround_long_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  # filter(trial_time >= -2 & trial_time <= 2) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B9-B10"))
+
+# correlations strengths #
+long_cor <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", "sfn_submission",paste("SLCH002", "J5-J6", "to", "B9-B10", "true_cor.csv", sep = "_")))
+
+colnames(long_cor) <- c("trial", "corr")
+
+correlations_ex_elec <-   long_cor %>% mutate(case = "long")
+
+# are correlations correlated?
+correlations_ex_elec_wide <- correlations_ex_elec %>%
+  pivot_wider(names_from = case, values_from = corr) 
+
+# new correlations
+cor_tmp <- c()
+dlpfc_trials <- theta_turnaround_short_df %>% filter(elec_short == "B9-B10") %>% pull(trial_numeric) %>% unique()
+hc_trials <- theta_turnaround_short_df %>% filter(elec_short == "J5-J6") %>% pull(trial_numeric) %>% unique()
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_short_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B9-B10`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B9-B10`)) 
+  }
+
+
+}
+
+correlations_ex_elec_wide$short_new <- cor_tmp
+
+
+# 2 seconds before, 1 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -2 & trial_time <= 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B9-B10"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B9-B10`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B9-B10`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_before <- cor_tmp
+
+
+# 2 seconds before, 0 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -2 & trial_time <= 0) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B9-B10"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B9-B10`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B9-B10`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_before_only <- cor_tmp
+
+
+# 1 seconds before, 2 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -1 & trial_time <= 2) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B9-B10"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B9-B10`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B9-B10`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_after <- cor_tmp
+
+# 0 seconds before, 2 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= 0 & trial_time <= 2) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B9-B10"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B9-B10`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B9-B10`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_after_only <- cor_tmp
+
+# 0 seconds before, 1 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= 0 & trial_time <= 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B9-B10"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B9-B10`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B9-B10`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$one_after <- cor_tmp
+
+# 0 seconds before, 0 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -1 & trial_time <= 0) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B9-B10"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B9-B10`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B9-B10`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$one_before <- cor_tmp
+
+
+correlations_ex_elec_wide %>%
+  pivot_longer(names_to = "time_window", values_to = "corr", cols = c(-trial)) %>%
+  group_by(time_window) %>%
+  mutate(mean_cor = mean(corr, na.rm = T)) %>%
+  select(time_window, mean_cor) %>%
+  distinct() %>%
+  arrange(desc(mean_cor))
+
+
+```
+```{r}
+
+# Short
+theta_turnaround_short_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -1 & trial_time < 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B5-B6"))
+
+# long
+theta_turnaround_long_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  # filter(trial_time >= -2 & trial_time <= 2) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B5-B6"))
+
+# correlations strengths #
+long_cor <- read_csv(path(here(), "data_mount/remote/pacman_behavior", 
+                                   "results", "cor_analysis", "sfn_submission",paste("SLCH002", "J5-J6", "to", "B5-B6", "true_cor.csv", sep = "_")))
+
+colnames(long_cor) <- c("trial", "corr")
+
+correlations_ex_elec <-   long_cor %>% mutate(case = "long")
+
+# are correlations correlated?
+correlations_ex_elec_wide <- correlations_ex_elec %>%
+  pivot_wider(names_from = case, values_from = corr) 
+
+# new correlations
+cor_tmp <- c()
+dlpfc_trials <- theta_turnaround_short_df %>% filter(elec_short == "B5-B6") %>% pull(trial_numeric) %>% unique()
+hc_trials <- theta_turnaround_short_df %>% filter(elec_short == "J5-J6") %>% pull(trial_numeric) %>% unique()
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_short_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B5-B6`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B5-B6`)) 
+  }
+
+
+}
+
+correlations_ex_elec_wide$short_new <- cor_tmp
+
+
+# 2 seconds before, 1 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -2 & trial_time <= 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B5-B6"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B5-B6`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B5-B6`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_before <- cor_tmp
+
+
+# 2 seconds before, 0 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -2 & trial_time <= 0) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B5-B6"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B5-B6`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B5-B6`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_before_only <- cor_tmp
+
+
+# 1 seconds before, 2 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -1 & trial_time <= 2) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B5-B6"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B5-B6`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B5-B6`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_after <- cor_tmp
+
+# 0 seconds before, 2 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= 0 & trial_time <= 2) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B5-B6"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B5-B6`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B5-B6`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$twoS_after_only <- cor_tmp
+
+# 0 seconds before, 1 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= 0 & trial_time <= 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B5-B6"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B5-B6`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B5-B6`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$one_after <- cor_tmp
+
+# 0 seconds before, 0 after
+cor_tmp <- c()
+theta_turnaround_tmp_df <- theta_turnaround_df %>%
+  mutate(trial_time = trial_time - 1) %>%
+  filter(trial_time >= -1 & trial_time <= 0) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(subject == "SLCH002" & elec_short %in% c("J5-J6", "B5-B6"))
+for(trial in hc_trials){
+  short_3_df <- theta_turnaround_tmp_df %>%
+    filter(trial_numeric == trial) %>%
+    select(-electrode, -region) %>%
+    pivot_wider(names_from = elec_short, values_from = theta)
+  
+  if(is.null(short_3_df$`B5-B6`)){
+    cor_tmp <- c(cor_tmp, NA)
+  } else {
+   cor_tmp <- c(cor_tmp, cor(short_3_df$`J5-J6`, short_3_df$`B5-B6`)) 
+  }
+
+
+}
+correlations_ex_elec_wide$one_before <- cor_tmp
+
+
+correlations_ex_elec_wide %>%
+  pivot_longer(names_to = "time_window", values_to = "corr", cols = c(-trial)) %>%
+  group_by(time_window) %>%
+  mutate(mean_cor = mean(corr, na.rm = T)) %>%
+  select(time_window, mean_cor) %>%
+  distinct() %>%
+  arrange(desc(mean_cor))
+
+
+```

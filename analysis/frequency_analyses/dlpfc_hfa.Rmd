@@ -1,0 +1,833 @@
+---
+title: "HFA dlPFC"
+output: html_document
+date: "2023-09-14"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+```{r load-data}
+
+# ieeg data #
+dlpfc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_dlpfc_all_subs_iti_onset.csv"))
+
+# behavioral data #
+all_subs_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_dist %>% 
+  select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
+
+```
+
+```{r, fig.width=20, fig.height=40}
+
+avg_dlpfc_hfa_data <- dlpfc_hfa_data %>%
+  rename(hfa = theta) %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_elec_hfa = mean(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() 
+
+avg_dlpfc_hfa_data %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_hfa, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 6) +
+  ylim(-.75, .75)
+
+```
+
+
+```{r, fig.width= 16, fig.height=12}
+
+
+avg_dlpfc_hfa_data %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_hfa = mean(mean_elec_hfa)) %>%
+  ungroup() %>%
+  ggplot(., aes(x = trial_time, y = mean_hfa, color = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+avg_dlpfc_hfa_data %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_hfa = mean(mean_elec_hfa)) %>%
+  ungroup() %>%
+  select(-mean_elec_hfa, -electrode) %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_hfa = mean(mean_sub_hfa)) %>%
+  ggplot(., aes(x = trial_time, y = mean_hfa)) +
+  geom_point(color = "black") +
+  geom_line(color = "black") +
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+```
+
+
+
+```{r merge-with-behavior, fig.width= 16, fig.height=12}
+
+# merge behavior data with ieeg data
+dlpfc_hfa_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               dlpfc_hfa_data %>% mutate(trial_time = round(trial_time, 2)))
+
+dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>% rename(hfa = hfa)
+
+# validate we get the same ieeg data by comparing with above plots
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_elec_hfa = mean(hfa, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_hfa = mean(mean_elec_hfa, na.rm = T)) %>%
+  ungroup() %>%
+  select(-mean_elec_hfa, -electrode) %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_hfa = mean(mean_sub_hfa, na.rm = T))
+
+
+avg_dlpfc_hfa_behave_df %>%
+  ggplot(., aes(x = trial_time, y = mean_hfa)) +
+  geom_point(color = "black") +
+  geom_line(color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 5) + ylim(-.05, 0.21)
+
+# validate we get the same ieeg data by comparing with above plots
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  mutate(ghost_trial = if_else(TrialType > 16, "Ghost", "NoGhost")) %>%
+  group_by(reward_groups, trial_time, electrode, subject) %>%
+  mutate(mean_elec_hfa = mean(hfa, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(reward_groups, trial_time, subject) %>%
+  mutate(mean_sub_hfa = mean(mean_elec_hfa, na.rm = T)) %>%
+  ungroup() %>%
+  select(-mean_elec_hfa, -electrode) %>%
+  distinct() %>%
+  group_by(reward_groups, trial_time) %>%
+  mutate(mean_hfa = mean(mean_sub_hfa, na.rm = T))
+
+
+avg_dlpfc_hfa_behave_df %>%
+  ggplot(., aes(x = trial_time, y = mean_hfa, color = factor(reward_groups))) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 5) + ylim(-.1, 0.25)
+
+```
+
+```{r, fig.width=20, fig.height=12}
+
+
+high_low_reward <- dlpfc_hfa_behave_df %>%
+  filter(trial_time >= 0) %>%
+  mutate(recent_reward_size = if_else(reward_groups == 1 & Eaten == 0, 0, #  small	large	large	small	small, total 70
+                                  if_else(reward_groups == 1 & Eaten == 1, 10,
+                                          if_else(reward_groups == 1 & Eaten == 2, 20,
+                                                  if_else(reward_groups == 1 & Eaten == 3, 20,
+                                                          if_else(reward_groups == 1 & Eaten == 4, 10,
+                                                                  if_else(reward_groups == 1 & Eaten == 5, 10,
+                                                                          if_else(reward_groups == 2 & Eaten == 0, 0, #  small	large	small	large	small, total 70
+                                                                                  if_else(reward_groups == 2 & Eaten == 1, 10,
+                                                                                          if_else(reward_groups == 2 & Eaten == 2, 20,
+                                                                                                  if_else(reward_groups == 2 & Eaten == 3, 10,
+                                                                                                          if_else(reward_groups == 2 & Eaten == 4, 20,
+                                                                                                                  if_else(reward_groups == 2 & Eaten == 5, 10,
+                                                                                                                          if_else(reward_groups == 3 & Eaten == 0, 0, #  large	small	large	small	large, total 80
+                                                                                                                                  if_else(reward_groups == 3 & Eaten == 1, 20,
+                                                                                                                                          if_else(reward_groups == 3 & Eaten == 2, 10,
+                                                                                                                                                  if_else(reward_groups == 3 & Eaten == 3, 20,
+                                                                                                                                                          if_else(reward_groups == 3 & Eaten == 4, 10,
+                                                                                                                                                                  if_else(reward_groups == 3 & Eaten == 5, 20,
+                                                                                                                                                                          if_else(reward_groups == 4 & Eaten == 0, 70, #  small	small	small	large	large, total 70
+                                                                                                                                                                                  if_else(reward_groups == 4 & Eaten == 1, 10,
+                                                                                                                                                                                          if_else(reward_groups == 4 & Eaten == 2, 10,
+                                                                                                                                                                                                  if_else(reward_groups == 4 & Eaten == 3, 10,
+                                                                                                                                                                                                          if_else(reward_groups == 4 & Eaten == 4, 20,
+                                                                                                                                                                                                                  if_else(reward_groups == 4 & Eaten == 5, 20, 999
+                                                                                                                                                                                                                  ))))))))))))))))))))))))) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  filter(trial_time <= max(turnaround_time)) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  mutate(change_in_score = if_else(c(0, diff(Eaten)) == 1, 1, 0)) %>%
+  ungroup() %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  filter(change_in_score == 1) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  filter(Eaten > 0) %>%
+  filter(!is.na(electrode))
+  
+high_low_reward %>% 
+  filter(hfa < 5) %>%
+  ggplot(., aes(x = factor(recent_reward_size), y = hfa, fill = factor(recent_reward_size))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 5) +
+  ylim(-2, 5)
+
+high_low_reward %>% 
+  filter(hfa < 5) %>%
+  ggplot(., aes(x = factor(recent_reward_size), y = hfa, fill = factor(recent_reward_size))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(-2, 5)
+
+
+```
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  filter(trial_time >= 0) %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Direction != "Still", trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(reward_groups, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_hfa = median(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(reward_groups, trial_time, subject) %>%
+  mutate(mean_sub_hfa = median(mean_elec_hfa, na.rm = T))
+  
+  
+avg_dlpfc_hfa_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_hfa, color = factor(reward_groups))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 3) +
+  xlim(-1, 3) +
+  ylim(-.5, .5) +
+  ggtitle("First Movement")
+
+```
+
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 1) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit1 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_hfa = median(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_hfa = median(mean_elec_hfa, na.rm = T))
+  
+  
+avg_dlpfc_hfa_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_hfa, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, .5) +
+  ggtitle("First Dot")
+
+```
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 2) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit2 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_hfa = median(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_hfa = median(mean_elec_hfa, na.rm = T))
+  
+  
+avg_dlpfc_hfa_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_hfa, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, .5) +
+  ggtitle("Second Dot")
+
+```
+
+
+
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  filter(dots_eaten >= 3) %>%
+  mutate(move_time = if_else(Biscuit3 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_hfa = median(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_hfa = median(mean_elec_hfa, na.rm = T))
+  
+  
+avg_dlpfc_hfa_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_hfa, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, .5) +
+  ggtitle("Third Dot")
+
+```
+
+```{r, fig.width = 18, fig.height = 40}
+
+
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 4) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit4 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_hfa = median(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_hfa = median(mean_elec_hfa, na.rm = T))
+  
+  
+avg_dlpfc_hfa_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_hfa, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, .5) +
+  ggtitle("Fourth Dot")
+
+
+#n ghost vs no ghost
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 4) %>%
+  mutate(ghost_trial = if_else(TrialType > 16, "Ghost", "NoGhost")) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit4 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(ghost_trial, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_hfa = median(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(ghost_trial, trial_time, subject) %>%
+  mutate(mean_sub_hfa = median(mean_elec_hfa, na.rm = T))
+  
+  
+avg_dlpfc_hfa_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_hfa, color = ghost_trial)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 5, scale = "free_y") +
+  xlim(-.8, 2.9) +
+  ylim(-2, 2) +
+  ggtitle("Fourth Dot")
+
+
+```
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  filter(dots_eaten >= 5) %>%
+  mutate(move_time = if_else(Biscuit5 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_hfa = median(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_hfa = median(mean_elec_hfa, na.rm = T))
+  
+  
+avg_dlpfc_hfa_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_hfa, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, .5) +
+  ggtitle("Fith Dot")
+
+```
+
+
+```{r, fig.width = 18, fig.height=40}
+
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  select(-trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(trial_time = round(trial_time - max(turnaround_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_hfa = median(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_hfa = median(mean_elec_hfa, na.rm = T))
+
+
+avg_dlpfc_hfa_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_hfa, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 5) +
+  xlim(-3, 3) +
+  ylim(-.75, .4) +
+  ggtitle("Turnaround")
+
+```
+
+```{r, fig.width = 18, fig.height=40}
+
+avg_dlpfc_hfa_behave_df <- dlpfc_hfa_behave_df %>%
+  select(-trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(trial_time = round(trial_time - max(turnaround_time), 2)) %>%
+  mutate(chase_trial = if_else(any(Chase, na.rm = T) | any(Attack, na.rm = T), "Chase", "Free")) %>%
+  ungroup() %>%
+  group_by(chase_trial, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_hfa = mean(hfa)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -hfa) %>%
+  distinct() %>%
+  group_by(chase_trial, trial_time, subject) %>%
+  mutate(mean_sub_hfa = mean(mean_elec_hfa, na.rm = T))
+
+
+avg_dlpfc_hfa_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_hfa, color = chase_trial)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 3) +
+  xlim(-3, 3) +
+  ylim(-.75, 1.5) +
+  ggtitle("Turnaround: Chase")
+
+```
+
+## Whole Trial
+
+```{r points-only-model}
+
+dlpfc_hfa_data <- dlpfc_hfa_data %>% rename(hfa = theta)
+
+# merge behavior data with ieeg data
+dlpfc_hfa_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               dlpfc_hfa_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+dlpfc_hfa_lme_df <- dlpfc_hfa_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, hfa, trial_numeric, move_time, points_remaining)  %>%
+  mutate(rescale(points_remaining)) 
+
+
+points_r_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(dlpfc_hfa_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- dlpfc_hfa_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(hfa ~ points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  points_r_results_only <- rbind(points_r_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r distance_to_ghost-model}
+
+# merge behavior data with ieeg data
+dlpfc_hfa_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               dlpfc_hfa_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+dlpfc_hfa_lme_df <- dlpfc_hfa_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, hfa, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(rescale(points_remaining)) %>%
+  mutate(rescale(distance_to_ghost))
+
+
+dist_to_g_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(dlpfc_hfa_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- dlpfc_hfa_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(hfa ~ distance_to_ghost + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  dist_to_g_results_only <- rbind(dist_to_g_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r combined-model}
+
+# merge behavior data with ieeg data
+dlpfc_hfa_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               dlpfc_hfa_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+dlpfc_hfa_lme_df <- dlpfc_hfa_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, hfa, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(rescale(points_remaining)) %>%
+  mutate(rescale(distance_to_ghost))
+
+dist_to_g_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+points_r_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+for(step in sort(unique(dlpfc_hfa_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- dlpfc_hfa_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(hfa ~ distance_to_ghost + points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+  # add to results
+  dist_to_g_results <- rbind(dist_to_g_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+  
+  # add to results
+  points_r_results <- rbind(points_r_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[3, "Estimate"],
+                             `Std. Error` = model_1$coefficients[3, "Std. Error"],
+                             df = model_1$coefficients[3, "df"],
+                             `t value` = model_1$coefficients[3, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[3, "Pr(>|t|)"]
+                           ))
+
+  
+
+}
+
+
+
+```
+
+```{r viz-models}
+
+model_results_whole_trial <- rbind(dist_to_g_results_only %>% mutate(case = "dist_only") %>% mutate(move_time = sort(unique(dlpfc_hfa_lme_df$move_time))),
+                       dist_to_g_results %>% mutate(case = "dist") %>% mutate(move_time = sort(unique(dlpfc_hfa_lme_df$move_time))),
+                       points_r_results_only %>% mutate(case = "points_only") %>% mutate(move_time = sort(unique(dlpfc_hfa_lme_df$move_time))),
+                       points_r_results %>% mutate(case = "points") %>% mutate(move_time = sort(unique(dlpfc_hfa_lme_df$move_time))))
+
+
+model_results_whole_trial %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3.5) + ylim(-0.015, .015)
+
+
+model_results_whole_trial %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  filter(model == "Combined") %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3.5) + ylim(-0.015, .015)
+
+```

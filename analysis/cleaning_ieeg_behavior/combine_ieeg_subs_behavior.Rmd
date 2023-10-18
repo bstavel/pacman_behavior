@@ -150,7 +150,7 @@ bjh21_data <- read_csv(path(here(), './data/ieeg_behave/BJH021_raw_behave.csv'),
                                                                                               Eaten = col_double(),
                                                                                               Score = col_double()))
 
-bjh25_data <- read_csv(path(here(), './data/ieeg_behave/BJH016_raw_behave.csv'), col_types = cols(X1 = col_double(),
+bjh25_data <- read_csv(path(here(), './data/ieeg_behave/BJH025_raw_behave.csv'), col_types = cols(X1 = col_double(),
                                                                                               Subject = col_character(),
                                                                                               Trial = col_character(),
                                                                                               Lives = col_double(),
@@ -341,7 +341,11 @@ all_subs_data_clean <- rbind(sl02_data_clean, bjh16_data_clean, bjh21_data_clean
 all_subs_dist_data_clean <- rbind(sl02_data_distance, bjh16_data_distance, bjh21_data_distance,
                                   bjh25_data_distance, ll10_data_distance, ll12_data_distance, ll13_data_distance)
 
+all_subs_dist_ng_data_clean <- rbind(sl02_data_distance_no_ghost, bjh16_data_distance_no_ghost, bjh21_data_distance_no_ghost,
+                                bjh25_data_distance_no_ghost, ll10_data_distance_no_ghost, ll12_data_distance_no_ghost, ll13_data_distance_no_ghost)
+
 write_csv(all_subs_data_clean, path(here(), "munge", "all_subs_behavior_df.csv"))
 write_csv(all_subs_dist_data_clean, path(here(), "munge", "all_subs_distance_df.csv"))
+write_csv(all_subs_dist_ng_data_clean, path(here(), "munge", "all_subs_noghost_distance_df.csv"))
 
 ```

@@ -1,44 +1,21 @@
 compile_ieeg_csv_files <- function(roi, sub, sample_freq, timelock_folder, keyword_include = "*", keyword_exclude = "9999"){
   
   shift <- 0
-  hc_elecs <- list.files(path(here(), "data_mount", "remote", "preprocessing", sub, "ieeg", timelock_folder))
+  hc_elecs <- list.files(path(here(), "data_mount", "remote", "pacman", "preprocessing", sub, "ieeg", timelock_folder))
   hc_elecs <- hc_elecs[grepl(keyword_include, hc_elecs) & !grepl(keyword_exclude, hc_elecs)]
   hc_elecs <- hc_elecs[grepl(roi, hc_elecs)]
 
   
   # get the time step #
-  if(grepl("delta", keyword_include)){
-    sample_step <- sample_freq/(2*4)
+    sample_step <- sample_freq/20
     time_step <- sample_step/sample_freq
-  } else if(grepl("theta", keyword_include)) {
-    sample_step <- sample_freq/(5*4)
-    time_step <- sample_step/sample_freq
-    
-  } else if(grepl("alpha", keyword_include)) {
-    sample_step <- sample_freq/(11*4)
-    time_step <- sample_step/sample_freq
-    
-  } else if(grepl("beta", keyword_include)) {
-    sample_step <- sample_freq/(22*4)
-    time_step <- sample_step/sample_freq
-    
-  } else if(grepl("gamma", keyword_include)) {
-    sample_step <- sample_freq/(50*4)
-    time_step <- sample_step/sample_freq
-    
-  } else if(grepl("hfa", keyword_include)) {  
-    sample_step <- sample_freq/(110*4)
-    time_step <- sample_step/sample_freq
-    
-  }
-  
   
   elec_full_data_all_elecs <- NULL
   for(file in hc_elecs){
     
     print(file)
     
-    elec_theta_data <- read_csv(path(here(), "data_mount", "remote", "preprocessing", sub, "ieeg", timelock_folder, file))
+    elec_theta_data <- read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", sub, "ieeg", timelock_folder, file))
     
     # fix col names
     elec_theta_data <- elec_theta_data %>%
