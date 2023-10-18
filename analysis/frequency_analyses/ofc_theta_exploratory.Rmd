@@ -1,0 +1,2202 @@
+---
+title: "OFC Theta"
+output: html_document
+date: "2023-09-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+# Linear Mixed Effects Models
+
+### Problems with singular fit
+
+Due to unbalanced groups, there are some singular fits. I have looked into this and it is resolved when I use a simpler model with only a random effect of subject. However, it does make sense to have a different intercept for each electrode, since I know they can vary. I looked at it both ways, and it did not change the significance or direction of the fixed effects. Plan going forward is to use the more complex model but to double check it holds in the simpler model. Another thing to checkis if the variance of elec_id:subject is regularly close to 0. That might indicate that while it makes sense each electrode would get its own intercept, it just isn't necessary.
+
+
+```{r load-data}
+
+# ieeg data #
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_iti_onset.csv"))
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_g_dist %>% 
+  select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
+
+```
+
+```{r, fig.width=20, fig.height=40}
+
+avg_ofc_theta_data <- ofc_theta_data %>%
+  rename(theta = theta) %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() 
+
+avg_ofc_theta_data %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 6) +
+  ylim(-1.5, 1.5)
+
+```
+
+
+```{r, fig.width= 12, fig.height=12}
+
+
+avg_ofc_theta_data %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_theta = mean(mean_elec_theta)) %>%
+  ungroup() %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+avg_ofc_theta_data %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta)) %>%
+  ungroup() %>%
+  select(-mean_elec_theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(mean_sub_theta)) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta)) +
+  geom_point(color = "black") +
+  geom_line(color = "black") +
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+```
+
+
+
+```{r merge-with-behavior, fig.width= 16, fig.height=40}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+# validate we get the same ieeg data by comparing with above plots
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_elec_theta = mean(theta, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T)) %>%
+  ungroup() %>%
+  select(-mean_elec_theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(mean_sub_theta, na.rm = T))
+
+
+avg_ofc_theta_behave_df %>%
+  ggplot(., aes(x = trial_time, y = mean_theta)) +
+  geom_point(color = "black") +
+  geom_line(color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 5) + ylim(-.15, .25)
+
+# validate we get the same ieeg data by comparing with above plots
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  filter(trial_time > 0 & trial_time < 5) %>%
+  mutate(ghost_trial = if_else(TrialType > 16, "Ghost", "NoGhost")) %>%
+  group_by(reward_groups, trial_time, electrode, subject) %>%
+  mutate(mean_elec_theta = mean(theta, na.rm = T)) %>%
+  mutate(mean_theta_upper = t.test(theta)$conf.int[2]) %>%
+  mutate(mean_theta_lower = t.test(theta)$conf.int[1])
+  # select(-trial_numeric, -theta) %>%
+  # distinct() %>%
+  # group_by(reward_groups, trial_time, subject) %>%
+  # mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T)) %>%
+  # mutate(mean_theta_upper = t.test(mean_elec_theta)$conf.int[2]) %>%
+  # mutate(mean_theta_lower = t.test(mean_elec_theta)$conf.int[1])
+  # ungroup() # %>%
+  # select(-mean_elec_theta, -electrode) %>%
+  # distinct() %>%
+  # group_by(reward_groups, trial_time) %>%
+  # mutate(mean_theta = mean(mean_sub_theta, na.rm = T))
+  
+
+
+avg_ofc_theta_behave_df %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_theta, color = factor(reward_groups), fill = factor(reward_groups))) +
+  geom_point() +
+  geom_line() +
+  geom_ribbon(aes(ymin = mean_theta_lower, ymax = mean_theta_upper), alpha = .5) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 5, scales = "free_y") +
+  xlim(0, 4)
+
+```
+
+```{r, fig.width=20, fig.height=12}
+
+
+high_low_reward <- ofc_theta_behave_df %>%
+  filter(trial_time >= 0) %>%
+  mutate(recent_reward_size = if_else(reward_groups == 1 & Eaten == 0, 0, #  small	large	large	small	small, total 70
+                                  if_else(reward_groups == 1 & Eaten == 1, 10,
+                                          if_else(reward_groups == 1 & Eaten == 2, 20,
+                                                  if_else(reward_groups == 1 & Eaten == 3, 20,
+                                                          if_else(reward_groups == 1 & Eaten == 4, 10,
+                                                                  if_else(reward_groups == 1 & Eaten == 5, 10,
+                                                                          if_else(reward_groups == 2 & Eaten == 0, 0, #  small	large	small	large	small, total 70
+                                                                                  if_else(reward_groups == 2 & Eaten == 1, 10,
+                                                                                          if_else(reward_groups == 2 & Eaten == 2, 20,
+                                                                                                  if_else(reward_groups == 2 & Eaten == 3, 10,
+                                                                                                          if_else(reward_groups == 2 & Eaten == 4, 20,
+                                                                                                                  if_else(reward_groups == 2 & Eaten == 5, 10,
+                                                                                                                          if_else(reward_groups == 3 & Eaten == 0, 0, #  large	small	large	small	large, total 80
+                                                                                                                                  if_else(reward_groups == 3 & Eaten == 1, 20,
+                                                                                                                                          if_else(reward_groups == 3 & Eaten == 2, 10,
+                                                                                                                                                  if_else(reward_groups == 3 & Eaten == 3, 20,
+                                                                                                                                                          if_else(reward_groups == 3 & Eaten == 4, 10,
+                                                                                                                                                                  if_else(reward_groups == 3 & Eaten == 5, 20,
+                                                                                                                                                                          if_else(reward_groups == 4 & Eaten == 0, 70, #  small	small	small	large	large, total 70
+                                                                                                                                                                                  if_else(reward_groups == 4 & Eaten == 1, 10,
+                                                                                                                                                                                          if_else(reward_groups == 4 & Eaten == 2, 10,
+                                                                                                                                                                                                  if_else(reward_groups == 4 & Eaten == 3, 10,
+                                                                                                                                                                                                          if_else(reward_groups == 4 & Eaten == 4, 20,
+                                                                                                                                                                                                                  if_else(reward_groups == 4 & Eaten == 5, 20, 999
+                                                                                                                                                                                                                  ))))))))))))))))))))))))) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  filter(trial_time <= max(turnaround_time)) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  mutate(change_in_score = if_else(c(0, diff(Eaten)) == 1, 1, 0)) %>%
+  ungroup() %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  filter(change_in_score == 1) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  filter(Eaten > 0) %>%
+  filter(!is.na(electrode))
+
+high_low_reward %>% 
+  ggplot(., aes(x = factor(Eaten), y = theta, fill = factor(recent_reward_size))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 5) +
+  ylim(-2, 5)
+  
+high_low_reward %>% 
+  ggplot(., aes(x = factor(recent_reward_size), y = theta, fill = factor(recent_reward_size))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 5) +
+  ylim(-2, 5)
+
+high_low_reward %>% 
+  ggplot(., aes(x = factor(recent_reward_size), y = theta, fill = factor(recent_reward_size))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(-2, 5)
+
+
+```
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  filter(trial_time >= 0) %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Direction != "Still", trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(reward_groups, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(reward_groups, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = factor(reward_groups))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 3) +
+  xlim(-1, 3) +
+  ylim(-.5, 1) +
+  ggtitle("First Movement")
+
+```
+
+
+```{r, fig.width = 18, fig.height = 12}
+
+# First Dot
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 1) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit1 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  mutate(first_dot_large = if_else(reward_groups %in% c(3), "large", "small")) %>%
+  ungroup() %>%
+  group_by(first_dot_large, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(first_dot_large, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = factor(first_dot_large))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-0.5, .5) +
+  ylim(-.5, 1.1) +
+  ggtitle("First Dot")
+
+# Second Dot
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 2) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit2 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  mutate(second_dot_large = if_else(reward_groups %in% c(1, 2), "large", "small")) %>%
+  ungroup() %>%
+  group_by(second_dot_large, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(second_dot_large, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = factor(second_dot_large))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-0.5, .5) +
+  ylim(-.5, 1.1) +
+  ggtitle("Second Dot")
+
+# Third Dot
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 3) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit3 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  mutate(third_dot_large = if_else(reward_groups %in% c(1, 3), "large", "small")) %>%
+  ungroup() %>%
+  group_by(third_dot_large, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(third_dot_large, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = factor(third_dot_large))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-0.5, .5) +
+  ylim(-.5, 1.1) +
+  ggtitle("Third Dot")
+
+
+# Fourth Dot
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 4) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit4 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  mutate(fourth_dot_large = if_else(reward_groups %in% c(2, 4), "large", "small")) %>%
+  ungroup() %>%
+  group_by(fourth_dot_large, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(fourth_dot_large, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = factor(fourth_dot_large))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-0.5, .5) +
+  ylim(-.5, 1.1) +
+  ggtitle("Fourth Dot")
+
+
+# Fith Dot
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 5) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit5 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  mutate(fifth_dot_large = if_else(reward_groups %in% c(3, 4), "large", "small")) %>%
+  ungroup() %>%
+  group_by(fifth_dot_large, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(fifth_dot_large, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = factor(fifth_dot_large))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-0.5, .5) +
+  ylim(-.5, 1.1) +
+  ggtitle("Fifth Dot")
+
+
+```
+
+
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 1) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit1 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  mutate(reward_groups = factor(reward_groups)) %>%
+  group_by(reward_groups, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(reward_groups, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = factor(reward_groups))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, 1.1) +
+  ggtitle("First Dot")
+
+```
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 1) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit2 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  mutate(reward_groups = factor(reward_groups)) %>%
+  group_by(reward_groups, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(reward_groups, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = factor(reward_groups))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, 1.1) +
+  ggtitle("Second Dot")
+
+
+```
+
+
+
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  filter(dots_eaten >= 3) %>%
+  mutate(move_time = if_else(Biscuit3 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, .5) +
+  ggtitle("Third Dot")
+
+```
+
+```{r, fig.width = 18, fig.height = 40}
+
+
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 4) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit4 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, .5) +
+  ggtitle("Fourth Dot")
+
+
+#n ghost vs no ghost
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  filter(dots_eaten >= 4) %>%
+  mutate(ghost_trial = if_else(TrialType > 16, "Ghost", "NoGhost")) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(move_time = if_else(Biscuit4 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(ghost_trial, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(ghost_trial, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_theta, color = ghost_trial)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-1, 1) +
+  ggtitle("Fourth Dot")
+
+
+```
+
+```{r, fig.width = 18, fig.height = 12}
+
+
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-last_away, -trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  filter(dots_eaten >= 5) %>%
+  mutate(move_time = if_else(Biscuit5 == 1111, trial_time, 999)) %>%
+  mutate(trial_time = round(trial_time - min(move_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+  
+  
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 5) +
+  xlim(-1, 3) +
+  ylim(-.5, .5) +
+  ggtitle("Fith Dot")
+
+```
+
+
+```{r, fig.width = 18, fig.height=40}
+
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(trial_time = round(trial_time - max(turnaround_time), 2)) %>%
+  ungroup() %>%
+  group_by(trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+
+
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 5) +
+  xlim(-3, 3) +
+  ylim(-.75, .75) +
+  ggtitle("Turnaround")
+
+```
+
+```{r, fig.width = 18, fig.height=12}
+
+avg_ofc_theta_behave_df <- ofc_theta_behave_df %>%
+  select(-trial_flip, -time_lag, -sample) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(trial_time = round(trial_time - max(turnaround_time), 2)) %>%
+  mutate(chase_trial = if_else(any(Chase, na.rm = T) | any(Attack, na.rm = T), "Chase", "Free")) %>%
+  ungroup() %>%
+  group_by(chase_trial, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(chase_trial, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+
+
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = chase_trial)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 3) +
+  xlim(-3, 3) +
+  ylim(-.75, .75) +
+  ggtitle("Turnaround: Chase")
+
+```
+```{r, fig.width = 18, fig.height=40}
+
+# merge behavior data with ieeg data
+ofc_theta_died_df <- left_join(all_subs_dist %>% group_by(subject, trial_numeric) %>% mutate(escape = if_else(died == 1 | any(Chase, na.rm = T), "Attack", "Escape")) %>% select(subject, trial_numeric, died, trial_length, escape), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+ofc_theta_died_df <- ofc_theta_died_df %>% rename(theta = theta)
+
+avg_ofc_theta_behave_df <- ofc_theta_died_df %>%
+  filter(trial_length < 4.5) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  arrange(subject, electrode, trial_numeric, trial_time) %>%
+  group_by(subject, elec_id, trial_numeric) %>%
+  mutate(trial_time = round(trial_time - trial_length, 2)) %>%
+  ungroup() %>%
+  group_by(escape, trial_time, elec_id, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(escape, trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T))
+
+
+avg_ofc_theta_behave_df %>%
+  filter(!is.na(electrode)) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = escape)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, ncol = 3) +
+  xlim(-1, 2) +
+  ylim(-1, 1) +
+  ggtitle("Turnaround: Chase")
+
+```
+
+
+```{r}
+
+ofc_theta_lme_df %>%
+  filter(move_time == 1.25) %>%
+  ggplot(., aes(x= points_remaining, y = theta)) +
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y")
+
+
+ofc_theta_lme_df %>%
+  filter(move_time == 1.45) %>%
+  ggplot(., aes(x= distance_to_ghost, y = theta)) +
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, scales = "free_y")
+
+```
+
+## Whole Trial
+
+```{r points-only-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining)  %>%
+  mutate(points_remaining = rescale(points_remaining)) 
+
+
+points_r_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  points_r_results_only <- rbind(points_r_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r distance_to_ghost-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+
+dist_to_g_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  dist_to_g_results_only <- rbind(dist_to_g_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r combined-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+dist_to_g_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+points_r_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+  # add to results
+  dist_to_g_results <- rbind(dist_to_g_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+  
+  # add to results
+  points_r_results <- rbind(points_r_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[3, "Estimate"],
+                             `Std. Error` = model_1$coefficients[3, "Std. Error"],
+                             df = model_1$coefficients[3, "df"],
+                             `t value` = model_1$coefficients[3, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[3, "Pr(>|t|)"]
+                           ))
+
+  
+
+}
+
+
+
+```
+
+```{r viz-models}
+
+model_results_whole_trial <- rbind(dist_to_g_results_only %>% mutate(case = "dist_only") %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time))),
+                       dist_to_g_results %>% mutate(case = "dist") %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time))),
+                       points_r_results_only %>% mutate(case = "points_only") %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time))),
+                       points_r_results %>% mutate(case = "points") %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time))))
+
+ggthemr("light")
+model_results_whole_trial %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3.5) + ylim(-1.5, 1.5)
+
+
+plot <- model_results_whole_trial %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  filter(model == "Combined") %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3.5) + ylim(-1.5, 1.5) +
+  ggtitle("OFC Theta, Trial Onset")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_trial_onset.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+```
+
+## Onset Before Turn
+
+```{r points-only-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  filter(move_time < 3) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining)  %>%
+  mutate(points_remaining = rescale(points_remaining)) 
+
+
+points_r_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  points_r_results_only <- rbind(points_r_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r distance_to_ghost-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  filter(move_time < 3) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+
+dist_to_g_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  dist_to_g_results_only <- rbind(dist_to_g_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r combined-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  filter(move_time < 3) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+dist_to_g_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+points_r_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+  # add to results
+  dist_to_g_results <- rbind(dist_to_g_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+  
+  # add to results
+  points_r_results <- rbind(points_r_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[3, "Estimate"],
+                             `Std. Error` = model_1$coefficients[3, "Std. Error"],
+                             df = model_1$coefficients[3, "df"],
+                             `t value` = model_1$coefficients[3, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[3, "Pr(>|t|)"]
+                           ))
+
+  
+
+}
+
+
+
+```
+
+
+```{r viz-models}
+
+model_results_onset_before_turn <- rbind(dist_to_g_results_only %>% mutate(case = "dist_only") %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time))),
+                       dist_to_g_results %>% mutate(case = "dist") %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time))),
+                       points_r_results_only %>% mutate(case = "points_only") %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time))),
+                       points_r_results %>% mutate(case = "points") %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time))))
+
+ggthemr("light")
+model_results_onset_before_turn %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3)
+
+
+plot <- model_results_onset_before_turn %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  filter(model == "Combined") %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(0, 3.5) +
+  ggtitle("OFC Theta, Trial Onset")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_trial_onset_before_turn.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+```
+
+
+```{r combined-model-by-subject}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  filter(move_time < 3) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+dist_to_g_results <- tibble(
+  case = character(0),
+  time = numeric(0),
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+points_r_results <- tibble(
+  case = character(0),
+  time = numeric(0),
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+  # add to results
+  dist_to_g_results <- rbind(dist_to_g_results, 
+                           tibble(
+                             case = "all_subs",
+                             time = step, 
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+  
+  # add to results
+  points_r_results <- rbind(points_r_results, 
+                           tibble(
+                            case = "all_subs",
+                            time = step, 
+                             Estimate = model_1$coefficients[3, "Estimate"],
+                             `Std. Error` = model_1$coefficients[3, "Std. Error"],
+                             `t value` = model_1$coefficients[3, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[3, "Pr(>|t|)"]
+                           ))
+
+  ## by subject
+  for(elec in unique(time_step_df$elec_id)){
+      
+      # # if(sub %in% c("LL10", "LL12")){
+      #   model_1 <- summary(lm(theta ~ distance_to_ghost + points_remaining, data = time_step_df %>% filter(subject == sub)))
+      # } else {
+      #   model_1 <- summary(lmer(theta ~ distance_to_ghost + points_remaining + (1|elec_id), data = time_step_df %>% filter(subject == sub)))
+      # }
+    try( {
+      model_1 <- summary(lm(theta ~ distance_to_ghost + points_remaining, data = time_step_df %>% filter(elec_id == elec)))
+      
+      
+      dist_to_g_results <- rbind(dist_to_g_results, 
+                               tibble(
+                                 case = elec,
+                                 time = step, 
+                                 Estimate = model_1$coefficients[2, "Estimate"],
+                                 `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                                 `t value` = model_1$coefficients[2, "t value"],
+                                 `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                               ))
+      
+      # add to results
+      points_r_results <- rbind(points_r_results, 
+                               tibble(
+                                case = elec,
+                                time = step, 
+                                 Estimate = model_1$coefficients[3, "Estimate"],
+                                 `Std. Error` = model_1$coefficients[3, "Std. Error"],
+                                 `t value` = model_1$coefficients[3, "t value"],
+                                 `Pr(>|t|)` = model_1$coefficients[3, "Pr(>|t|)"]
+                               )) 
+      }, TRUE)
+  }
+
+  
+
+}
+
+
+
+```
+
+
+
+
+```{r viz-models-by-sub}
+
+model_results_onset_before_turn_all_subs <- rbind(dist_to_g_results %>% mutate(pred = "dist"),
+                                          points_r_results %>% mutate(pred = "points"))
+
+model_results_onset_before_turn_all_subs %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  mutate(sig = if_else(pval_fdr < .05 & case == "all_subs", time, -10)) %>%
+  mutate(regressor = if_else(grepl("dist", pred), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(main = if_else(case == "all_subs", "all_subs", regressor)) %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "darkgrey") +
+  geom_point(aes(color = main), size = 3,alpha = .5) +
+  geom_line(aes(color = main, group = case), alpha = .5) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  geom_label(aes(x = sig), label = "*", color = "black", y = 5.9) +
+  scale_color_manual(values = c("black", "#87C8B7", "#FCC673")) + #"white", "#FCC673"
+  xlim(0, 2.5)  + ylim(-6.1, 6.1) +
+  facet_wrap(~regressor, ncol = 1) +
+  ggtitle("OFC Theta, Trial Onset")
+
+
+plot <- model_results_onset_before_turn_all_subs %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  mutate(sig = if_else(pval_fdr < .05 & case == "all_subs", time, -10)) %>%
+  mutate(regressor = if_else(grepl("dist", pred), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects LME", gsub("_.*", "", case))) %>%
+  mutate(large_line = if_else(case == "all_subs", "all_subs", "indv_lines")) %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "darkgrey") +
+  geom_point(aes(color = main), size = 3,alpha = .5) +
+  geom_line(aes(color = main, group = case, size = large_line), alpha = .5) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  geom_label(aes(x = sig), label = "*", color = "black", y = 5.9) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  xlim(0, 2.5)  + ylim(-6.1, 6.1) + labs(color = "", x = "Time from movement onset", y = "Beta Coefficient") +
+  facet_wrap(~regressor, ncol = 1) +
+  ggtitle("Theta encodes reward and threat values in the OFC at trial onset")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_trial_onset_before_turn_indv_subs.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+```
+
+
+## Approach Only
+
+```{r points-only-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turn_time = round(trial_time - max(turnaround_time), 2)) %>%
+  ungroup() %>%
+  filter(turn_time > -2 & turn_time < 2) %>%
+  select(subject, elec_id, theta, trial_numeric, turn_time, points_remaining)  %>%
+  mutate(points_remaining = rescale(points_remaining)) 
+
+
+points_r_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$turn_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(turn_time == step)
+  
+  model_1 <- summary(lmer(theta ~ points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  points_r_results_only <- rbind(points_r_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r distance_to_ghost-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turn_time = round(trial_time - max(turnaround_time), 2)) %>%
+  ungroup() %>%
+  filter(turn_time > -2 & turn_time < 2) %>%
+  select(subject, elec_id, theta, trial_numeric, turn_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+
+dist_to_g_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$turn_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(turn_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  dist_to_g_results_only <- rbind(dist_to_g_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r combined-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turn_time = round(trial_time - max(turnaround_time), 2)) %>%
+  ungroup() %>%
+  filter(turn_time > -2 & turn_time < 2) %>%
+  select(subject, elec_id, theta, trial_numeric, turn_time, points_remaining, distance_to_ghost)  %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+dist_to_g_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+points_r_results <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+for(step in sort(unique(ofc_theta_lme_df$turn_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(turn_time == step)
+  
+  model_1 <- summary(lmer(theta ~ distance_to_ghost + points_remaining + (1|subject/elec_id), data = time_step_df))
+  
+  # add to results
+  dist_to_g_results <- rbind(dist_to_g_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+  
+  # add to results
+  points_r_results <- rbind(points_r_results, 
+                           tibble(
+                             Estimate = model_1$coefficients[3, "Estimate"],
+                             `Std. Error` = model_1$coefficients[3, "Std. Error"],
+                             df = model_1$coefficients[3, "df"],
+                             `t value` = model_1$coefficients[3, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[3, "Pr(>|t|)"]
+                           ))
+
+  
+
+}
+
+
+
+```
+
+```{r viz-models}
+
+model_results <- rbind(dist_to_g_results_only %>% mutate(case = "dist_only") %>% mutate(turn_time = sort(unique(ofc_theta_lme_df$turn_time))),
+                       dist_to_g_results %>% mutate(case = "dist") %>% mutate(turn_time = sort(unique(ofc_theta_lme_df$turn_time))),
+                       points_r_results_only %>% mutate(case = "points_only") %>% mutate(turn_time = sort(unique(ofc_theta_lme_df$turn_time))),
+                       points_r_results %>% mutate(case = "points") %>% mutate(turn_time = sort(unique(ofc_theta_lme_df$turn_time))))
+
+
+plot <- model_results %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  mutate(regressor = if_else(grepl("dist", case), "Distance to Ghost", "Points Remaining")) %>%
+  mutate(model = if_else(grepl("only", case), "Individual", "Combined")) %>%
+  filter(model == "Combined") %>%
+  ggplot(., aes(x = turn_time, y = Estimate)) +
+  geom_point(aes(color = sig, fill = regressor), size = 6, shape = 21) +
+  geom_line(aes(linetype = model, color = regressor)) +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("#87C8B7", "white", "#FCC673", "black")) +
+  xlim(-2, 2) +
+  ggtitle("OFC Theta, Turnaround")
+  
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_trial_turnaround.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+```
+
+
+## Combined value
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  ungroup() %>%
+  mutate(combined_value = rescale(combined_value))
+
+
+value_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ combined_value + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  value_results_only <- rbind(value_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_value <- value_results_only %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_value %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#D1B5F4") +
+  geom_line(color = "#D1B5F4") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3.5) +ylim(-1, 1.1) +
+  ggtitle("OFC Theta, Combined Value")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_trial_combined_value.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+## Combined value - before turn
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  filter(move_time < 3) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  ungroup() %>%
+  mutate(combined_value = rescale(combined_value))
+
+
+value_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ combined_value + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  value_results_only <- rbind(value_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_value <- value_results_only %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_value %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#D1B5F4") +
+  geom_line(color = "#D1B5F4") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3)  +
+  ggtitle("OFC Theta, Combined Value")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_trial_combined_value_preturn.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+## Discounted Reward
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  filter(move_time < 3) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, cdf_distance, points_remaining, distance_to_ghost)  %>%
+  rowwise() %>%
+  mutate(combined_value = points_remaining * cdf_distance) %>%
+  ungroup() %>%
+  mutate(combined_value = rescale(combined_value))
+
+
+value_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ cdf_distance + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  value_results_only <- rbind(value_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_value <- value_results_only %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_value %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#FB9A99") +
+  geom_line(color = "#FB9A99") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3)  + ylim(-1.5, 1.5) +
+  ggtitle("OFC Theta, CDF Threat")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_trial_combined_value_preturn.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+## UserLocation
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, UserLocation)  %>%
+  mutate(UserLocation = rescale(UserLocation))
+
+
+userloc_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ UserLocation + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  userloc_results_only <- rbind(userloc_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_userloc <- userloc_results_only %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_userloc %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#65ADC1") +
+  geom_line(color = "#65ADC1") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3.5) +ylim(-1, 1) +
+  ggtitle("OFC Theta, Pacman Location")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_trial_pacman_location.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+## Ghost Location
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+ofc_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ofc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_theta_lme_df <- ofc_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, distance_to_ghost, GhostLocation)  %>%
+  mutate(GhostLocation = rescale(GhostLocation)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost))
+
+
+ghostloc_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(ofc_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- ofc_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ GhostLocation  + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  ghostloc_results_only <- rbind(ghostloc_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models, fig.height=8, fig.width=12}
+
+model_results_ghostloc <- ghostloc_results_only %>% mutate(move_time = sort(unique(ofc_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_ghostloc %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#EF7474") +
+  geom_line(color = "#EF7474") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3.5) +ylim(-1, 1) +
+  ggtitle("OFC Theta, Ghost Location")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_trial_ghost_location.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+
+```{r save}
+
+write_csv(model_results_whole_trial, path(here(), "results", "ofc_model_results_whole_trial.csv"))
+write_csv(model_results, path(here(), "results", "ofc_model_results_turnarouns.csv"))
+write_csv(model_results_value, path(here(), "results", "ofc_model_results_integrated_value.csv"))
+
+
+```

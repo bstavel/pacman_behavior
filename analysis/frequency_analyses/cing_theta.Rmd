@@ -1,0 +1,564 @@
+---
+title: "Cingulate ~ Theta"
+output: html_document
+date: "2023-09-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 5,  # set default width of figures
+  fig.height = 8,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+# Linear Mixed Effects Models
+
+### Problems with singular fit
+
+Due to unbalanced groups, there are some singular fits. I have looked into this and it is resolved when I use a simpler model with only a random effect of subject. However, it does make sense to have a different intercept for each electrode, since I know they can vary. I looked at it both ways, and it did not change the significance or direction of the fixed effects. Plan going forward is to use the more complex model but to double check it holds in the simpler model. Another thing to checkis if the variance of elec_id:subject is regularly close to 0. That might indicate that while it makes sense each electrode would get its own intercept, it just isn't necessary.
+
+
+## Data Prep and EDA
+
+```{r load-data}
+
+# ieeg data #
+cing_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_cing_all_subs_iti_onset.csv"))
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_g_dist %>% 
+  select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
+
+```
+
+```{r elec-response, fig.width=20, fig.height=40}
+
+## plot electrode level ERPS ##
+
+avg_cing_theta_data <- cing_theta_data %>%
+  rename(theta = theta) %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() 
+
+avg_cing_theta_data %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  ggplot(., aes(x = trial_time, y = mean_elec_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, ncol = 6) +
+  ylim(-1.5, 1.5)
+
+```
+
+
+```{r subject-overall-response, fig.width= 12, fig.height=12}
+
+## plot subject and combined ERPS ##
+
+avg_cing_theta_data %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_theta = mean(mean_elec_theta)) %>%
+  ungroup() %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+avg_cing_theta_data %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta)) %>%
+  ungroup() %>%
+  select(-mean_elec_theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(mean_sub_theta)) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta)) +
+  geom_point(color = "black") +
+  geom_line(color = "black") +
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+```
+
+
+
+```{r merge-with-behavior, fig.width= 12, fig.height=12}
+
+# merge behavior data with ieeg data
+cing_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               cing_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+# validate we get the same ieeg data by comparing with above plots
+avg_cing_theta_behave_df <- cing_theta_behave_df %>%
+  group_by(trial_time, electrode, subject) %>%
+  mutate(mean_elec_theta = mean(theta, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_sub_theta = mean(mean_elec_theta, na.rm = T)) %>%
+  ungroup() %>%
+  select(-mean_elec_theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(mean_sub_theta, na.rm = T))
+
+
+avg_cing_theta_behave_df %>%
+  ggplot(., aes(x = trial_time, y = mean_theta)) +
+  geom_point(color = "black") +
+  geom_line(color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-1, 5)
+
+
+```
+
+## Linear Effects Model Results and Plots
+
+## Onset Before Turn
+
+```{r onset-before-turn}
+
+
+# cing and Theta Onset Before Turnaround plot
+individual_and_overall_lme_onset_before_turn_model_and_plot("cing", "theta", 
+                                all_subs_g_dist, cing_theta_data, 
+                                y_low = -8, y_high = 8,
+                                plot_title = "Theta does not encode reward and threat values in the Ant. Cingulate at trial onset",
+                                rerun_model = TRUE)
+
+# cing and Theta Onset Before Turnaround plot
+individual_and_overall_lme_onset_before_turn_model_and_plot("cing", "theta", 
+                                all_subs_g_dist, cing_theta_data, 
+                                plot_title = "Theta does not encode reward and threat values in the Ant. Cingulate at trial onset",
+                                y_low = -8, y_high = 8,
+                                rerun_model = FALSE)
+
+
+```
+
+
+## Approach Only
+
+
+```{r onset-before-turn}
+
+
+# cing and Theta Onset Before Turnaround plot
+individual_and_overall_lme_onset_turnaround_model_and_plot("cing", "theta", 
+                                all_subs_g_dist, cing_theta_data, 
+                                y_low = -8, y_high = 8,
+                                plot_title = "Theta does not encode reward and threat values in the Ant. Cingulate at turnaround",
+                                rerun_model = TRUE)
+
+# cing and Theta Onset Before Turnaround plot
+individual_and_overall_lme_onset_turnaround_model_and_plot("cing", "theta", 
+                                all_subs_g_dist, cing_theta_data, 
+                                plot_title = "Theta does not encode reward and threat values in the Ant. Cingulate at turnaround",
+                                y_low = -8, y_high = 8,
+                                rerun_model = FALSE)
+
+
+```
+
+## Pacman Location
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+cing_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               cing_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+cing_theta_lme_df <- cing_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, UserLocation)  %>%
+  mutate(UserLocation = rescale(UserLocation))
+
+
+userloc_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(cing_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- cing_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ UserLocation + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  userloc_results_only <- rbind(userloc_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_userloc <- userloc_results_only %>% mutate(move_time = sort(unique(cing_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_userloc %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#65ADC1") +
+  geom_line(color = "#65ADC1") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3.5) +ylim(-1.2, 1.2) +
+  ggtitle("Cing Theta, Pacman Location")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "cing_theta_trial_pacman_location.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+## Ghost Location
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+cing_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               cing_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+cing_theta_lme_df <- cing_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, GhostLocation)  %>%
+  mutate(GhostLocation = rescale(GhostLocation))
+
+
+ghostloc_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(cing_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- cing_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ GhostLocation + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  ghostloc_results_only <- rbind(ghostloc_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_ghostloc <- ghostloc_results_only %>% mutate(move_time = sort(unique(cing_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_ghostloc %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#EF7474") +
+  geom_line(color = "#EF7474") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3.5) +ylim(-1, 1) +
+  ggtitle("Cing Theta, Ghost Location")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "cing_theta_trial_ghost_location.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+
+
+
+
+## Combined value
+
+```{r value-model}
+
+# merge behavior data with ieeg data
+cing_theta_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               cing_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+cing_theta_lme_df <- cing_theta_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(Direction != "Still") %>%
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  ungroup() %>%
+  filter(move_time < 5) %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  ungroup() %>%
+  mutate(combined_value = rescale(combined_value))
+
+
+value_results_only <- tibble(
+  Estimate = numeric(0),
+  `Std. Error` = numeric(0),
+  df = numeric(0),
+  `t value` = numeric(0),
+  `Pr(>|t|)` = numeric(0)
+)
+
+
+for(step in sort(unique(cing_theta_lme_df$move_time))){
+  
+  print(step)
+
+  time_step_df <- cing_theta_lme_df %>%
+    filter(move_time == step)
+  
+  model_1 <- summary(lmer(theta ~ combined_value + (1|subject/elec_id), data = time_step_df))
+  
+    # add to results
+  value_results_only <- rbind(value_results_only, 
+                           tibble(
+                             Estimate = model_1$coefficients[2, "Estimate"],
+                             `Std. Error` = model_1$coefficients[2, "Std. Error"],
+                             df = model_1$coefficients[2, "df"],
+                             `t value` = model_1$coefficients[2, "t value"],
+                             `Pr(>|t|)` = model_1$coefficients[2, "Pr(>|t|)"]
+                           ))
+
+}
+
+
+
+
+```
+
+```{r viz-models}
+
+model_results_value <- value_results_only %>% mutate(move_time = sort(unique(cing_theta_lme_df$move_time)))
+                       
+
+plot <- model_results_value %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, "Sig", "Not Sig.")) %>%
+  ggplot(., aes(x = move_time, y = Estimate)) +
+  geom_point(aes(color = sig), size = 6, shape = 21, fill = "#D1B5F4") +
+  geom_line(color = "#D1B5F4") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  scale_color_manual(values = c("white", "black")) +
+  xlim(0, 3.5) +ylim(-1, 1) +
+  ggtitle("cing Theta, Combined Value")
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "cing_theta_trial_combined_value.png"),
+       plot = plot,
+       width = 12,
+       height = 8,
+       units = "in",
+       dpi = 300)
+
+
+```
+```{r}
+
+combined_value_df <- all_subs_g_dist %>%
+  filter(Direction != "Still") %>%
+  select(subject, trial_numeric, trial_time, points_remaining, distance_to_ghost)  %>%
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  ungroup() %>%
+  mutate(combined_value = rescale(combined_value))
+
+combined_value_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, subject) %>%
+  mutate(mean_comb_value = mean(combined_value)) %>%
+  ungroup() %>%
+  select(trial_time, subject, mean_comb_value) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_comb_value)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~subject) +
+  xlim(0, 7)
+
+
+combined_value_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(trial_numeric %in% sample(trial_numeric, 8)) %>%
+  ggplot(., aes(x = trial_time, y = combined_value, color = factor(trial_numeric))) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~subject) +
+  xlim(0, 7)
+
+
+```
+
+```{r}
+
+
+
+```
+
+
+
+
+```{r save}
+
+write_csv(model_results_whole_trial, path(here(), "results", "cing_theta_model_results_whole_trial.csv"))
+write_csv(model_results, path(here(), "results", "cing_theta_model_results_turnarouns.csv"))
+write_csv(model_results_value, path(here(), "results", "cing_theta_model_results_integrated_value.csv"))
+
+
+```

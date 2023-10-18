@@ -1,0 +1,152 @@
+---
+title: "Individual Differences in LMEs"
+output: html_document
+date: "2023-10-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 5,  # set default width of figures
+  fig.height = 8,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)   # cache results
+
+### libraries ###
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(grid)
+library(gtable)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(scales)
+library(ggthemr)
+library(knitr)
+library(network)
+library(ggnetwork)
+
+### hand written functions ###
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+### plotting helpers ###
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ### parallelization ###
+# nCores <- 16
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+```{r}
+
+dlpfc_theta_turnaround <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "dlpfc_theta_model_results_turnaround_all_subs_robust.csv"))
+
+```
+
+
+```{r, fig.height=120, fig.width = 10}
+
+dlpfc_theta_turnaround %>%
+  group_by(case) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "dist") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = -1.1, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .75, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (3 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(-2, 2)  + ylim(-3, 3) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~case, ncol = 1)
+
+```
+
+
+
+```{r}
+
+    # merge behavior data with ieeg data
+    brain_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                                 hc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+    
+    
+    brain_behave_lme_df <- brain_behave_df %>%
+      # round time so that we can loop over time later
+      mutate(trial_time = round(trial_time, 2)) %>%
+      # exclude time before they started moving, may be good to look at not doing this as well
+      filter(Direction != "Still") %>%
+      # filiter out ITI
+      filter(reward_groups != 99 & !is.na(electrode)) %>%
+      # prep electrode variables
+      mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+      mutate(electrode = gsub("_.*", "", electrode)) %>%
+      # shift the time so that time 0 is the start of movement onset
+      group_by(elec_id, trial_numeric, subject) %>%
+      # shift trial time so that 0 is turnaround
+      mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+      mutate(event = replace(event, is.na(event), 0)) %>%
+      mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+      mutate(turn_time = round(trial_time - max(turnaround_time), 2)) %>%
+      ungroup() %>%
+      filter(turn_time > -2 & turn_time < 2) %>%
+      # select and rescale the necessary variables for the model
+      select(subject, elec_id, theta, trial_numeric, turn_time, points_remaining, distance_to_ghost)  %>%
+      mutate(points_remaining = rescale(points_remaining)) %>%
+      mutate(distance_to_ghost = rescale(distance_to_ghost))
+   
+    tmp <- brain_behave_lme_df %>% filter(subject == "LL13") 
+    
+```
+
+
+
+

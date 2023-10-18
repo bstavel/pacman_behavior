@@ -7,7 +7,7 @@ create_distance_df_bci <- function(df, ghost = TRUE){
     distance_df <- df %>%
       filter(Trial != "ITI") %>%
       filter(TrialType <= 16) %>% #  ghost trials only
-      filter(attack_chase_bob == 'Bob') %>%
+      # filter(attack_chase_bob == 'Bob') %>%
       group_by(trial_numeric) %>%
       # user movement and distance measures
       mutate(distance_to_ghost = abs(GhostLocation - UserLocation)) %>%
