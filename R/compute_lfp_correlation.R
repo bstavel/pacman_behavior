@@ -1,4 +1,4 @@
-compute_lfp_correlation <- function(sub_list, roi1, roi2, freq_df){
+compute_lfp_correlation <- function(sub_list, roi1, roi2, freq_df, tag){
 
   # Loop over subjects #
   for(sub in sub_list){
@@ -76,9 +76,9 @@ compute_lfp_correlation <- function(sub_list, roi1, roi2, freq_df){
         tests <- bind_rows(tests, new_data)
         
         # save out files
-        write_csv(true_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor.csv", sep = "_")))
-        write_csv(null_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor.csv", sep = "_")))
-        write_csv(tests, path(here(), "results", "cor_analysis", paste0(sub, "_correlation_wilcox_test_", roi1, "_", roi2, ".csv")))
+        write.csv(true_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "true_cor", tag, ".csv", sep = "_")))
+        write.csv(null_cor, path(here(), "results", "cor_analysis", paste(sub, elec1, "to", elec2, "null_cor", tag, ".csv", sep = "_")))
+        write_csv(tests, path(here(), "results", "cor_analysis", paste0(sub, "_correlation_", tag, "_wilcox_test_", roi1, "_", roi2, ".csv")))
         
       }
       

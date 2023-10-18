@@ -1,4 +1,4 @@
-### Batch Script for dlPFC Trial Onset Correlations ###
+### Batch Script for Trial Onset Correlations ###
 
 ## libraries ##
 library(tidyverse)
@@ -44,19 +44,65 @@ theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
 theta_onset_df <- theta_onset_df %>%
   filter(trial_time >= 0 & trial_time < 1) %>%
   mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
   filter(!(subject == "LL13" & elec_short == "LH1-LH2"))
 
 ## Subject List ##
 sub_list <- c("LL10", "LL13", "LL12", "BJH021", "BJH025", "SLCH002", "BJH016")
-sub_list_short <- c("LL13", "LL12", "BJH021", "BJH025", "SLCH002", "BJH016")
-
 
 ## Compute Correlation ##
-# compute_lfp_correlation(sub_list_short, "dlpfc", "hc", theta_onset_df)
-compute_lfp_correlation(sub_list, "hc", "ofc", theta_onset_df)
-compute_lfp_correlation(sub_list, "hc", "cing", theta_onset_df)
-compute_lfp_correlation(sub_list, "hc", "amyg", theta_onset_df)
-compute_lfp_correlation(sub_list, "hc", "insula", theta_onset_df)
+# dlPFC #
+try({
+    compute_lfp_correlation(sub_list, "dlpfc", "hc", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "dlpfc", "ofc", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "dlpfc", "cing", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "dlpfc", "amyg", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "dlpfc", "insula", theta_turnaround_df, "onset")
+    }, TRUE)
+
+# HC #
+try({
+    compute_lfp_correlation(sub_list, "hc", "ofc", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "cing", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "amyg", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "insula", theta_turnaround_df, "onset")
+    }, TRUE)
+# OFC #
+try({
+    compute_lfp_correlation(sub_list, "ofc", "cing", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "ofc", "amyg", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "ofc", "insula", theta_turnaround_df, "onset")
+    }, TRUE)
+# Cingulate #
+try({
+    compute_lfp_correlation(sub_list, "cing", "amyg", theta_turnaround_df, "onset")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "cing", "insula", theta_turnaround_df, "onset")
+    }, TRUE)
+
+# Amygdala #
+try({
+    compute_lfp_correlation(sub_list, "amyg", "insula", theta_turnaround_df, "onset")
+    }, TRUE)
 
 
 

@@ -1,4 +1,4 @@
-### Batch Script for dlPFC Turnaround Correlations ###
+### Batch Script for Before and After Turnaround Correlations ###
 
 ## libraries ##
 library(tidyverse)
@@ -43,8 +43,9 @@ theta_turnaround_df <- rbind(hc_turnaround_df %>% mutate(region = "hc"),
 # Only First Second
 theta_turnaround_df <- theta_turnaround_df %>%
   mutate(trial_time = trial_time - 1) %>%
-  filter(trial_time >= 0 & trial_time < 1) %>%
+  filter(trial_time >= -1 & trial_time < 1) %>%
   mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
   filter(!(subject == "LL13" & elec_short == "LH1-LH2"))
 
 ## Subject List ##
@@ -52,9 +53,46 @@ sub_list <- c("LL10", "LL13", "LL12", "BJH021", "BJH025", "SLCH002", "BJH016")
 
 
 ## Compute Correlation ##
-compute_lfp_correlation(sub_list, "dlpfc", "hc", theta_turnaround_df)
-compute_lfp_correlation(sub_list, "hc", "ofc", theta_turnaround_df)
-compute_lfp_correlation(sub_list, "hc", "cing", theta_turnaround_df)
-compute_lfp_correlation(sub_list, "hc", "amyg", theta_turnaround_df)
-compute_lfp_correlation(sub_list, "hc", "insula", theta_turnaround_df)
 
+# dlPFC #
+# compute_lfp_correlation(sub_list, "dlpfc", "hc", theta_turnaround_df, "before_and_after_turnaround")
+# compute_lfp_correlation(sub_list, "dlpfc", "ofc", theta_turnaround_df, "before_and_after_turnaround")
+# compute_lfp_correlation(sub_list, "dlpfc", "cing", theta_turnaround_df, "before_and_after_turnaround")
+# compute_lfp_correlation(sub_list, "dlpfc", "amyg", theta_turnaround_df, "before_and_after_turnaround")
+# compute_lfp_correlation(sub_list, "dlpfc", "insula", theta_turnaround_df, "before_and_after_turnaround")
+
+# HC #
+try({
+    compute_lfp_correlation(sub_list, "hc", "ofc", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "cing", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "amyg", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "insula", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
+# OFC #
+try({
+    compute_lfp_correlation(sub_list, "ofc", "cing", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "ofc", "amyg", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "ofc", "insula", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
+# Cingulate #
+try({
+    compute_lfp_correlation(sub_list, "cing", "amyg", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "cing", "insula", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
+
+# Amygdala #
+try({
+    compute_lfp_correlation(sub_list, "amyg", "insula", theta_turnaround_df, "before_and_after_turnaround")
+    }, TRUE)
