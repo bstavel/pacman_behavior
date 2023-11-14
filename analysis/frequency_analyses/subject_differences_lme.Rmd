@@ -71,6 +71,170 @@ c25 <- c(
 
 dlpfc_theta_turnaround <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "dlpfc_theta_model_results_turnaround_all_subs_robust.csv"))
 
+ofc_theta_turnaround <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "OFC_theta_model_results_turnaround_all_subs_robust.csv"))
+
+ofc_theta_onset <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "OFC_theta_model_results_onset_before_turn_all_subs_robust.csv"))
+
+# ofc comparison
+ofc_theta_discount <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results",
+                                    "OFC_theta_model_results_discounted_value_onset_before_turn_all_subs_robust.csv"))
+
+ofc_theta_combinedval <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results",
+                                    "OFC_theta_model_results_combined_value_onset_before_turn_all_subs_robust.csv"))
+
+ofc_theta_onset <- rbind(ofc_theta_onset, ofc_theta_discount %>% mutate(pred = "discount"), ofc_theta_combinedval %>% mutate(pred = "combined"))
+
+```
+
+
+
+```{r, fig.height=40, fig.width = 15}
+
+ofc_theta_onset %>%
+  group_by(case) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(pval_fdr < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "dist") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .25, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .65, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (5 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(0, 2.5)  + ylim(-5, 5) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~main, ncol = 1)
+
+
+```
+
+```{r, fig.height=40, fig.width = 15}
+
+ofc_theta_onset %>%
+  group_by(case) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(pval_fdr < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "points") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .25, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .65, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (5 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(0, 2.5)  + ylim(-5, 5) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~main, ncol = 1)
+
+
+```
+
+
+```{r, fig.height=40, fig.width = 15}
+
+ofc_theta_turnaround %>%
+  group_by(case) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "dist") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  geom_vline(xintercept = -.95, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = -5, color = "black", linetype = "dashed") +
+  # geom_vline(xintercept = .75, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (4.9), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(-2, 2)  + ylim(-5.2, 5.2) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~main, ncol = 1)
+
+```
+
+
+
+```{r, fig.height=120, fig.width = 10}
+
+ofc_theta_turnaround %>%
+  group_by(case) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "points") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = -1.1, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .95, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (1.5 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(-2, 2)  + ylim(-1.5, 1.5) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~case, ncol = 1)
+
 ```
 
 
@@ -112,39 +276,40 @@ dlpfc_theta_turnaround %>%
 
 
 
-```{r}
+```{r, fig.height=120, fig.width = 10}
 
-    # merge behavior data with ieeg data
-    brain_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
-                                 hc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
-    
-    
-    brain_behave_lme_df <- brain_behave_df %>%
-      # round time so that we can loop over time later
-      mutate(trial_time = round(trial_time, 2)) %>%
-      # exclude time before they started moving, may be good to look at not doing this as well
-      filter(Direction != "Still") %>%
-      # filiter out ITI
-      filter(reward_groups != 99 & !is.na(electrode)) %>%
-      # prep electrode variables
-      mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
-      mutate(electrode = gsub("_.*", "", electrode)) %>%
-      # shift the time so that time 0 is the start of movement onset
-      group_by(elec_id, trial_numeric, subject) %>%
-      # shift trial time so that 0 is turnaround
-      mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
-      mutate(event = replace(event, is.na(event), 0)) %>%
-      mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
-      mutate(turn_time = round(trial_time - max(turnaround_time), 2)) %>%
-      ungroup() %>%
-      filter(turn_time > -2 & turn_time < 2) %>%
-      # select and rescale the necessary variables for the model
-      select(subject, elec_id, theta, trial_numeric, turn_time, points_remaining, distance_to_ghost)  %>%
-      mutate(points_remaining = rescale(points_remaining)) %>%
-      mutate(distance_to_ghost = rescale(distance_to_ghost))
-   
-    tmp <- brain_behave_lme_df %>% filter(subject == "LL13") 
-    
+dlpfc_theta_turnaround %>%
+  group_by(case) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(`Pr(>|t|)` < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "points") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = -1.1, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .95, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (1.5 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(-2, 2)  + ylim(-1.5, 1.5) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~case, ncol = 1)
+
 ```
 
 

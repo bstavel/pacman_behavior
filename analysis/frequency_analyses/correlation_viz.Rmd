@@ -443,7 +443,7 @@ hipp_correlations %>%
   geom_density(color = "black", alpha = .5) +
   # geom_histogram(binwidth = .05, position = "identity", alpha = .5) +
   theme(panel.background = element_rect(fill = "white")) +
-  ggtitle("Average ROI Connectivity w/Hipp.") +
+  ggtitle("Average ROI Connectivity w/Hipp.")
   scale_fill_manual(values = c("#CC0029", "#FFD680", "#3D99BA")) 
 
 

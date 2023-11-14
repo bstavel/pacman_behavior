@@ -78,7 +78,7 @@ I hypothesize the connectivity profiles to be dynamic, which begs the question o
 
 ### dlPFC ~ Hippocampus Onset
 
-```{r count-dlpfc-hc-onset}
+```{r count-dlpfc-hc-onset, eval=F}
 
 all_results <- tibble(case = character(0), percent = numeric(0))
 
@@ -182,7 +182,7 @@ all_results <- rbind(all_results,
 
 ### dlPFC ~ OFC Onset
 
-```{r count-dlpfc-ofc-onset}
+```{r count-dlpfc-ofc-onset, eval=F}
 
 
 # LL10 ofc #
@@ -283,7 +283,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlPFC ~ Cing Onset
 
-```{r count-dlpfc-cing-onset}
+```{r count-dlpfc-cing-onset, eval=F}
 
 
 # LL10 cing #
@@ -385,7 +385,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlPFC ~ Amyg Onset
 
-```{r count-dlpfc-amyg-onset}
+```{r count-dlpfc-amyg-onset, eval=F}
 
 
 # LL10 amyg #
@@ -486,7 +486,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlPFC ~ Insula Onset
 
-```{r count-dlpfc-insula-onset}
+```{r count-dlpfc-insula-onset, eval=F}
 
 
 # LL12 insula #
@@ -567,7 +567,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlPFC ~ Hippocampus Onset -- with no ghost!!!
 
-```{r count-hc-onset-noghost}
+```{r count-hc-onset-noghost, eval=F}
 
 
 # LL10 hc #
@@ -683,7 +683,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlPFC ~ Amyg Onset -- with no ghost!!!
 
-```{r count-amyg-onset-noghost}
+```{r count-amyg-onset-noghost, eval=F}
 
 
 # LL10 amyg #
@@ -798,7 +798,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlPFC ~ OFC Onset -- with no ghost!!!
 
-```{r count-ofc-onset-noghost}
+```{r count-ofc-onset-noghost, eval=F}
 
 
 # LL10 ofc #
@@ -914,7 +914,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlPFC ~ Cing Onset -- with no ghost!!!
 
-```{r count-cing-onset-noghost}
+```{r count-cing-onset-noghost, eval=F}
 
 
 # LL10 cing #
@@ -1030,7 +1030,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlPFC ~ Insula Onset -- with no ghost!!!
 
-```{r count-insula-onset-noghost}
+```{r count-insula-onset-noghost, eval=F}
 
 
 
@@ -1121,7 +1121,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Hippocampus ~ OFC Onset
 
-```{r count-hc-ofc-onset}
+```{r count-hc-ofc-onset, eval=F}
 
 
 # LL10 ofc #
@@ -1222,7 +1222,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Hippocampus ~ Cing Onset
 
-```{r count-hc-cing-onset}
+```{r count-hc-cing-onset, eval=F}
 
 
 # LL10 cing #
@@ -1324,7 +1324,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Hippocampus ~ Amyg Onset
 
-```{r count-hc-amyg-onset}
+```{r count-hc-amyg-onset, eval=F}
 
 
 # LL10 amyg #
@@ -1425,7 +1425,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Hippocampus ~ Insula Onset
 
-```{r count-hc-insula-onset}
+```{r count-hc-insula-onset, eval=F}
 
 
 
@@ -1505,7 +1505,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### OFC ~ Cing Onset
 
-```{r count-ofc-cing-onset}
+```{r count-ofc-cing-onset, eval=F}
 
 
 # LL10 cing #
@@ -1607,7 +1607,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### OFC ~ Amyg Onset
 
-```{r count-ofc-amyg-onset}
+```{r count-ofc-amyg-onset, eval=F}
 
 
 # LL10 amyg #
@@ -1708,7 +1708,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### OFC ~ Insula Onset
 
-```{r count-ofc-insula-onset}
+```{r count-ofc-insula-onset, eval=F}
 
 
 
@@ -1788,7 +1788,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Ant. Cingulate ~ Amyg Onset
 
-```{r count-cing-amyg-onset}
+```{r count-cing-amyg-onset, eval=F}
 
 
 # LL10 amyg #
@@ -1889,7 +1889,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Ant. Cingulate ~ Insula Onset
 
-```{r count-cing-insula-onset}
+```{r count-cing-insula-onset, eval=F}
 
 
 
@@ -1970,7 +1970,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Amygdala ~ Insula Onset
 
-```{r count-amyg-insula-onset}
+```{r count-amyg-insula-onset, eval=F}
 
 
 
@@ -3448,7 +3448,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlPFC ~ Hippocampus - Last Away 2 seconds before, 2 seconds after
 
-```{r count-dlpfc-sfn}
+```{r count-dlpfc-sfn, eval=F}
 
 dlpfc_counter <- c()
 
@@ -3546,7 +3546,7 @@ all_results <- rbind(all_results,
 
 ### Ant. Cingulate ~ Hippocampus - Last Away 2 seconds before, 2 seconds after
 
-```{r count-cing-sfn}
+```{r count-cing-sfn, eval=F}
 
 
 
@@ -3624,7 +3624,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### OFC ~ Hippocampus - Last Away 2 seconds before, 2 seconds after
 
-```{r count-ofc-sfn}
+```{r count-ofc-sfn, eval=F}
 
 # LL10 ofc #
 results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","LL10_correlation_wilcox_test_hc_ofc.csv"), header = F)
@@ -3702,7 +3702,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Amygdala ~ Hippocampus - Last Away 2 seconds before, 2 seconds after
 
-```{r count-amyg-sfn}
+```{r count-amyg-sfn, eval=F}
 
 # LL10 amyg #
 results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","LL10_correlation_wilcox_test_hc_amyg.csv"), header = F)
@@ -3779,7 +3779,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Insula ~ Hippocampus - Last Away 2 seconds before, 2 seconds after
 
-```{r count-insula-sfn}
+```{r count-insula-sfn, eval=F}
 
 # LL12 insula #
 results <- read.csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "sfn_submission","LL12_correlation_wilcox_test_hc_insula.csv"), header = F)
@@ -3836,12 +3836,14 @@ all_results <- rbind(all_results,                      tibble(                  
 
 
 
-# Last Away Analysis ~ 1 second after turn around (with no ghost trials!)
+# Last Away Analysis ~ 1 second after turn around (with no-ghost trials!)
 
-### dlPFC ~ Hippocampus Last Away 1 second after turn 
+## HC
 
-```{r count-hc-after-turn}
+### HC ~ dlPFC Last Away 1 second after turn 
 
+```{r count-hc-dlpfc-after-only-g, eval = F}
+all_results <- tibble(case = character(0), percent = numeric(0))
 
 # LL10 hc #
 print("LL10")
@@ -3926,7 +3928,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### HC ~ Amyg Last Away 1 second after turn 
 
-```{r count-amyg-after-turn}
+```{r count-hc-amyg-after-only-g, eval = F}
 
 
 # LL10 amyg #
@@ -4010,7 +4012,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### HC ~ OFC Last Away 1 second after turn 
 
-```{r count-ofc-after-turn}
+```{r count-hc-ofc-after-only-g, eval = F}
 
 
 # LL10 ofc #
@@ -4096,7 +4098,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### HC ~ Cing Last Away 1 second after turn 
 
-```{r count-cing-after-turn}
+```{r count-hc-cing-after-only-g, eval = F}
 
 
 # LL10 cing #
@@ -4186,7 +4188,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### HC ~ Insula Last Away 1 second after turn 
 
-```{r count-insula-after-turn}
+```{r count-hc-insula-after-only-g, eval = F}
 
 # LL12 insula #
 print("LL12")
@@ -4249,14 +4251,1288 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ```
 
+# Last Away Analysis ~ 1 second after turn around (NO no-ghost trials!)
 
+
+## dlPFC
+
+### dlpfc ~ HC Last Away  1 second after
+
+```{r count-dlpfc-hc-after-only, eval=T}
+all_results <- tibble(case = character(0), percent = numeric(0))
+
+# LL10 hc #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 hc #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 hc #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 hc #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 hc #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 hc #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 hc #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_dlpfc_hc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+hc_counter <- c(hc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(hc_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(hc_counter)                      ))
+```
+
+### dlpfc ~ Amyg Last Away  1 second after
+
+```{r count-dlpfc-amyg-after-only, eval=T}
+
+
+# LL10 amyg #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_dlpfc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 amyg #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_dlpfc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 amyg #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_dlpfc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 amyg #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_dlpfc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 amyg #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_dlpfc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 amyg #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_dlpfc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 amyg #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_dlpfc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(amyg_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(amyg_counter)                      ))
+```
+
+### dlpfc ~ OFC Last Away  1 second after
+
+```{r count-dlpfc-ofc-after-only, eval=T}
+
+
+# LL10 ofc #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_dlpfc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 ofc #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_dlpfc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 ofc #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_dlpfc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 ofc #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_dlpfc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 ofc #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_dlpfc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 ofc #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_dlpfc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 ofc #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_dlpfc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(ofc_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(ofc_counter)                      ))
+
+```
+
+### dlpfc ~ Cing Last Away  1 second after
+
+```{r count-dlpfc-cing-after-only, eval=T}
+
+
+# LL10 cing #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_dlpfc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 cing #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_dlpfc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 cing #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_dlpfc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 cing #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_dlpfc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 cing #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_dlpfc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 cing #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_dlpfc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 cing #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_dlpfc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(cing_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(cing_counter)                      ))
+
+```
+
+### dlpfc ~ Insula Last Away 1 second after
+
+```{r count-dlpfc-insula-after-only, eval=T}
+
+# LL12 insula #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_dlpfc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 insula #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_dlpfc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 insula #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_dlpfc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 insula #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_dlpfc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 insula #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_dlpfc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(insula_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(insula_counter)                      ))
+
+```
+
+
+## HC
+
+### hc ~ Amyg Last Away  1 second after
+
+```{r count-hc-amyg-after-only, eval=T}
+
+
+# LL10 amyg #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_hc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 amyg #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_hc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 amyg #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_hc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 amyg #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_hc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 amyg #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_hc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 amyg #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_hc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 amyg #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_hc_amyg.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(amyg_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(amyg_counter)                      ))
+```
+
+### hc ~ OFC Last Away  1 second after
+
+```{r count-hc-ofc-after-only, eval=T}
+
+
+# LL10 ofc #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_hc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 ofc #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_hc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 ofc #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_hc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 ofc #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_hc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 ofc #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_hc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 ofc #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_hc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 ofc #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_hc_ofc.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+ofc_counter <- c(ofc_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(ofc_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(ofc_counter)                      ))
+
+```
+
+### hc ~ Cing Last Away  1 second after
+
+```{r count-hc-cing-after-only, eval=T}
+
+
+# LL10 cing #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_hc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 cing #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_hc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 cing #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_hc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 cing #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_hc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 cing #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_hc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 cing #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_hc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 cing #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_hc_cing.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(cing_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(cing_counter)                      ))
+
+```
+
+### hc ~ Insula Last Away 1 second after
+
+```{r count-hc-insula-after-only, eval=T}
+
+# LL12 insula #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_hc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 insula #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_hc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 insula #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_hc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 insula #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_hc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 insula #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_hc_insula.csv"), show_col_types = FALSE)
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(insula_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(insula_counter)                      ))
+
+```
+
+## OFC
+
+### OFC ~ Cing after_only
+
+```{r count-ofc-cing-after_only, eval=T}
+
+
+# LL10 cing #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_ofc_cing.csv"),  
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 cing #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_ofc_cing.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 cing #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_ofc_cing.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 cing #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_ofc_cing.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 cing #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_ofc_cing.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 cing #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_ofc_cing.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 cing #
+# print("BJH016")
+# results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_ofc_cing.csv"), 
+#                     col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+# 
+# results <- results %>%
+#   mutate(pval_fdr = p.adjust(pval, "fdr"))
+# 
+# print(table(results$pval_fdr < .05))
+# 
+# cing_counter <- c(cing_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(cing_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(cing_counter)                      ))
+
+```
+
+### OFC ~ Amyg after_only
+
+```{r count-ofc-amyg-after_only, eval=T}
+
+
+# LL10 amyg #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_ofc_amyg.csv"),  
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 amyg #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_ofc_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 amyg #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_ofc_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 amyg #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_ofc_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 amyg #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_ofc_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 amyg #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_ofc_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 amyg #
+# print("BJH016")
+# results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_ofc_amyg.csv"), 
+#                     col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+# 
+# results <- results %>%
+#   mutate(pval_fdr = p.adjust(pval, "fdr"))
+# 
+# print(table(results$pval_fdr < .05))
+# 
+# amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(amyg_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(amyg_counter)                      ))
+```
+
+### OFC ~ Insula after_only
+
+```{r count-ofc-insula-after_only, eval=T}
+
+
+
+# LL12 insula #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_ofc_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 insula #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_ofc_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 insula #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_ofc_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 insula #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_ofc_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 insula #
+# print("BJH016")
+# results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_ofc_insula.csv"), 
+#                     col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+# 
+# results <- results  %>%
+#   mutate(pval_fdr = p.adjust(pval, "fdr"))
+# print(table(results$pval_fdr < .05))
+# 
+# insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(insula_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(insula_counter)                      ))
+
+```
+
+## Ant. Cingulate
+
+### Ant. Cingulate ~ Amyg after_only
+
+```{r count-cing-amyg-after_only, eval=T}
+
+
+# LL10 amyg #
+print("LL10")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL10_correlation_after_only_wilcox_test_cing_amyg.csv"),  
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL12 amyg #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_cing_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+# LL13 amyg #
+print("LL13")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL13_correlation_after_only_wilcox_test_cing_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 amyg #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_cing_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 amyg #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_cing_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 amyg #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_cing_amyg.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# # BJH016 amyg #
+# print("BJH016")
+# results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_cing_amyg.csv"), 
+#                     col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+# 
+# results <- results %>%
+#   mutate(pval_fdr = p.adjust(pval, "fdr"))
+# 
+# print(table(results$pval_fdr < .05))
+# 
+# amyg_counter <- c(amyg_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(amyg_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(amyg_counter)                      ))
+```
+
+### Ant. Cingulate ~ Insula after_only
+
+```{r count-cing-insula-after_only, eval=T}
+
+
+
+# LL12 insula #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_cing_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 insula #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_cing_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 insula #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_cing_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 insula #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_cing_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 insula #
+# print("BJH016")
+# results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_cing_insula.csv"), 
+#                     col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+# 
+# results <- results  %>%
+#   mutate(pval_fdr = p.adjust(pval, "fdr"))
+# print(table(results$pval_fdr < .05))
+# 
+# insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(insula_counter)  
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(insula_counter)                      ))
+
+```
+
+## Amygdala
+
+### Amygdala ~ Insula after_only
+
+```{r count-amyg-insula-after_only, eval=T}
+
+
+
+# LL12 insula #
+print("LL12")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "LL12_correlation_after_only_wilcox_test_amyg_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH021 insula #
+print("BJH021")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH021_correlation_after_only_wilcox_test_amyg_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# BJH025 insula #
+print("BJH025")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH025_correlation_after_only_wilcox_test_amyg_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+# SLCH002 insula #
+print("SLCH002")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "SLCH002_correlation_after_only_wilcox_test_amyg_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+
+
+# BJH016 insula #
+print("BJH016")
+results <- read_csv(path(here(), "data_mount/remote/pacman_behavior", "results", "cor_analysis", "after_only", "BJH016_correlation_after_only_wilcox_test_amyg_insula.csv"), 
+                    col_names = T, col_types = cols(.default = "c", X1 = col_skip()))
+
+results <- results  %>%
+  mutate(pval_fdr = p.adjust(pval, "fdr"))
+print(table(results$pval_fdr < .05))
+
+insula_counter <- c(insula_counter, sum(as.numeric(results$pval_fdr < .05))/length(results$pval_fdr < .05))
+
+print("Total")
+table(insula_counter)  
+
+
+all_results <- rbind(all_results,                      tibble(                        case = opts_current$get()$label,                        percent = mean(insula_counter)                      ))
+
+```
 
 
 # Last Away Analysis - 1 second before, 1 second after
 
 ### dlPFC ~ Hippocampus Last Away 1 second before, 1 second after
 
-```{r count-hc-before-and-after}
+```{r count-hc-before-and-after, eval=F}
 
 
 # LL10 hc #
@@ -4342,7 +5618,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlpfc ~ Amyg Last Away 1 second before, 1 second after
 
-```{r count-amyg-before-and-after}
+```{r count-amyg-before-and-after, eval=F}
 
 
 # LL10 amyg #
@@ -4426,7 +5702,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlpfc ~ OFC Last Away 1 second before, 1 second after
 
-```{r count-ofc-before-and-after}
+```{r count-ofc-before-and-after, eval=F}
 
 
 # LL10 ofc #
@@ -4512,7 +5788,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlpfc ~ Cing Last Away 1 second before, 1 second after
 
-```{r count-cing-before-and-after}
+```{r count-cing-before-and-after, eval=F}
 
 
 # LL10 cing #
@@ -4602,7 +5878,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### dlpfc ~ Insula Last Away 1 second before, 1 second after
 
-```{r count-insula-before-and-after}
+```{r count-insula-before-and-after, eval=F}
 
 # LL12 insula #
 print("LL12")
@@ -4670,7 +5946,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Hippocampus ~ OFC before_and_after_turnaround
 
-```{r count-hc-ofc-before_and_after_turnaround}
+```{r count-hc-ofc-before_and_after_turnaround, eval=F}
 
 
 # LL10 ofc #
@@ -4769,7 +6045,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Hippocampus ~ Cing before_and_after_turnaround
 
-```{r count-hc-cing-before_and_after_turnaround}
+```{r count-hc-cing-before_and_after_turnaround, eval=F}
 
 
 # LL10 cing #
@@ -4869,7 +6145,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Hippocampus ~ Amyg before_and_after_turnaround
 
-```{r count-hc-amyg-before_and_after_turnaround}
+```{r count-hc-amyg-before_and_after_turnaround, eval=F}
 
 
 # LL10 amyg #
@@ -4968,7 +6244,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Hippocampus ~ Insula before_and_after_turnaround
 
-```{r count-hc-insula-before_and_after_turnaround}
+```{r count-hc-insula-before_and_after_turnaround, eval=F}
 
 
 
@@ -5046,7 +6322,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### OFC ~ Cing before_and_after_turnaround
 
-```{r count-ofc-cing-before_and_after_turnaround}
+```{r count-ofc-cing-before_and_after_turnaround, eval=F}
 
 
 # LL10 cing #
@@ -5146,7 +6422,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### OFC ~ Amyg before_and_after_turnaround
 
-```{r count-ofc-amyg-before_and_after_turnaround}
+```{r count-ofc-amyg-before_and_after_turnaround, eval=F}
 
 
 # LL10 amyg #
@@ -5245,7 +6521,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### OFC ~ Insula before_and_after_turnaround
 
-```{r count-ofc-insula-before_and_after_turnaround}
+```{r count-ofc-insula-before_and_after_turnaround, eval=F}
 
 
 
@@ -5323,7 +6599,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Ant. Cingulate ~ Amyg before_and_after_turnaround
 
-```{r count-cing-amyg-before_and_after_turnaround}
+```{r count-cing-amyg-before_and_after_turnaround, eval=F}
 
 
 # LL10 amyg #
@@ -5422,7 +6698,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Ant. Cingulate ~ Insula before_and_after_turnaround
 
-```{r count-cing-insula-before_and_after_turnaround}
+```{r count-cing-insula-before_and_after_turnaround, eval=F}
 
 
 
@@ -5500,7 +6776,7 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ### Amygdala ~ Insula before_and_after_turnaround
 
-```{r count-amyg-insula-before_and_after_turnaround}
+```{r count-amyg-insula-before_and_after_turnaround, eval=F}
 
 
 
@@ -5578,8 +6854,11 @@ all_results <- rbind(all_results,                      tibble(                  
 
 ```{r save-data}
 
+# write full data #
+# write_csv(all_results, path(here(), "results", "sub_normalized_lfp_connectivity_summary.csv"))
 
-write_csv(all_results, path(here(), "results", "sub_normalized_lfp_connectivity_summary.csv"))
+# write after only #
+write_csv(all_results, path(here(), "results", "sub_normalized_lfp_connectivity_after_only.csv"))
 
 ```
 

@@ -71,11 +71,20 @@ c25 <- c(
 
 all_results <- read_csv(path(here(), "results", "sub_normalized_lfp_connectivity_summary.csv"))
 
+after_only_results <- read_csv(path(here(), "results", "sub_normalized_lfp_connectivity_after_only.csv"))
+
 
 ```
+
+
 ```{r prep-data}
 
 all_results_clean <- separate(all_results, case, into = c("col1", "region1", "region2", "case"), sep = "-")
+after_only_results <- separate(after_only_results, case, into = c("col1", "region1", "region2", "case"), sep = "-")
+
+after_only_results <- after_only_results %>%
+  mutate(case = "after_only") %>%
+  select(-col1)
 
 all_results_clean <- all_results_clean %>%
   mutate(case = if_else(region2 == "onset" & case == "noghost", "onset-noghost", case)) %>%
@@ -85,12 +94,16 @@ all_results_clean <- all_results_clean %>%
   mutate(region2 = if_else(region2 == "before", "dlpfc", region2)) %>%
   select(-col1)
 
+
+all_results_clean <- rbind(all_results_clean, after_only_results)
+
 ```
 
 
 ```{r onset-counters, fig.width=6, fig.height=6}
 
 onset_data <- all_results_clean %>%
+  filter(region2 != "insula") %>%
   filter(case == "onset") %>%
   select(-case)
 
@@ -110,20 +123,36 @@ net <- network(edges, vertex.attr = nodes, directed = FALSE)
 net <- ggnetwork(net, layout = "circle")
 
 # Plot the graph using ggplot2
-plot <- ggplot(data = net, aes(x = x, y = y, xend = xend, yend = yend)) +
+plot <- net %>%
+  mutate(percent_format = paste0(100*round(percent, 2), "%")) %>%
+  ggplot(., aes(x = x, y = y, xend = xend, yend = yend)) +
   geom_edges(aes(linewidth = percent, color = percent), alpha = 0.5) +
-  geom_nodes(color = "black") +
-  geom_nodetext(aes(label = label), vjust = -1.5, color = "black") +
-  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), limits = c(0, .7)) +
-  scale_linewidth_continuous(range(1, 6), guide = "none", limits = c(0, .7)) +
+  geom_nodes(color = "black", size = 3) +
+  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), labels = c("10%", "20%", "30%", "40%", "50%", "60%"), limits = c(0, .6), 
+                        guide = guide_colorbar(title = "percent of sig. \nelectrode pairs", label.hjust = 1.2,  title.vjust = 1,  barwidth = 10)) +
+  scale_linewidth_continuous(range(1, 7), guide = "none", limits = c(0, .7)) +
+  # geom_nodetext(aes(label = label)) +
+  geom_edgetext(aes(label = percent_format)) +
   theme_void() +
-  theme(plot.background = element_rect(fill = "white"), legend.position = "top") +
-  ggtitle("Connectivity During Onset")
+  theme(plot.background = element_rect(fill = "white", color = "white"), 
+        panel.border = element_blank(),
+        legend.position = "bottom",
+        legend.justification = c("left", "bottom"),
+        legend.margin=margin(t = 50),
+        strip.background = element_blank(),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 10),
+        strip.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Gill Sans", color = '#2D2327', size = 12),
+        # axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18), 
+        # axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = 'bold', hjust = .5)) +
+  ggtitle("One Second After Onset", subtitle = "")
 
 ggsave(path(here(), "figures", "connectivity", "trial_onset_connectivity_sub_corrected.png"),
          plot = plot,
-         width = 6,
-         height = 8,
+         width = 5,
+         height = 6,
          units = "in",
          dpi = 300)
 
@@ -135,6 +164,7 @@ ggsave(path(here(), "figures", "connectivity", "trial_onset_connectivity_sub_cor
 
 before_turn_data <- all_results_clean %>%
   filter(case == "before_only") %>%
+  filter(region2 != "insula") %>%
   select(-case)
 
 # edges
@@ -153,27 +183,42 @@ net <- network(edges, vertex.attr = nodes, directed = FALSE)
 net <- ggnetwork(net, layout = "circle")
 
 # Plot the graph using ggplot2
-plot <- ggplot(data = net, aes(x = x, y = y, xend = xend, yend = yend)) +
+plot <- net %>%
+  mutate(percent_format = paste0(100*round(percent, 2), "%")) %>%
+  ggplot(., aes(x = x, y = y, xend = xend, yend = yend)) +
   geom_edges(aes(linewidth = percent, color = percent), alpha = 0.5) +
-  geom_nodes(color = "black") +
-  geom_nodetext(aes(label = label), vjust = -1.5, color = "black") +
-  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), limits = c(0, .7)) +
-  scale_linewidth_continuous(range(1, 6), guide = "none", limits = c(0, .7)) +
+  geom_nodes(color = "black", size = 3) +
+  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), labels = c("10%", "20%", "30%", "40%", "50%", "60%"), limits = c(0, .6), 
+                        guide = guide_colorbar(title = "percent of sig. \nelectrode pairs", label.hjust = 1.2, title.vjust = 1, barwidth = 10)) +
+  scale_linewidth_continuous(range(1, 7), guide = "none", limits = c(0, .7)) +
+  # geom_nodetext(aes(label = label)) +
+  geom_edgetext(aes(label = percent_format)) +
   theme_void() +
-  theme(plot.background = element_rect(fill = "white"), legend.position = "top") +
-  ggtitle("Connectivity 1s Before Turn")
+  theme(plot.background = element_rect(fill = "white", color = "white"), 
+        panel.border = element_blank(),
+        legend.position = "none",
+        legend.justification = c("left", "top"),
+        strip.background = element_blank(),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 10),
+        strip.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Gill Sans", color = '#2D2327', size = 12),
+        # axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18), 
+        # axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = "bold", hjust = .5)) +
+  ggtitle("One Second Before Turn", subtitle = "")
 
 
 ggsave(path(here(), "figures", "connectivity", "before_turn_connectivity_sub_corrected.png"),
          plot = plot,
-         width = 6,
-         height = 8,
+         width = 5,
+         height = 5,
          units = "in",
          dpi = 300)
 ```
 
 
-```{r before_after_turn_data-counters, fig.width=6, fig.height=6}
+```{r before_after_turn_data-counters, fig.width=6, fig.height=6, eval = F}
 
 before_after_turn_data <- all_results_clean %>%
   filter(case == "before_and_after_turnaround") %>%
@@ -199,8 +244,8 @@ plot <- ggplot(data = net, aes(x = x, y = y, xend = xend, yend = yend)) +
   geom_edges(aes(linewidth = percent, color = percent), alpha = 0.5) +
   geom_nodes(color = "black") +
   geom_nodetext(aes(label = label), vjust = -1.5, color = "black") +
-  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), limits = c(0, .7)) +
-  scale_linewidth_continuous(range(1, 6), guide = "none", limits = c(0, .7)) +
+  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), limits = c(0, .6)) +
+  scale_linewidth_continuous(range(1, 6), guide = "none", limits = c(0, .6)) +
   theme_void() +
   theme(plot.background = element_rect(fill = "white"), legend.position = "top") +
   ggtitle("Connectivity 1s Before and 1s After Turn")
@@ -210,6 +255,67 @@ ggsave(path(here(), "figures", "connectivity", "before_and_after_connectivity_su
          plot = plot,
          width = 6,
          height = 8,
+         units = "in",
+         dpi = 300)
+
+```
+
+
+```{r after_turn_data-counters, fig.width=6, fig.height=6}
+
+library(ggrepel)
+
+after_only_data <- all_results_clean %>%
+  filter(case == "after_only") %>%
+  filter(region2 != "insula") %>%
+  select(-case)
+
+# edges
+edges <- after_only_data
+
+# nodes
+nodes <- data.frame(
+  id = 1:6,
+  label = c("dlPFC", "HC", "OFC", "Ant. Cing.", "Amyg.", "Insula")
+)
+
+# Create a network object
+net <- network(edges, vertex.attr = nodes, directed = FALSE)
+
+# Convert the network object to a ggnetwork object
+net <- ggnetwork(net, layout = "circle")
+
+# Plot the graph using ggplot2
+plot <- net %>%
+  mutate(percent_format = paste0(100*round(percent, 2), "%")) %>%
+  ggplot(., aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(linewidth = percent, color = percent), alpha = 0.5) +
+  geom_nodes(color = "black", size = 3) +
+  scale_color_viridis_b(breaks = c(.1, .2, .3, .4, .5, .6), labels = c("10%", "20%", "30%", "40%", "50%", "60%"), limits = c(0, .6), 
+                        guide = guide_colorbar(title = "percent of sig. \nelectrode pairs", label.hjust = 1.2, title.vjust = 1, barwidth = 10)) +
+  scale_linewidth_continuous(range(1, 7), guide = "none", limits = c(0, .7)) +
+  # geom_nodetext(aes(label = label)) +
+  geom_edgetext(aes(label = percent_format)) +
+  theme_void() +
+  theme(plot.background = element_rect(fill = "white", color = "white"), 
+        panel.border = element_blank(),
+        legend.position = "none",
+        legend.justification = c("left", "top"),
+        strip.background = element_blank(),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 10),
+        strip.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Gill Sans", color = '#2D2327', size = 12),
+        # axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18), 
+        # axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = "bold",  hjust = .5)) +
+  ggtitle("One Second After Turn", subtitle = "")
+
+
+ggsave(path(here(), "figures", "connectivity", "after_only_connectivity_sub_corrected.png"),
+         plot = plot,
+         width = 5,
+         height = 5,
          units = "in",
          dpi = 300)
 

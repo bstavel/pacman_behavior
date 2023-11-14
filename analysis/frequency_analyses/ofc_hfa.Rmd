@@ -102,7 +102,11 @@ all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 
 ```
 
-```{r, fig.width=20, fig.height=40}
+
+
+```{r elec-response, fig.width=20, fig.height=40}
+
+## plot electrode level ERPS ##
 
 avg_ofc_hfa_data <- ofc_hfa_data %>%
   rename(hfa = theta) %>%
@@ -119,13 +123,14 @@ avg_ofc_hfa_data %>%
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
   facet_wrap(~elec_id, ncol = 6) +
-  ylim(-1.5, 1.5)
+  ylim(-.5, .5)
 
 ```
 
 
-```{r, fig.width= 12, fig.height=12}
+```{r subject-overall-response, fig.width= 12, fig.height=12}
 
+## plot subject and combined ERPS ##
 
 avg_ofc_hfa_data %>%
   group_by(trial_time, subject) %>%
@@ -155,14 +160,11 @@ avg_ofc_hfa_data %>%
 
 
 
-```{r merge-with-behavior, fig.width= 16, fig.height=40}
-
-# rename var #
-ofc_hfa_data <- ofc_hfa_data %>% rename(hfa = theta)
+```{r merge-with-behavior, fig.width= 12, fig.height=12}
 
 # merge behavior data with ieeg data
 ofc_hfa_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
-                               ofc_hfa_data %>% mutate(trial_time = round(trial_time, 2)))
+                               ofc_hfa_data %>% rename(hfa = theta) %>% mutate(trial_time = round(trial_time, 2)))
 
 # validate we get the same ieeg data by comparing with above plots
 avg_ofc_hfa_behave_df <- ofc_hfa_behave_df %>%
@@ -187,39 +189,6 @@ avg_ofc_hfa_behave_df %>%
   theme(panel.background = element_rect(fill = "white")) +
   xlim(-1, 5) + ylim(-.15, .25)
 
-# validate we get the same ieeg data by comparing with above plots
-avg_ofc_hfa_behave_df <- ofc_hfa_behave_df %>%
-  filter(!is.na(electrode)) %>%
-  filter(trial_time > 0 & trial_time < 5) %>%
-  mutate(ghost_trial = if_else(TrialType > 16, "Ghost", "NoGhost")) %>%
-  group_by(reward_groups, trial_time, electrode, subject) %>%
-  mutate(mean_elec_hfa = mean(hfa, na.rm = T)) %>%
-  mutate(mean_hfa_upper = t.test(hfa)$conf.int[2]) %>%
-  mutate(mean_hfa_lower = t.test(hfa)$conf.int[1])
-  ungroup() #%>%
-  # select(-trial_numeric, -hfa) %>%
-  # distinct() %>%
-  # group_by(reward_groups, trial_time, subject) %>%
-  # mutate(mean_sub_hfa = mean(mean_elec_hfa, na.rm = T)) %>%
-  # mutate(mean_hfa_upper = t.test(mean_elec_hfa)$conf.int[2]) %>%
-  # mutate(mean_hfa_lower = t.test(mean_elec_hfa)$conf.int[1])
-  # ungroup() # %>%
-  # select(-mean_elec_hfa, -electrode) %>%
-  # distinct() %>%
-  # group_by(reward_groups, trial_time) %>%
-  # mutate(mean_hfa = mean(mean_sub_hfa, na.rm = T))
-  
-
-
-avg_ofc_hfa_behave_df %>%
-  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
-  ggplot(., aes(x = trial_time, y = mean_elec_hfa, color = factor(reward_groups), fill = factor(reward_groups))) +
-  geom_point() +
-  geom_line() +
-  geom_ribbon(aes(ymin = mean_hfa_lower, ymax = mean_hfa_upper), alpha = .5) +
-  theme(panel.background = element_rect(fill = "white")) +
-  facet_wrap(~elec_id, ncol = 5, scales = "free_y") +
-  xlim(0, 4)
 
 ```
 
@@ -227,7 +196,7 @@ avg_ofc_hfa_behave_df %>%
 
 ```{r points-only-model}
 
-ofc_hfa_data <- ofc_hfa_data %>% rename(hfa = theta)
+ofc_hfa_data <- ofc_hfa_data %>% rename(hfa = hfa)
 
 # merge behavior data with ieeg data
 ofc_hfa_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 

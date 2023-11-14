@@ -92,7 +92,7 @@ Due to unbalanced groups, there are some singular fits. I have looked into this 
 ```{r load-data}
 
 # ieeg data #
-ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_iti_onset.csv"))
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
 
 # behavioral data #
 all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
@@ -226,6 +226,30 @@ individual_and_overall_lme_onset_before_turn_model_and_plot("OFC", "theta",
                                 rerun_model = FALSE)
 ```
 
+```{r fig.height=6, fig.width=8}
+
+
+brain_behave_lme_df %>%
+  select(subject, max_move_time, trial_numeric) %>%
+  unique() %>%
+  ggplot(., aes(x = max_move_time)) +
+  geom_histogram(binwidth = .2) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+brain_behave_lme_df %>%
+  select(subject, max_move_time, trial_numeric) %>%
+  unique() %>%
+  ggplot(., aes(x = max_move_time)) +
+  geom_histogram(binwidth = .05) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y") +
+  xlim(1.5, 4)
+
+
+```
+
+
 ```{r, fig.width = 10, fig.height = 8}
 ## Run LME Multiple Regression Models with two predictors: Distance to Ghost, Points Remaining
 
@@ -256,18 +280,18 @@ brain_behave_lme_df <- brain_behave_df %>%
   mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
   mutate(event = replace(event, is.na(event), 0)) %>%
   mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(max(turnaround_time) >= 1.2) %>%
   filter(move_time < max(turnaround_time)) %>%
   ungroup() %>%
   # filter to max time 3 since after 3s we start losing a lot of trials
-  filter(move_time < 3) %>%
+  filter(move_time < 1.2) %>%
   # select and rescale the necessary variables for the model
   select(subject, elec_id, theta, trial_numeric, move_time, points_remaining, distance_to_ghost)  %>%
   mutate(points_remaining = rescale(points_remaining)) %>%
   mutate(distance_to_ghost = rescale(distance_to_ghost)) 
 
-# Register the parallel backend
-cl <- makeCluster(detectCores() - 1)  # Leave one core free
-registerDoParallel(cl)
+tmp <- brain_behave_lme_df %>% group_by(subject) %>% mutate(n = length(unique(trial_numeric)))
+
 
 # Parallelized loop over steps
 results <- foreach(step=sort(unique(brain_behave_lme_df$move_time)[1:3]), .combine=rbind, .packages=c("dplyr", "robustlmm", "lmerTest", "MASS", "tibble")) %dopar% {
@@ -375,6 +399,45 @@ dist_to_g_results <- bind_rows(results[, "dist_to_g_results_step"])
 
 
 ```
+
+```{r}
+
+time_step_df <- brain_behave_lme_df %>%
+  filter(move_time == .5)
+
+# fit the model with random effects of subject and electrode
+model_all <- robustlmm::rlmer(theta ~ distance_to_ghost + points_remaining + distance_to_ghost*points_remaining + (1|subject), data = time_step_df)
+
+model_all_log <- robustlmm::rlmer(log(theta) ~ distance_to_ghost + points_remaining + distance_to_ghost*points_remaining + (1|subject/elec_id), data = time_step_df)
+model_all_log_scale <- robustlmm::rlmer(scale(log(theta)) ~ distance_to_ghost + points_remaining + distance_to_ghost*points_remaining + (1|subject/elec_id), data = time_step_df)
+
+model_all_scale <- robustlmm::rlmer(scale(theta) ~ distance_to_ghost + points_remaining + distance_to_ghost*points_remaining + (1|subject/elec_id), data = time_step_df)
+  
+model_not_robst <- lmer(log(theta) ~ distance_to_ghost + points_remaining + distance_to_ghost*points_remaining + (1|subject), data = time_step_df)
+
+plot(model_all)
+
+summary(MASS::rlm(theta ~ distance_to_ghost + points_remaining, 
+                  data = time_step_df %>% filter(elec_id == "LL12_ROF1-ROF2")))
+
+shapiro.test(resid(model_all))
+
+```
+
+
+```{r}
+
+time_step_df %>%
+  ggplot(., aes(y = theta, x = distance_to_ghost, color = subject)) +
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", color = "black", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, scales = "free")
+
+
+```
+
+
 
 ```{r, fig.height = 10, fig.width=10}
 
