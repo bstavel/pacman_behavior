@@ -1,0 +1,116 @@
+---
+title: "Pacman Anxiety Pilot"
+output: html_document
+date: "2023-03-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+
+
+```{r load-data}
+
+anx_data <- read_csv(path(here(), "data", "Pacman+-+Anxiety+Survey+-+Spring+2023_March+15,+2023_15.47.csv"))
+
+
+```
+```{r oasis-total}
+
+anx_data_clean <- anx_data %>%
+  filter(Status == "IP Address") %>%
+  mutate(O1_clean = as.numeric(gsub(" =.*", "", O1))) %>%
+  mutate(O2_clean = as.numeric(gsub(" =.*", "", O2))) %>%
+  mutate(O3_clean = as.numeric(gsub(" =.*", "", O3))) %>%
+  mutate(O4_clean = as.numeric(gsub(" =.*", "", O4))) %>%
+  mutate(O5_clean = as.numeric(gsub(" =.*", "", O5))) %>%
+  mutate(O6_clean = as.numeric(gsub(" =.*", "", O6))) %>%
+  select(ID, starts_with("O")) %>%
+  # filter out attention check
+  filter(O5_clean == 2) %>%
+  rowwise() %>%
+  mutate(oasis_total = O1_clean + O2_clean + O3_clean + O4_clean + O6_clean) 
+
+
+anxious_ids_to_invite_back <- anx_data_clean %>%
+  filter(oasis_total > 10) %>%
+  pull(ID)
+
+
+healthy_ids_to_invite_back <- anx_data_clean %>%
+  filter(oasis_total < 5) %>%
+  pull (ID)
+
+ids_to_invite_back <- c(anxious_ids_to_invite_back, healthy_ids_to_invite_back)
+  
+
+
+```
+
+"5f2dcd2ccfe454102f662f95" "6107347165f348732878f7f3" "633c95452b85b5d479a1487b"

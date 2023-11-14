@@ -1,0 +1,31 @@
+Linear mixed model fit by REML. t-tests use Satterthwaite's method ['lmerModLmerTest']
+Formula: last_away ~ rewardgroup + anxiety + rewardgroup * anxiety + (1 +      rewardgroup | subject_id)
+   Data: merged_data
+
+REML criterion at convergence: 57157.6
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-2.9609 -0.6781 -0.0417  0.5947  7.3791 
+
+Random effects:
+ Groups     Name        Variance Std.Dev. Corr 
+ subject_id (Intercept) 15.144   3.892         
+            rewardgroup  1.369   1.170    -0.12
+ Residual               70.535   8.399         
+Number of obs: 8021, groups:  subject_id, 69
+
+Fixed effects:
+                    Estimate Std. Error       df t value Pr(>|t|)    
+(Intercept)         38.09405    1.26251 67.06956  30.173   <2e-16 ***
+rewardgroup         -0.48766    0.61012 65.18767  -0.799    0.427    
+anxiety              0.08228    0.13240 67.04324   0.621    0.536    
+rewardgroup:anxiety -0.08182    0.06390 64.80814  -1.280    0.205    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Correlation of Fixed Effects:
+            (Intr) rwrdgr anxity
+rewardgroup -0.223              
+anxiety     -0.923  0.206       
+rwrdgrp:nxt  0.206 -0.923 -0.223

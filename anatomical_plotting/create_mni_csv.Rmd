@@ -1,0 +1,137 @@
+---
+title: "MNI Space CSV"
+output: html_document
+date: "2023-11-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 5,  # set default width of figures
+  fig.height = 8,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)   # cache results
+
+### libraries ###
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(grid)
+library(gtable)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(scales)
+library(ggthemr)
+library(knitr)
+library(network)
+library(ggnetwork)
+
+### hand written functions ###
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+
+### plotting helpers ###
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ### parallelization ###
+# nCores <- 16
+# registerDoParallel(nCores)
+
+
+
+```
+
+## Load Washu Data 
+
+There is a matlab script in the matlab_helpers folder which compiles the MNI coordinates from .mat files. Run that first and then load in the resulting csv.
+
+```{r load-washu-data}
+
+# load washu data #
+washu_mni_data <- read_csv(path(here(), 'data/ieeg_mni/washu_mni_table.csv'))
+
+# clean electrode names #
+washu_mni_data_clean <- washu_mni_data %>%
+  mutate(elec_clean = if_else(grepl("\\^", Electrode), gsub("([^^]*)\\^.*?(\\d+)$", "\\1\\2", Electrode),
+                                    gsub("([^-]*)-.*?(\\d+)$", "\\1\\2", Electrode))) %>% # fix weird Washu naming
+  filter(!grepl("lesion", Electrode)) %>% # exclude lesion elecs
+  mutate(elec_clean = gsub("-", "", elec_clean)) %>%
+  select(-Electrode) %>%
+  rename(Electrode = elec_clean)
+
+
+```
+
+```{r load-loma-linda-data}
+
+sub_list <- c("LL10", "LL12", "LL13")
+
+for(sub in sub_list){
+  
+  tmp <- readxl::read_excel(paste0('~/Projects/knight_server/remote/ecog/DATA_FOLDER/Loma_Linda/', sub, '/Notes/', sub, '_Elec_Notes.xlsx'))
+  
+  tmp_mni <- tmp %>%
+    select(Electrode, Coordinates) %>%
+    mutate(subject = sub) 
+  
+  tmp_mni_clean <- separate(tmp_mni, Coordinates, into = c("X", "Y", "Z"), sep = "\\s+")
+  
+  if(sub == sub_list[1]){
+    
+    ll_mni_clean <- tmp_mni_clean
+    
+  } else {
+    
+    ll_mni_clean <- rbind(ll_mni_clean, tmp_mni_clean)
+    
+  }
+    
+  
+}
+
+# clean up electrode names
+ll_mni_clean <- ll_mni_clean %>%
+  mutate(Electrode = gsub("EEG ", "", Electrode))
+
+
+```
+
+
+```{r bind-and-save}
+
+# bind togather #
+all_mni_data <- rbind(washu_mni_data_clean, ll_mni_clean)
+
+
+# save #
+write_csv(all_mni_data, path(here(), "munge", "mni_coordinates_all_subs.csv"))
+
+```
+
+
+

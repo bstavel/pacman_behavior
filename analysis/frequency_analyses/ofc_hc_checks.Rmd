@@ -1,0 +1,1106 @@
+---
+title: "Checking OFC and HC Analyses"
+output: html_document
+date: "2023-10-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 6,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+#"#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A"
+```
+
+## Data Prep and EDA
+
+```{r load-data}
+
+# ieeg data #
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+dlpfc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_g_dist %>% 
+  select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
+
+
+## load robst csvs ##
+ofc_robust_theta <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "OFC_theta_model_results_onset_before_turn_all_subs_log_robust.csv"))
+hc_robust_theta <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "hc_theta_model_results_onset_before_turn_all_subs_log_robust.csv"))
+dlpfc_robust_theta <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "dlpfc_theta_model_results_onset_before_turn_all_subs_log_robust.csv"))
+
+```
+
+
+```{r ofc-data-prep}
+
+## prep for general function
+distance_df <- all_subs_g_dist
+brain_df <- ofc_theta_data
+
+# merge behavior data with ieeg data
+brain_behave_df <- left_join(distance_df %>% 
+                               select(-move_step) %>% mutate(trial_time = round(trial_time, 2)) %>% 
+                               filter(!(subject == "SLCH002" & trial_numeric == 220)), 
+                             brain_df %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_behave_lme_df <- brain_behave_df %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # exclude time before they started moving, may be good to look at not doing this as well
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  # filter to max time 3 since after 3s we start losing a lot of trials
+  filter(move_time < 2) %>%
+  # select and rescale the necessary variables for the model
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  mutate(discounted_value = points_remaining * 1/distance_to_ghost) %>%
+  mutate(discounted_4reward = if_else(Eaten == 5, 0, points_remaining * 1/abs(UserLocation - Biscuit5))) %>%
+  mutate(points_remaining_goal = if_else(dots_eaten == 5, points_remaining,
+                                     if_else(dots_eaten == 4 & reward_groups %in% c(3, 4), points_remaining - 20, # ate 4 dots, big dot remaining
+                                       if_else(dots_eaten == 4 & reward_groups %in% c(1, 2), points_remaining - 10,  # ate 4 dots, small dot remaining
+                                           if_else(dots_eaten == 3 & reward_groups %in% c(1, 2), points_remaining - 20 - 10,  # ate 3 dots, 1 big dot, 1 small dot remaining
+                                             if_else(dots_eaten == 3 & reward_groups == 4, points_remaining - 20 - 20,  # ate 3 dots, 2 big dots remaining
+                                               if_else(dots_eaten == 3 & reward_groups == 3, points_remaining - 10 - 10, # ate 3 dots, 2 small dots remaining
+                                                 if_else(dots_eaten == 2 & reward_groups %in% c(1, 3), points_remaining - 10 - 10 -20, # ate 2 dots, 2 small dots remaining, 1 big
+                                                   if_else(dots_eaten == 2 & reward_groups %in% c(2, 4), points_remaining - 20 - 20 - 10,  # ate 2 dots, 2 small big remaining, 1 small
+                                                     if_else(dots_eaten == 1, points_remaining - 20 - 20 - 10 -10, # always same amount of reward after eating 1 dot
+                                                             0)))))))))) %>%
+  mutate(discounted_goal = if_else(dots_eaten == 5, points_remaining_goal * 1/(abs(UserLocation - Biscuit5)),
+                                   if_else(dots_eaten == 4, points_remaining_goal * 1/(abs(UserLocation - Biscuit4)),
+                                           if_else(dots_eaten == 3, points_remaining_goal * 1/(abs(UserLocation - Biscuit3)),
+                                                   if_else(dots_eaten == 2, points_remaining_goal * 1/(abs(UserLocation - Biscuit2)),
+                                                           if_else(dots_eaten == 1, points_remaining_goal * 1/(abs(UserLocation - Biscuit1)),
+                                                                   0)))))) %>%
+  mutate(discounted_value_goal = points_remaining_goal * 1/distance_to_ghost) %>%                                      
+  ungroup() %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, distance_to_ghost, points_remaining, discounted_value_goal, points_remaining_goal, Eaten,
+         combined_value, discounted_value, GhostLocation, UserLocation, discounted_reward, discounted_4reward, discounted_goal, dots_eaten)  %>%
+  mutate(combined_value = rescale(combined_value)) %>%
+  mutate(Eaten = rescale(Eaten)) %>%
+  mutate(discounted_value = rescale(discounted_value)) %>%
+  mutate(UserLocation = rescale(UserLocation)) %>%
+  mutate(GhostLocation = rescale(GhostLocation))  %>%
+  mutate(discounted_reward = rescale(discounted_reward)) %>%
+  mutate(discounted_4reward = rescale(discounted_4reward)) %>%
+  mutate(discounted_goal = rescale(discounted_goal)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost)) %>%
+  mutate(points_remaining = rescale(points_remaining))  %>%
+  mutate(reward_threat_diff = rescale(points_remaining - distance_to_ghost)) %>%
+  mutate(reward_threat_mult = rescale(points_remaining * -1 *distance_to_ghost)) %>%
+  mutate(threat_reward_diff = rescale(distance_to_ghost - points_remaining)) %>%
+  mutate(threat_reward_sum = rescale(distance_to_ghost + points_remaining)) %>%
+  mutate(dots_eaten = rescale(dots_eaten)) 
+
+
+```
+
+```{r hc-data-prep}
+
+## prep for general function
+distance_df <- all_subs_g_dist
+brain_df <- hc_theta_data
+
+# merge behavior data with ieeg data
+brain_behave_df <- left_join(distance_df %>% 
+                               select(-move_step) %>% mutate(trial_time = round(trial_time, 2)) %>% 
+                               filter(!(subject == "SLCH002" & trial_numeric == 220)), 
+                             brain_df %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+hc_behave_lme_df <- brain_behave_df %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # exclude time before they started moving, may be good to look at not doing this as well
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  # filter to max time 3 since after 3s we start losing a lot of trials
+  filter(move_time < 2) %>%
+  # select and rescale the necessary variables for the model
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  mutate(discounted_value = points_remaining * 1/distance_to_ghost) %>%
+  mutate(discounted_4reward = if_else(Eaten == 5, 0, points_remaining * 1/abs(UserLocation - Biscuit5))) %>%
+  mutate(points_remaining_goal = if_else(dots_eaten == 5, points_remaining,
+                                     if_else(dots_eaten == 4 & reward_groups %in% c(3, 4), points_remaining - 20, # ate 4 dots, big dot remaining
+                                       if_else(dots_eaten == 4 & reward_groups %in% c(1, 2), points_remaining - 10,  # ate 4 dots, small dot remaining
+                                           if_else(dots_eaten == 3 & reward_groups %in% c(1, 2), points_remaining - 20 - 10,  # ate 3 dots, 1 big dot, 1 small dot remaining
+                                             if_else(dots_eaten == 3 & reward_groups == 4, points_remaining - 20 - 20,  # ate 3 dots, 2 big dots remaining
+                                               if_else(dots_eaten == 3 & reward_groups == 3, points_remaining - 10 - 10, # ate 3 dots, 2 small dots remaining
+                                                 if_else(dots_eaten == 2 & reward_groups %in% c(1, 3), points_remaining - 10 - 10 -20, # ate 2 dots, 2 small dots remaining, 1 big
+                                                   if_else(dots_eaten == 2 & reward_groups %in% c(2, 4), points_remaining - 20 - 20 - 10,  # ate 2 dots, 2 small big remaining, 1 small
+                                                     if_else(dots_eaten == 1, points_remaining - 20 - 20 - 10 -10, # always same amount of reward after eating 1 dot
+                                                             0)))))))))) %>%
+  mutate(discounted_goal = if_else(dots_eaten == 5, points_remaining_goal * 1/(abs(UserLocation - Biscuit5)),
+                                   if_else(dots_eaten == 4, points_remaining_goal * 1/(abs(UserLocation - Biscuit4)),
+                                           if_else(dots_eaten == 3, points_remaining_goal * 1/(abs(UserLocation - Biscuit3)),
+                                                   if_else(dots_eaten == 2, points_remaining_goal * 1/(abs(UserLocation - Biscuit2)),
+                                                           if_else(dots_eaten == 1, points_remaining_goal * 1/(abs(UserLocation - Biscuit1)),
+                                                                   0)))))) %>%
+  mutate(discounted_value_goal = points_remaining_goal * 1/distance_to_ghost) %>%                                      
+  ungroup() %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, distance_to_ghost, points_remaining, discounted_value_goal, points_remaining_goal, Eaten,
+         combined_value, discounted_value, GhostLocation, UserLocation, discounted_reward, discounted_4reward, discounted_goal, dots_eaten)  %>%
+  mutate(combined_value = rescale(combined_value)) %>%
+  mutate(Eaten = rescale(Eaten)) %>%
+  mutate(discounted_value = rescale(discounted_value)) %>%
+  mutate(UserLocation = rescale(UserLocation)) %>%
+  mutate(GhostLocation = rescale(GhostLocation))  %>%
+  mutate(discounted_reward = rescale(discounted_reward)) %>%
+  mutate(discounted_4reward = rescale(discounted_4reward)) %>%
+  mutate(discounted_goal = rescale(discounted_goal)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost)) %>%
+  mutate(points_remaining = rescale(points_remaining)) %>%
+  mutate(reward_threat_diff = rescale(points_remaining - distance_to_ghost)) %>%
+  mutate(threat_reward_diff = rescale(distance_to_ghost - points_remaining)) %>%
+  mutate(threat_reward_sum = rescale(distance_to_ghost + points_remaining))  %>%
+  mutate(dots_eaten = rescale(dots_eaten)) 
+
+```
+
+
+```{r cing-data-prep}
+
+## prep for general function
+distance_df <- all_subs_g_dist
+brain_df <- cing_theta_data
+
+# merge behavior data with ieeg data
+brain_behave_df <- left_join(distance_df %>% 
+                               select(-move_step) %>% mutate(trial_time = round(trial_time, 2)) %>% 
+                               filter(!(subject == "SLCH002" & trial_numeric == 220)), 
+                             brain_df %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+cing_behave_lme_df <- brain_behave_df %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # exclude time before they started moving, may be good to look at not doing this as well
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  # filter to max time 3 since after 3s we start losing a lot of trials
+  filter(move_time < 2) %>%
+  # select and rescale the necessary variables for the model
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  mutate(discounted_value = points_remaining * 1/distance_to_ghost) %>%
+  mutate(discounted_4reward = if_else(Eaten == 5, 0, points_remaining * 1/abs(UserLocation - Biscuit5))) %>%
+  mutate(points_remaining_goal = if_else(dots_eaten == 5, points_remaining,
+                                     if_else(dots_eaten == 4 & reward_groups %in% c(3, 4), points_remaining - 20, # ate 4 dots, big dot remaining
+                                       if_else(dots_eaten == 4 & reward_groups %in% c(1, 2), points_remaining - 10,  # ate 4 dots, small dot remaining
+                                           if_else(dots_eaten == 3 & reward_groups %in% c(1, 2), points_remaining - 20 - 10,  # ate 3 dots, 1 big dot, 1 small dot remaining
+                                             if_else(dots_eaten == 3 & reward_groups == 4, points_remaining - 20 - 20,  # ate 3 dots, 2 big dots remaining
+                                               if_else(dots_eaten == 3 & reward_groups == 3, points_remaining - 10 - 10, # ate 3 dots, 2 small dots remaining
+                                                 if_else(dots_eaten == 2 & reward_groups %in% c(1, 3), points_remaining - 10 - 10 -20, # ate 2 dots, 2 small dots remaining, 1 big
+                                                   if_else(dots_eaten == 2 & reward_groups %in% c(2, 4), points_remaining - 20 - 20 - 10,  # ate 2 dots, 2 small big remaining, 1 small
+                                                     if_else(dots_eaten == 1, points_remaining - 20 - 20 - 10 -10, # always same amount of reward after eating 1 dot
+                                                             0)))))))))) %>%
+  mutate(discounted_goal = if_else(dots_eaten == 5, points_remaining_goal * 1/(abs(UserLocation - Biscuit5)),
+                                   if_else(dots_eaten == 4, points_remaining_goal * 1/(abs(UserLocation - Biscuit4)),
+                                           if_else(dots_eaten == 3, points_remaining_goal * 1/(abs(UserLocation - Biscuit3)),
+                                                   if_else(dots_eaten == 2, points_remaining_goal * 1/(abs(UserLocation - Biscuit2)),
+                                                           if_else(dots_eaten == 1, points_remaining_goal * 1/(abs(UserLocation - Biscuit1)),
+                                                                   0)))))) %>%
+  mutate(discounted_value_goal = points_remaining_goal * 1/distance_to_ghost) %>%                                      
+  ungroup() %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, distance_to_ghost, points_remaining, discounted_value_goal, points_remaining_goal, Eaten,
+         combined_value, discounted_value, GhostLocation, UserLocation, discounted_reward, discounted_4reward, discounted_goal, dots_eaten)  %>%
+  mutate(combined_value = rescale(combined_value)) %>%
+  mutate(Eaten = rescale(Eaten)) %>%
+  mutate(discounted_value = rescale(discounted_value)) %>%
+  mutate(UserLocation = rescale(UserLocation)) %>%
+  mutate(GhostLocation = rescale(GhostLocation))  %>%
+  mutate(discounted_reward = rescale(discounted_reward)) %>%
+  mutate(discounted_4reward = rescale(discounted_4reward)) %>%
+  mutate(discounted_goal = rescale(discounted_goal)) %>%
+  mutate(distance_to_ghost = rescale(distance_to_ghost)) %>%
+  mutate(points_remaining = rescale(points_remaining))  %>%
+  mutate(reward_threat_diff = rescale(points_remaining - distance_to_ghost)) %>%
+  mutate(reward_threat_mult = rescale(points_remaining * -1 *distance_to_ghost)) %>%
+  mutate(threat_reward_diff = rescale(distance_to_ghost - points_remaining)) %>%
+  mutate(threat_reward_sum = rescale(distance_to_ghost + points_remaining)) %>%
+  mutate(dots_eaten = rescale(dots_eaten)) 
+
+
+```
+
+
+```{r replicate-csvs-ofc}
+
+## OFC model @ .5 ##
+ofc_time_step_df <- ofc_behave_lme_df %>%
+  filter(move_time == .5) %>%
+  mutate(theta = scale(theta))
+
+ofc_model_all <- robustlmm::rlmer(theta ~ distance_to_ghost + points_remaining +  (1|subject), data = ofc_time_step_df)
+
+## HC model @ .5 ##
+hc_time_step_df <- hc_behave_lme_df %>%
+  filter(move_time == .5) %>%
+  mutate(theta = scale(theta))
+
+hc_model_all <- robustlmm::rlmer(theta ~ distance_to_ghost + points_remaining +  (1|subject), data = hc_time_step_df)
+
+
+```
+
+
+
+```{r ofc-check, fig.height=20, fig.width = 20}
+
+ofc_time_step_df %>%
+  ggplot(., aes(y = theta, x = distance_to_ghost, color = subject)) +
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", color = "black", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, scales = "free") +
+  ggtitle("Distance to Ghost, OFC @ 50ms post movement")
+
+
+ofc_time_step_df %>%
+  ggplot(., aes(y = theta, x = points_remaining, color = subject)) +
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", color = "black", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, scales = "free") +
+  ggtitle("Points Remaining, OFC @ 50ms post movement")
+
+ofc_behave_lme_df %>%
+  ggplot(., aes(y = theta, x = move_time, color = subject)) +
+  geom_point(alpha = .2) +
+  geom_smooth(method = "lm", color = "black", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, scales = "free") +
+  ggtitle("Time, OFC @ 50ms post movement")
+
+
+```
+
+
+
+
+```{r hc-check, fig.height=20, fig.width = 20}
+
+hc_time_step_df %>%
+  ggplot(., aes(y = theta, x = distance_to_ghost, color = subject)) +
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", color = "black", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, scales = "free") +
+  ggtitle("Distance to Ghost, HC @ 50ms post movement")
+
+
+hc_time_step_df %>%
+  ggplot(., aes(y = theta, x = points_remaining, color = subject)) +
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", color = "black", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_id, scales = "free") +
+  ggtitle("Points Remaining, HC @ 50ms post movement")
+
+
+```
+### OFC Model Diagnostics
+```{r model-diagnotics-ofc}
+
+plot(ofc_model_all)
+
+```
+
+### HC Model Diagnostics
+```{r model-diagnotics-hc}
+
+plot(hc_model_all)
+
+```
+
+
+### Model Comparison
+
+```{r ofc-options}
+
+library(AICcmodavg)
+
+ofc_time_step_df <- ofc_behave_lme_df %>%
+  filter(move_time == .4) %>%
+  mutate(theta = scale(theta)) %>%
+  mutate(distance_to_ghost_neg = distance_to_ghost * -1)
+
+hc_time_step_df <- hc_behave_lme_df %>%
+  filter(move_time == .4) %>%
+  mutate(theta = scale(theta)) %>%
+  mutate(distance_to_ghost_neg = distance_to_ghost * -1)
+
+# ofc_model_all <- robustlmm::rlmer(theta ~ distance_to_ghost + points_remaining +  (1|subject), data = ofc_time_step_df)
+
+ofc_model_all_unrobust <- lmer(theta ~ distance_to_ghost + points_remaining +  (1|subject), data = ofc_time_step_df)
+ofc_model_all_eaten_inter <- lmer(theta ~ distance_to_ghost + Eaten +  distance_to_ghost*Eaten + (1|subject), data = ofc_time_step_df)
+ofc_model_all_goal <- lmer(theta ~ distance_to_ghost + points_remaining_goal +  (1|subject), data = ofc_time_step_df)
+ofc_model_all_re_thr_diff <- lmer(theta ~ reward_threat_diff +  (1|subject), data = ofc_time_step_df)
+ofc_model_all_thr_re_diff <- lmer(theta ~ threat_reward_diff +  (1|subject), data = ofc_time_step_df)
+ofc_model_all_re_thr_mult <- lmer(theta ~ reward_threat_mult +  (1|subject), data = ofc_time_step_df)
+ofc_model_all_re_thr_sum <- lmer(theta ~ threat_reward_sum +  (1|subject), data = ofc_time_step_df)
+
+ofc_model_all_interaction <- lmer(theta ~ distance_to_ghost + points_remaining +  distance_to_ghost*points_remaining + (1|subject), data = ofc_time_step_df)
+ofc_model_all_interaction_nthr <- lmer(theta ~ distance_to_ghost_neg + points_remaining +  distance_to_ghost_neg*points_remaining + (1|subject), data = ofc_time_step_df)
+ofc_model_all_inter_goal <- lmer(theta ~ distance_to_ghost + points_remaining_goal +  distance_to_ghost*points_remaining_goal + (1|subject), data = ofc_time_step_df)
+ofc_model_all_inter_dots <- lmer(theta ~ distance_to_ghost + dots_eaten + distance_to_ghost*dots_eaten + (1|subject), data = ofc_time_step_df)
+
+
+## summaries
+summary(ofc_model_all_unrobust)
+AICc(ofc_model_all_unrobust)
+BIC(ofc_model_all_unrobust)
+
+summary(ofc_model_all_goal)
+AICc(ofc_model_all_goal)
+BIC(ofc_model_all_goal)
+
+summary(ofc_model_all_eaten_inter)
+AICc(ofc_model_all_eaten_inter)
+BIC(ofc_model_all_eaten_inter)
+
+summary(ofc_model_all_re_thr_diff)
+AICc(ofc_model_all_re_thr_diff)
+BIC(ofc_model_all_re_thr_diff)
+
+summary(ofc_model_all_thr_re_diff)
+AICc(ofc_model_all_thr_re_diff)
+BIC(ofc_model_all_thr_re_diff)
+
+summary(ofc_model_all_re_thr_mult)
+AICc(ofc_model_all_re_thr_mult)
+BIC(ofc_model_all_re_thr_mult)
+
+summary(ofc_model_all_re_thr_sum)
+AICc(ofc_model_all_re_thr_sum)
+BIC(ofc_model_all_re_thr_sum)
+
+summary(ofc_model_all_interaction)
+AICc(ofc_model_all_interaction)
+BIC(ofc_model_all_interaction)
+
+summary(ofc_model_all_interaction_nthr)
+AICc(ofc_model_all_interaction_nthr)
+BIC(ofc_model_all_interaction_nthr)
+
+summary(ofc_model_all_inter_goal)
+AICc(ofc_model_all_inter_goal)
+BIC(ofc_model_all_inter_goal)
+
+summary(ofc_model_all_inter_dots)
+AICc(ofc_model_all_inter_dots)
+BIC(ofc_model_all_inter_dots)
+
+
+```
+
+
+```{r ofc-interaction, fig.width = 12, fig.height=12}
+
+ofc_time_step_df <- ofc_behave_lme_df %>%
+  filter(move_time == .4) %>%
+  mutate(theta = scale(theta)) %>%
+  mutate(distance_to_ghost_neg = distance_to_ghost * -1)
+
+hc_time_step_df <- hc_behave_lme_df %>%
+  filter(move_time == .4) %>%
+  mutate(theta = scale(theta)) %>%
+  mutate(distance_to_ghost_neg = distance_to_ghost * -1)
+
+ofc_time_step_df %>%
+  ggplot(., aes(x = points_remaining )) +
+  geom_histogram() +
+  theme(panel.background = element_rect(fill = "white"))
+
+ofc_time_step_df %>%
+  ggplot(., aes(x = distance_to_ghost )) +
+  geom_histogram() +
+  geom_vline(xintercept = .5, color = "black") +
+  geom_vline(xintercept = .3, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+ofc_time_step_df %>%
+  mutate(high_low_points = if_else(points_remaining > .8, "high",
+                                   if_else(points_remaining > .7, "medium", "low"))) %>%
+  ggplot(., aes(x = distance_to_ghost, y = theta, color = high_low_points)) +
+  geom_point() +
+  geom_smooth(color = "black", fill ="grey", method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~high_low_points)
+
+sub_ofc_inter <- ofc_time_step_df %>%
+  mutate(high_low_threat = if_else(distance_to_ghost >= .4, "Far", "Close")) %>%
+  ggplot(., aes(x = points_remaining, y = theta, color = high_low_threat)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "lightgrey") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "black", size = 16),
+      axis.title = element_text(family = "Gill Sans", color = "black", size = 16),
+      legend.title = element_text(family = "Gill Sans", color = "black", size = 18),
+      strip.text  = element_text(family = "Gill Sans", color = "black", size = 18),
+      plot.subtitle = element_text(family = "Gill Sans", color = "black", size = 18),
+      legend.text = element_text(family = "Gill Sans", color = "black", size = 16),
+      plot.title  = element_text(family = "Gill Sans", color = "black", size = 20, face = "plain")) +
+  labs(y = "Theta Power", color = "Distance to Ghost", x = "Points Remaining") +
+  ggtitle("OFC Theta Power Interaction between Reward and Threat 40ms after Movement Onset", subtitle = "Indivudal Subjects") +
+  facet_wrap(~subject)
+
+
+ofc_inter <- ofc_time_step_df %>%
+  mutate(high_low_threat = if_else(distance_to_ghost >= .4, "Ghost is far", "Ghost is close")) %>%
+  ggplot(., aes(x = points_remaining, y = theta, color = high_low_threat)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = "black", size = 18),
+        axis.title = element_text(family = "Gill Sans", color = "black", size = 20),
+        legend.title = element_text(family = "Gill Sans", color = "black", size = 20),
+        strip.text  = element_text(family = "Gill Sans", color = "black", size = 20),
+        plot.subtitle = element_text(family = "Gill Sans", color = "black", size = 18),
+        legend.text = element_text(family = "Gill Sans", color = "black", size = 20),
+        plot.title  = element_text(family = "Gill Sans", color = "black", size = 20, face = "bold", hjust = .5)) +
+  labs(y = "Theta Power", color = "Distance to Ghost", x = "Points Remaining") +
+  ggtitle("OFC") +
+  # ylim(-2, 5.8) +
+  facet_wrap(~high_low_threat)
+
+hc_inter <- hc_time_step_df %>%
+  mutate(high_low_threat = if_else(distance_to_ghost >= .4, "Ghost is far", "Ghost is close")) %>%
+  ggplot(., aes(x = points_remaining, y = theta, color = high_low_threat)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = "black", size = 18),
+        axis.title = element_text(family = "Gill Sans", color = "black", size = 20),
+        legend.title = element_text(family = "Gill Sans", color = "black", size = 20),
+        strip.text  = element_text(family = "Gill Sans", color = "black", size = 20),
+        plot.subtitle = element_text(family = "Gill Sans", color = "black", size = 18),
+        legend.text = element_text(family = "Gill Sans", color = "black", size = 20),
+        plot.title  = element_text(family = "Gill Sans", color = "black", size = 20, face = "bold", hjust = .5)) +
+  labs(y = "", color = "Distance to Ghost", x = "Points Remaining") +
+  ggtitle("HC") +
+  # ylim(-2, 5.8) +
+  facet_wrap(~high_low_threat)
+
+
+# ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_interaction.png"),
+#          plot = ofc_inter,
+#          width = 14,
+#          height = 7,
+#          units = "in",
+#          dpi = 300)
+# 
+# ggsave(path(here(), "figures", "linear_mixed_effect_models", "hc_theta_interaction.png"),
+#          plot = hc_inter,
+#          width = 14,
+#          height = 7,
+#          units = "in",
+#          dpi = 300)
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_hc_theta_interaction.png"),
+         plot = arrangeGrob(grobs = list(ofc_inter, hc_inter), nrow = 1, ncol = 2),
+         width = 14,
+         height = 7,
+         units = "in",
+         dpi = 300)
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "ofc_theta_interaction_subjects.png"),
+         plot = sub_ofc_inter,
+         width = 12,
+         height = 12,
+         units = "in",
+         dpi = 300)
+
+```
+
+If it is a reward prediction then why doesn't encode what reward the person seemed to get? Maybe people just dont have much of a plan and are reactive?
+
+```{r variable-forms}
+
+ofc_behave_lme_df %>%
+  filter(move_time == .4) %>%
+  rowwise() %>%
+  mutate(interaction_model = points_remaining + distance_to_ghost + points_remaining*distance_to_ghost) %>%
+  mutate(threat_reward_diff = points_remaining - distance_to_ghost) %>%
+  ungroup() %>%
+  ggplot(., aes(x = points_remaining, y = distance_to_ghost, color = interaction_model)) +
+  geom_jitter(size = 3) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject) +
+  scale_color_viridis(option= "C")
+
+ofc_behave_lme_df %>%
+  filter(move_time == .4) %>%
+  rowwise() %>%
+  mutate(interaction_model = points_remaining + distance_to_ghost + points_remaining*distance_to_ghost) %>%
+  mutate(threat_reward_diff = points_remaining - distance_to_ghost) %>%
+  ungroup() %>%
+  ggplot(., aes(x = points_remaining, y = distance_to_ghost, color = threat_reward_diff)) +
+  geom_jitter(size = 3) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject) +
+  scale_color_viridis(option= "C")
+
+ofc_behave_lme_df %>%
+  # filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  filter(trial_numeric == 153) %>%
+  rowwise() %>%
+  mutate(interaction_model = points_remaining + distance_to_ghost + points_remaining*distance_to_ghost) %>%
+  mutate(threat_reward_diff = points_remaining - distance_to_ghost) %>%
+  ungroup() %>%
+  ggplot(., aes(x = move_time, y = threat_reward_diff, color = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+```
+
+
+
+```{r ofc-interaction, fig.width = 10, fig.height=10}
+
+hc_time_step_df %>%
+  mutate(high_low_points = if_else(points_remaining > .8, "high",
+                                   if_else(points_remaining > .7, "medium", "low"))) %>%
+  ggplot(., aes(x = distance_to_ghost, y = theta, color = high_low_points)) +
+  geom_point() +
+  geom_smooth(color = "black", fill ="grey", method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~high_low_points)
+
+hc_inter <- hc_time_step_df %>%
+  mutate(high_low_threat = if_else(distance_to_ghost >= .4, "Far", "Close")) %>%
+  ggplot(., aes(x = points_remaining, y = theta, color = high_low_threat)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "lightgrey") +
+  theme(panel.background = element_rect(fill = "white"),
+      axis.text = element_text(color = "black", size = 16),
+      axis.title = element_text(color = "black", size = 16),
+      legend.title = element_text(color = "black", size = 18),
+      strip.text  = element_text(color = "black", size = 18),
+      plot.subtitle = element_text(color = "black", size = 18),
+      legend.text = element_text(color = "black", size = 16),
+      plot.title  = element_text(color = "black", size = 20, face = "plain")) +
+  labs(y = "Theta Power", color = "Distance to Ghost", x = "Points Remaining") +
+  ggtitle("HC Theta Power Interaction between Reward and Threat 40ms after Movement Onset") +
+  facet_wrap(~high_low_threat)
+
+sub_hc_inter <- hc_time_step_df %>%
+  mutate(high_low_threat = if_else(distance_to_ghost >= .4, "Far", "Close")) %>%
+  ggplot(., aes(x = points_remaining, y = theta, color = high_low_threat)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "lightgrey") +
+  theme(panel.background = element_rect(fill = "white"),
+      axis.text = element_text(color = "black", size = 16),
+      axis.title = element_text(color = "black", size = 16),
+      legend.title = element_text(color = "black", size = 18),
+      strip.text  = element_text(color = "black", size = 18),
+      plot.subtitle = element_text(color = "black", size = 18),
+      legend.text = element_text(color = "black", size = 16),
+      plot.title  = element_text(color = "black", size = 20, face = "plain")) +
+  labs(y = "Theta Power", color = "Distance to Ghost", x = "Points Remaining") +
+  ggtitle("HC Theta Power Interaction between Reward and Threat 40ms after Movement Onset", subtitle = "Indivudal Subjects") +
+  facet_wrap(~subject)
+
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "hc_theta_interaction.png"),
+         plot = hc_inter,
+         width = 12,
+         height = 12,
+         units = "in",
+         dpi = 300)
+
+ggsave(path(here(), "figures", "linear_mixed_effect_models", "hc_theta_interaction_subjects.png"),
+         plot = sub_hc_inter,
+         width = 12,
+         height = 12,
+         units = "in",
+         dpi = 300)
+
+```
+
+```{r ofc-interaction, fig.width = 10, fig.height=10}
+
+ofc_time_step_df %>%
+  ggplot(., aes(x = points_remaining )) +
+  geom_histogram() +
+  theme(panel.background = element_rect(fill = "white"))
+
+ofc_time_step_df %>%
+  ggplot(., aes(x = distance_to_ghost )) +
+  geom_histogram() +
+  geom_vline(xintercept = .5, color = "black") +
+  geom_vline(xintercept = .3, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+ofc_time_step_df %>%
+  mutate(high_low_points = if_else(points_remaining > .8, "high",
+                                   if_else(points_remaining > .7, "medium", "low"))) %>%
+  ggplot(., aes(x = distance_to_ghost, y = theta, color = high_low_points)) +
+  geom_point() +
+  geom_smooth(color = "black", fill ="grey", method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~high_low_points)
+
+ofc_time_step_df %>%
+  mutate(high_low_threat = if_else(distance_to_ghost >= .4, "Far", "Close")) %>%
+  ggplot(., aes(x = points_remaining, y = theta, color = high_low_threat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+ofc_time_step_df %>%
+  mutate(high_low_threat = if_else(distance_to_ghost >= .4, "Far", "Close")) %>%
+  ggplot(., aes(x = points_remaining, y = theta, color = high_low_threat)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+```
+
+
+
+### OFC Individual Differences
+
+```{r ofc-indv-diffs, fig.height=40, fig.width = 15}
+
+ofc_robust_theta %>%
+  group_by(case, pred) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(pval_fdr < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "points") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .2, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .65, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (4 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(0, 2)  + ylim(-4, 4) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~main, ncol = 1) +
+  ggtitle("Points Remaining, OFC, Movement Onset")
+
+
+ofc_robust_theta %>%
+  group_by(case, pred) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(pval_fdr < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "dist") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .3, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .65, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (4 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(0, 2)  + ylim(-4.2, 4.2) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~main, ncol = 1) +
+  ggtitle("Distance to Ghost, OFC, Movement Onset")
+
+
+```
+
+
+
+```{r hc-indv-diffs, fig.height=40, fig.width = 15}
+
+hc_robust_theta %>%
+  group_by(case, pred) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(pval_fdr < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "points") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .2, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .65, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (4 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(0, 2)  + ylim(-4, 4) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~main, ncol = 1) +
+  ggtitle("Points Remaining, HC, Movement Onset")
+
+
+hc_robust_theta %>%
+  group_by(case, pred) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(pval_fdr < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "dist") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .25, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .65, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (4 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(0, 2)  + ylim(-4.2, 4.2) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~main, ncol = 1) +
+  ggtitle("Distance to Ghost, HC, Movement Onset")
+
+
+```
+
+
+
+
+
+
+
+```{r dlpfc-indv-diffs, fig.height=40, fig.width = 15}
+
+dlpfc_robust_theta %>%
+  group_by(case, pred) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(pval_fdr < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "points") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .2, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .65, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (4 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(0, 2)  + ylim(-4, 4) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~main, ncol = 1) +
+  ggtitle("Points Remaining, dlPFC, Movement Onset")
+
+
+dlpfc_robust_theta %>%
+  group_by(case, pred) %>%
+  mutate(pval_fdr = p.adjust(`Pr(>|t|)`, "fdr")) %>%
+  ungroup() %>%
+  mutate(sig = if_else(pval_fdr < .05, time, -10)) %>%
+  mutate(main = if_else(case == "all_subs", "All Subjects", gsub("_.*", "", case))) %>%
+  filter(pred == "dist") %>%
+  ggplot(., aes(x = time, y = Estimate)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_vline(xintercept = 0, color = "black") +
+  # geom_vline(xintercept = -1.65, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .25, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = .65, color = "black", linetype = "dashed") +
+  geom_point(aes(color = main), size = 3) +
+  geom_line(aes(color = main, group = case)) +
+  geom_label(aes(x = sig), label = "*", color = "black", y = (4 -.3), label.size = 0.5) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(family = "Arial", color = '#2D2327', size = 16, face = "bold"),
+        legend.title = element_text(family = "Arial", color = '#2D2327', size = 16),
+        legend.text = element_text(family = "Arial", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Arial", color = '#2D2327', size = 18), 
+        axis.text = element_text(family = "Arial", color = '#2D2327', size = 14), 
+        plot.title = element_text(family = "Arial", color = '#2D2327', size = 20)) +
+  guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
+  scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
+  scale_size_manual(values = c(1, .5), guide  = "none") +
+  scale_alpha_manual(values = c(1, .5), guide = "none") +
+  xlim(0, 2)  + ylim(-4.2, 4.2) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
+  facet_wrap(~main, ncol = 1) +
+  ggtitle("Distance to Ghost, dlPFC, Movement Onset")
+
+
+```
+
+
+
+
+```{r sample-dta}
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Generate data
+n <- 100 # number of observations
+
+# Generate variable 'a'
+a <- rnorm(n)
+
+# Generate variable 'b' that is correlated with 'a' at 0.5
+b <- 0.5 * a + sqrt(1 - 0.5^2) * rnorm(n)
+
+# Check the correlation between 'a' and 'b'
+correlation <- cor(a, b)
+print(paste("Correlation between 'a' and 'b':", round(correlation, 2)))
+
+# Generate outcome variable 'y' that is influenced by 'a' (and some noise)
+beta <- 2 # coefficient for 'a'
+y <- beta * a + rnorm(n)
+
+# Fit a linear regression model to predict 'y' using 'a'
+model <- lm(y ~ a)
+model <- lm(y ~ a*b)
+
+# Print the summary of the model
+summary(model)
+
+```
+```{r elec-counts}
+
+## Load Region specific csvs ## 
+hc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_hc_all_subs_onset.csv"))
+amyg_onset_df <- read_csv(path(here(), "munge", "theta_behavior_amyg_all_subs_onset.csv"))
+ofc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_ofc_all_subs_onset.csv"))
+cing_onset_df <- read_csv(path(here(), "munge", "theta_behavior_cing_all_subs_onset.csv"))
+dlpfc_onset_df <- read_csv(path(here(), "munge", "theta_behavior_dlpfc_all_subs_onset.csv"))
+insula_onset_df <- read_csv(path(here(), "munge", "theta_behavior_insula_all_subs_onset.csv"))
+
+## Bind together ##
+theta_onset_df <- rbind(hc_onset_df %>% mutate(region = "hc"),
+                             amyg_onset_df %>% mutate(region = "amyg"),
+                             ofc_onset_df %>% mutate(region = "ofc"),
+                             cing_onset_df %>% mutate(region = "cing"),
+                             dlpfc_onset_df %>% mutate(region = "dlpfc"),
+                             insula_onset_df %>% mutate(region = "insula"))
+
+# Only First Second
+theta_onset_df <- theta_onset_df %>%
+  filter(trial_time >= 0 & trial_time < 1) %>%
+  mutate(elec_short = gsub("_.*", "", electrode)) %>%
+  filter(!grepl("noghost", electrode)) %>%
+  filter(!(subject == "LL13" & elec_short == "LH1-LH2"))
+
+
+subject_elecs <- theta_onset_df %>%
+  select(subject, elec_short, region) %>%
+  distinct() %>%
+  group_by(subject, region) %>%
+  summarise(n()) %>%
+  pivot_wider(names_from = region, values_from = `n()`)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

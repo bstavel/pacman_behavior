@@ -1,0 +1,38 @@
+Linear mixed model fit by REML. t-tests use Satterthwaite's method ['lmerModLmerTest']
+Formula: last_away ~ score + lives + score * lives + anxiety + score *      anxiety + lives * anxiety + (1 | subject_id)
+   Data: merged_data
+
+REML criterion at convergence: 57087.2
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-3.0897 -0.6863 -0.0394  0.5978  7.4525 
+
+Random effects:
+ Groups     Name        Variance Std.Dev.
+ subject_id (Intercept) 16.59    4.073   
+ Residual               69.74    8.351   
+Number of obs: 8021, groups:  subject_id, 69
+
+Fixed effects:
+                Estimate Std. Error         df t value Pr(>|t|)    
+(Intercept)    4.291e+01  1.862e+00  2.822e+02  23.047  < 2e-16 ***
+score         -5.192e-04  1.414e-03  7.967e+03  -0.367    0.714    
+lives         -2.109e+00  4.628e-01  7.982e+03  -4.556 5.28e-06 ***
+anxiety        3.762e-02  1.795e-01  2.028e+02   0.210    0.834    
+score:lives    9.632e-05  4.592e-04  7.963e+03   0.210    0.834    
+score:anxiety -8.786e-05  8.997e-05  7.971e+03  -0.977    0.329    
+lives:anxiety  2.263e-02  3.816e-02  7.990e+03   0.593    0.553    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Correlation of Fixed Effects:
+            (Intr) score  lives  anxity scr:lv scr:nx
+score       -0.579                                   
+lives       -0.683  0.694                            
+anxiety     -0.849  0.272  0.443                     
+score:lives  0.394 -0.797 -0.615 -0.007              
+score:anxty  0.403 -0.553 -0.309 -0.481 -0.004       
+lives:anxty  0.521 -0.254 -0.734 -0.609  0.017  0.436
+fit warnings:
+Some predictor variables are on very different scales: consider rescaling

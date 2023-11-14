@@ -1,0 +1,173 @@
+---
+title: "Pacman LMM Foundation"
+author: "Jules"
+output: 
+  html_document:
+    code_folding: hide
+---
+<!-- Notes:
+Hi Anabelle, please let me know if you have any questions regarding the script! (Jules)
+-->
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+setwd("/Users/jollyjules/R Programming/Pacman")
+library(ggplot2)
+library(lmtest)
+library(lme4)
+library(lmerTest)
+library(gridExtra)
+library(car)
+library(merTools)
+library(dplyr)
+
+# game_data <- read.csv('cleaned_pilot_game_data.csv')  # big one, incl. no-ghost & ITI, died 0 & 1, trial_end 0 & 1
+distance_data <- read.csv('cleaned_pilot_distance_data.csv')  #cleaned; excl. no-ghost & ITI; trial_end = 0, 
+# across_trials_data <- read.csv('cleaned_pilot_across_trial_data.csv') #incl. no-ghost, died 0 & 1, trial end = keine variable
+behavior_data <- read.csv('cleaned_pilot_behavior.csv')
+```
+# Data Preparation
+<!--
+Create new datasets to work with.
+# "small": only reads out necessary variables for specific checks 
+
+# expanded_dataset: 
+- bobbing: setting a flag for each flip where last_away occurred while ghost was bobbing (= not triggered by attack or chase), 
+  then flagging each trial with a flagged flip
+- initial score: adding a trial-level variable of score at the beginning of the trial
+- flip of last_away: adding a flip-level variable that saves each flip with turnaround at distance of last_away (pot. multiple per trial)
+  then creating a trial-level variable that saves the flip of the last turnaround (one per trial)
+
+# clean_distance_data: 
+- excluded: expanded_data: turnaround during a/c, no turns (bc away_choice != 0); distance_data: no ghost present
+- exclude no dots eaten
+- note: simply define read out at "away_choice == last_away" does not work bc it includes each flip with turn at same distance as last_away
+- here: read out at flip of last turn
+-->
+```{r data preparation, include=FALSE}
+#small_data <- distance_data[, c("subject", "Trial", "trial_flip", "Score", "Lives", "Eaten", "dots_eaten", "died", "away_choice", "number_of_runs", "last_away", "attack_chase_bob")]
+
+expanded_dataset <- distance_data %>%
+  # flag: last_away while ghost is bobbing (=1)
+  mutate(turn_bob_flip = ifelse(away_choice == last_away & away_choice != 0 & attack_chase_bob == "Bob", 1, 0)) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(turn_bob_trial = max(turn_bob_flip)) %>% 
+  # new variable: score at trial start 
+  mutate(initial_score = first(Score)) %>%
+  # flag: flip of last_away (=flip number)
+  mutate(last_away_flag = ifelse(away_choice == last_away & away_choice != 0, trial_flip, 0)) %>% 
+  mutate(last_away_flip = max(last_away_flag)) %>% # 
+  ungroup()
+
+# small_expanded <- expanded_dataset[, c("subject", "Trial", "turn_bob_flip", "turn_bob_trial", "last_away_flag","last_away_flip","away_choice", "number_of_runs", "last_away","Score", "initial_score","Lives", "Eaten", "dots_eaten", "died",  "attack_chase_bob")]
+
+clean_distance_data <- expanded_dataset %>%
+  filter(turn_bob_trial == 1 & dots_eaten > 0 & last_away_flip == trial_flip) 
+```
+<!--
+## Trial-level variables
+Extract the variables of interest for our LMMs.
+--> 
+```{r trial level variables, include=FALSE}
+subject_id <- as.factor(gsub("\\D", "", clean_distance_data$subject)) #changed to factor instead of numeric
+last_away <- clean_distance_data$last_away
+initial_score <- as.numeric(clean_distance_data$initial_score)
+trial <- as.numeric(gsub("\\D", "", clean_distance_data$Trial)) # trials saved as numbers
+ghost_start_dir <- as.factor(clean_distance_data$ghost_start_dir)
+
+lives <- as.numeric(clean_distance_data$Lives)
+lives.num.centered <- (lives - 2)  # lives centered with 2 lives = 0 (3 = 1, 0 = -1)
+
+rewardgroup <- clean_distance_data$reward_groups    # rewardgroup saved as 2 categories
+rewardgroup[rewardgroup == 1 | rewardgroup == 2] <- "0"
+rewardgroup[rewardgroup == 3 | rewardgroup == 4] <- "1"
+
+```
+<!--
+Create new data frame with these variables. Cleanup after.
+-->
+```{r new data, include=FALSE}
+new_data <- data.frame(subject_id, trial, rewardgroup, last_away, lives, lives.num.centered, initial_score, ghost_start_dir)
+rm(subject_id, trial, rewardgroup, last_away, lives, lives.num.centered, initial_score, ghost_start_dir)
+```
+<!-- 
+## Subject-level variables
+Compute + save anxiety score. Center anxiety variable. Adapt ID name + type and merge anxiety measures with new_data. Remove old data sets.
+-->
+```{r subject level variables, include=FALSE}
+anxiety_data <- behavior_data %>%
+  rowwise() %>%
+  select(subject, starts_with("O")) %>%
+  mutate(across(starts_with("O"), function(x) as.numeric(gsub(" =.*", "", x)))) %>%
+  mutate(anxiety_score = O1 + O2 + O3 + O4 + O5) %>%
+  ungroup() %>%
+  select(subject, anxiety_score) %>%
+  distinct()
+
+anxiety_data$anxiety_mean <- mean(anxiety_data$anxiety_score)
+anxiety_data$anxiety_centered <- anxiety_data$anxiety_score - mean(anxiety_data$anxiety_score)
+
+names(anxiety_data)[names(anxiety_data) == "subject"] <- "subject_id" 
+anxiety_data$subject_id <- as.factor(gsub("\\D", "", anxiety_data$subject_id))
+
+merged_data <- left_join(new_data, anxiety_data, by = "subject_id")
+merged_data <- merged_data %>%
+  mutate(rewardgroup = if_else(rewardgroup == "1", 'high', 'low')) %>% #merged data 
+  mutate(rewardgroup = as.factor(rewardgroup))
+rm(anxiety_data, new_data, expanded_dataset, clean_distance_data)
+```
+    
+# Reward Sensitivity  
+What's the relationship between distance at last turnaround, reward group (RG), and ghost starting direction (GSD)?   
+  
+Best reward model: model with ghost, w/o anxiety, w/o interaction RG:GSD, with random slopes for GSD  
+  
+Learning from this + other reward model versions:  
+- anxiety impact v small (0.04), not significant (0.75)  
+- GSD: highly significant, larger effect size than RG (2.27 vs 1.19) + random effects explain more variance (1.68 vs 1.32)  
+- interaction GSD & RG: significant (p = .0284), effect size 0.8  
+
+
+```{r reward sensitivity model, include=T}
+model.reward <- lmer(last_away ~ rewardgroup + ghost_start_dir + (1 + ghost_start_dir|subject_id), data = merged_data) # best model: 
+summary(model.reward)
+```
+  
+# Loss Adaptation   
+What's the relationship between distance at last turnaround, score at the beginning of the trial, and number of remaining lives?   
+  
+Best loss model: model w/o anxiety, w/o score, with RS for lives  
+  
+Learning from this + other reward model versions:  
+- Intercept and lives always show significant, meaningful effect sizes   
+- Score, anxiety, interaction effects: never reach significance, effect sizes always close to 0  
+- Note: Warning message: predictor variables on different scales    
+  
+```{r loss adaptation model}
+model.loss <- lmer(last_away ~ lives.num.centered + (1 + lives.num.centered|subject_id), data = merged_data)
+summary(model.loss)
+```
+  
+## Comparison: Reward vs Loss model  
+Note: Models aren't nested.  
+  
+Results:  
+- the reward model shows lower AIC & BIC values (AIC ∆24, BIC ∆17) 
+--> the reward model fits better  
+  
+```{r comparison reward sensitivity vs loss adaptation}
+anova(model.reward, model.loss)
+```
+
+# Extensive Model: Merging Loss & Reward Models
+  
+Model Comparison:  
+- model improves by including random slopes for GSD or Lives (not for RG, slightly for GSD, more for Lives, RS for both fails to converge)  
+- best model: with GSD, with RS for lives
+- adding anxiety to best model: fails to converge. w/o random slopes: slightly worse (AIC ∆24, BIC ∆17)  
+  
+  
+```{r extensive model}
+model.extensive <- lmer(last_away ~ rewardgroup + lives.num.centered + ghost_start_dir + (1 +  lives.num.centered|subject_id), data = merged_data)
+summary(model.extensive)
+```

@@ -1,0 +1,485 @@
+---
+title: "SFN Behavioral Figures"
+output: html_document
+date: '2022-11-07'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'merge_theta_and_behavioral_data.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+
+
+## SLCH002
+
+```{r SLCH002-data-load}
+
+sl02_data <- read_csv(path(here(), './data/ieeg_behave/SLCH002_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+bjh16_data <- read_csv(path(here(), './data/ieeg_behave/BJH016_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+ll10_data <- read_csv(path(here(), './data/ieeg_behave/LL10_raw_behave.csv'), col_types = cols(X1 = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+## prolific data ##
+pilot_game_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_pacman_200_trial_n69.csv'), 
+                            col_types = cols(X1 = col_double(),
+                                                                                              subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double(),
+                                                                                              final_score = col_double()))
+
+# behavioral data#
+pilot_behave_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_behave_data_200_trial_n69.csv'), col_types = cols())
+
+# metadata / IDs #
+pacman_ids <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_ids_200_trial_n69.csv'), col_types = cols())
+
+# merge with ids to confirm parsing worked #
+pilot_behave_data_clean <- merge.data.frame(pilot_behave_data, pacman_ids, by = c("subject", "ID"))
+
+
+```
+
+```{r SLCH002-data-prep}
+
+
+# clean df #
+sl02_data_clean <- clean_bci_data(sl02_data, 2000)
+
+# create distance df # 
+sl02_data_distance <- create_distance_df_bci(sl02_data_clean)
+
+sl02_data_distance_no_ghost <- create_distance_df_bci(sl02_data_clean, ghost = F)
+
+# round trial time to match theta analyses #
+sl02_data_distance <- sl02_data_distance %>%
+    mutate(trial_time = as.character(round(trial_time, 3)))
+  
+sl02_data_distance_no_ghost <- sl02_data_distance_no_ghost %>%
+    mutate(trial_time = as.character(round(trial_time, 3)))
+  
+
+```
+
+```{r BJH016-data-prep}
+
+
+# clean df #
+bjh16_data_clean <- clean_bci_data(bjh16_data, 2000)
+
+# create distance df # 
+bjh16_data_distance <- create_distance_df_bci(bjh16_data_clean)
+
+bjh16_data_distance_no_ghost <- create_distance_df_bci(bjh16_data_clean, ghost = F)
+
+# round trial time to match theta analyses #
+bjh16_data_distance <- bjh16_data_distance %>%
+    mutate(trial_time = as.character(round(trial_time, 3)))
+  
+bjh16_data_distance_no_ghost <- bjh16_data_distance_no_ghost %>%
+    mutate(trial_time = as.character(round(trial_time, 3)))
+  
+
+```
+
+```{r LL10-data-prep}
+
+
+# clean df #
+ll10_data_clean <- clean_bci_data(ll10_data, 512)
+
+# create distance df # 
+ll10_data_distance <- create_distance_df_bci(ll10_data_clean)
+
+ll10_data_distance_no_ghost <- create_distance_df_bci(ll10_data_clean, ghost = F)
+
+# round trial time to match theta analyses #
+ll10_data_distance <- ll10_data_distance %>%
+    mutate(trial_time = as.character(round(trial_time, 2)))
+  
+ll10_data_distance_no_ghost <- ll10_data_distance_no_ghost %>%
+    mutate(trial_time = as.character(round(trial_time, 2)))
+  
+
+```
+
+
+```{r prolific-data-prep}
+
+# clean df #
+prolific_data_clean <- clean_prolific_data(pilot_game_data)
+
+# create distance #
+prolific_data_distance <- create_distance_prolific(prolific_data_clean)
+
+```
+
+
+
+```{r aalen}
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+
+sl02_data_aalen <- create_subject_survival_aalen(sl02_data_distance %>% mutate(trial_time = as.numeric(trial_time)), "SLCH002")
+bjh16_data_aalen <- create_subject_survival_aalen(bjh16_data_distance %>% mutate(trial_time = as.numeric(trial_time)), "BJH016")
+ll10_data_aalen <- create_subject_survival_aalen(ll10_data_distance %>% mutate(trial_time = as.numeric(trial_time)), "LL10")
+
+prolific_data_distance <- prolific_data_distance %>% mutate(trial_numeric = as.numeric(trial_numeric))
+s49_data_aalen <- create_subject_survival_aalen(prolific_data_distance, "Subject_49")
+s59_data_aalen <- create_subject_survival_aalen(prolific_data_distance, "Subject_59")
+s69_data_aalen <- create_subject_survival_aalen(prolific_data_distance, "Subject_69")
+
+bci_aalen_data <- rbind(sl02_data_aalen, bjh16_data_aalen, ll10_data_aalen, s49_data_aalen, s59_data_aalen, s69_data_aalen)
+bci_aalen_data <- bci_aalen_data %>%
+  mutate(plot_subject = if_else(subject == "SLCH002", "Patient 1",
+                                if_else(subject == "BJH016", "Patient 2",
+                                        if_else(subject == "LL10", "Patient 3",
+                                                if_else(subject == "Subject_49", "Prolific 1",
+                                                        if_else(subject == "Subject_59", "Prolific 2", "Prolific 3")))))) %>%
+  mutate(plot_subject = factor(plot_subject, levels = c("Patient 1", "Prolific 1", "Patient 2", "Prolific 2", "Patient 3", "Prolific 3")))
+
+basic_aalen_fit <- survfit(Surv(time1, time2, status) ~  plot_subject, data=bci_aalen_data, type = "fleming-harrington")
+
+survival_plot <- ggsurvplot(basic_aalen_fit, 
+           conf.int = TRUE, 
+           legend.title = "Subject",
+           ylab = "Probability of turning around",
+           ggtheme = theme_bw(base_family = 'Georgia'),
+           font.family = "Georgia",
+           font.main = c(16, "bold"),
+           font.x = c(14),
+           font.y = c(14),
+           xlim  = c(0, 5),
+           legend.labs = c("Patient 1", "Prolific 1", "Patient 2", "Prolific 2", "Patient 3", "Prolific 3"),
+           palette = c("#E48DB7", "#FFA801", "#55BBC8", "#FFA801", "#DE0D16", "#FFA801")) +
+  ggtitle("Players moved towards dots/ghost for about\n 1-2 seconds before turning around")
+
+
+ggsave(filename = path(here(), "figures", "SFN", "survival_plot.tif"),
+     device = "tiff",
+     width = 6,
+     height = 4,
+     units = "in",
+     dpi = 320,
+     plot =  print(survival_plot$plot))
+
+```
+
+
+```{r turning-distance}
+
+prolific_subset_data_distance <- prolific_data_distance %>%
+  # filter(subject %in% sample(subject, 5))
+  # filter(subject %in% c("Subject_35", "Subject_48", "Subject_52"))
+  filter(subject %in% c("Subject_18", "Subject_30", "Subject_41", "Subject_66", "Subject_68"))
+
+distance_df <- rbind(prolific_subset_data_distance %>% filter(number_of_runs > 0) %>% select(trial_numeric, subject, last_away, number_of_runs) %>% distinct(),
+                     sl02_data_distance %>% filter(number_of_runs > 0) %>% select(trial_numeric, subject, last_away, number_of_runs) %>% distinct(),
+                     bjh16_data_distance %>% filter(number_of_runs > 0) %>% select(trial_numeric, subject, last_away, number_of_runs) %>% distinct(),
+                     ll10_data_distance %>% filter(number_of_runs > 0) %>% select(trial_numeric, subject, last_away, number_of_runs) %>% distinct())
+
+# last away #
+turning_boxplots <- distance_df %>%
+  mutate(plot_subject = if_else(subject == "SLCH002", "Patient 1",
+                                if_else(subject == "LL10", "Patient 2",
+                                        if_else(subject == "BJH016", "Patient 3",
+                                                if_else(subject == "Subject_18", "Prolific 1",
+                                                        if_else(subject == "Subject_41",  "Prolific 2",
+                                                                if_else(subject == "Subject_30", "Prolific 3",
+                                                                        if_else(subject == "Subject_66", "Prolific 4", "Prolific 5")))))))) %>%
+  mutate(plot_subject = factor(plot_subject, levels = c("Prolific 1", "Prolific 2", "Prolific 3", "Prolific 4", "Prolific 5", "Patient 1", "Patient 2",  "Patient 3"))) %>%
+  ggplot(., aes(x = plot_subject, y = last_away, fill = plot_subject)) +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  ylab("Distance to Ghost at Turnaround") + xlab("") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "none",  
+        axis.ticks.x = element_blank(),
+        axis.title = element_text(family = "Georgia", color = '#2D2327', size = 16), 
+        axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14),
+        plot.subtitle = element_text(family = "Georgia", color = '#2D2327', size = 16),
+        plot.title = element_text(family = "Georgia", color = '#2D2327', size = 22)) +
+  scale_fill_manual(values = c("#FFA801", "#FFA801", "#FFA801", "#FFA801", "#FFA801", "#E48DB7", "#55BBC8",  "#DE0D16")) +
+  ggtitle("Subject Variability in Turning Distance", subtitle = "Players are reasonably consistent in the distance they\n choose to turn from the ghost")
+turning_boxplots
+
+
+ggsave(filename = path(here(), "figures", "SFN", "turning_boxplots.tif"),
+     device = "tiff",
+     width = 9,
+     height = 4.5,
+     units = "in",
+     dpi = 300,
+     plot = plot(turning_boxplots))
+```
+
+35, 48, 52
+
+```{r reward-groups,  fig.width=9, fig.height=4.5}
+
+reward_distance_df <- rbind(prolific_data_distance %>% filter(number_of_runs > 0) %>% select(trial_numeric, subject, last_away, reward_groups) %>% distinct(),
+                     sl02_data_distance %>% filter(number_of_runs > 0) %>% select(trial_numeric, subject, last_away, reward_groups) %>% distinct(),
+                     bjh16_data_distance %>% filter(number_of_runs > 0) %>% select(trial_numeric, subject, last_away, reward_groups) %>% distinct(),
+                     ll10_data_distance %>% filter(number_of_runs > 0) %>% select(trial_numeric, subject, last_away, reward_groups) %>% distinct())
+
+
+
+# last away ~ reward groups
+reward_distance_mean_df <- reward_distance_df %>%
+  mutate(high_low_reward = if_else(reward_groups > 2, "high", "low")) %>%
+  group_by(high_low_reward, subject) %>%
+  mutate(mean_turnaround_sub = mean(last_away)) %>%
+  select(subject, high_low_reward, mean_turnaround_sub) %>%
+  distinct() %>%
+  group_by(high_low_reward) %>%
+  mutate(mean_turnaround = mean(mean_turnaround_sub)) %>%
+  ungroup() %>%
+  select(high_low_reward,mean_turnaround) %>%
+  distinct()
+
+reward_distance_mean_df %>%
+  ggplot(., aes(x = factor(high_low_reward), y = mean_turnaround, fill = factor(high_low_reward))) +
+  # geom_jitter(aes(y = mean_turnaround_sub), alpha = .2, color = "grey") +
+  geom_col() +
+  # coord_flip() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top") +
+  scale_fill_viridis(discrete = T, direction = -1) +
+  labs(x = "Reward Groups", y = "Distance to Ghost at Turnaround", fill = "Reward Groups", title = "Turnaround Dsitance by Reward Groups", subtitle = 
+         "Reward Groups with the larger reward in the last position had shorter turnaround distances")
+
+turn_reward_df <- prolific_data_distance %>%
+  select(reward_groups, last_away, trial_numeric, subject) %>%
+  distinct() %>%
+  mutate(last_away_scale = scale(last_away)) %>%
+  mutate(high_low_reward = if_else(reward_groups > 2, "Large", "Small")) 
+
+t.test(turn_reward_df$last_away ~ turn_reward_df$high_low_reward)
+
+turn_reward_plot <- turn_reward_df %>%
+  ggplot(., aes(x = factor(high_low_reward), y = last_away_scale)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_boxplot(notch = T,position = "dodge", fill = "#FFA801") +
+  coord_flip() +
+  theme(panel.background = element_rect(fill = "white"),
+          legend.position = "none",  
+          axis.ticks.x = element_blank(),
+          axis.title = element_text(family = "Georgia", color = '#2D2327', size = 16), 
+          axis.text = element_text(family = "Georgia", color = '#2D2327', size = 14),
+          plot.subtitle = element_text(family = "Georgia", color = '#2D2327', size = 16),
+          plot.title = element_text(family = "Georgia", color = '#2D2327', size = 22)) +
+  # scale_alpha_manual(values = c(.5, 1)) +
+  labs(x = "Last Reward", y = "Distance to Ghost at Turnaround", fill = "Reward Groups", title = "Turnaround distance was moderated by reward", subtitle = 
+         "Players were willing to get closer to the ghost when the last reward was large")
+
+ggsave(filename = path(here(), "figures", "SFN", "turnaround_reward_plots.tif"),
+     device = "tiff",
+     width = 9,
+     height = 4.5,
+     units = "in",
+     dpi = 300,
+     plot = plot(turn_reward_plot))
+
+```
+
+# clinical pieces
+
+```{r anxiety-measures}
+
+# behavioral data#
+pilot_behave_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_behave_data_200_trial_n69.csv'), col_types = cols())
+
+# metadata / IDs #
+pacman_ids <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_ids_200_trial_n69.csv'))
+
+# merge with ids to confirm parsing worked #
+pilot_behave_data <- merge.data.frame(pilot_behave_data, pacman_ids, by = c("subject", "ID"))
+
+
+```
+
+```{r anx-prep, fig.width=9, fig.height=4.5}
+
+pilot_behave_data_clean <- pilot_behave_data %>%
+  select(starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  mutate(experienced = if_else(experienced == "Click to write Choice 7", "Anger", 
+                              if_else(experienced == "Click to write Choice 8", "Suspense", 
+                                      if_else(experienced == "Click to write Choice 9", "Frusteration", experienced)))) %>%
+  mutate(emotion_count = if_else(!is.na(experienced), 1, 0)) %>%
+  filter(emotion_count == 1) %>%
+  filter(!experienced %in% c("fear", "It was fun", "i have a phobia of ghosts now")) %>%
+  mutate(experienced = factor(experienced)) %>%
+  mutate(experienced = factor(experienced, levels = c(levels(experienced), "Boredom"), labels = c(levels(experienced), "Boredom"))) %>%
+  add_count(experienced) %>%
+  select(experienced, n) %>%
+  distinct()
+ 
+anx_plot <- pilot_behave_data_clean %>% 
+  ggplot(., aes(x = experienced, y = 100 *n/69, fill = experienced)) +
+  geom_col() +
+  xlab("") + ylab("Percent of Prolific Participants (n=69)") + labs(fill = "") +
+  theme(panel.background = element_rect(fill = "white"),
+          legend.position = "none",  
+          axis.ticks.x = element_blank(),
+          axis.title = element_text(family = "Georgia", color = '#2D2327', size = 16), 
+          axis.text = element_text(family = "Georgia", color = '#2D2327', size = 12),
+          plot.subtitle = element_text(family = "Georgia", color = '#2D2327', size = 16),
+          plot.title = element_text(family = "Georgia", color = '#2D2327', size = 22)) +
+  ggtitle("Most players report feeling anxiety during the task", subtitle = "Responses to: \'What did you experience when the ghost was close to catching you?\'") +
+  scale_fill_manual(values = getPalette(12))
+
+ggsave(filename = path(here(), "figures", "SFN", "experienced_anxiety_plot.tif"),
+     device = "tiff",
+     width = 9,
+     height = 4.5,
+     units = "in",
+     dpi = 300,
+     plot = plot(anx_plot))
+
+```
+
+
+

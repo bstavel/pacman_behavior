@@ -1,0 +1,167 @@
+---
+title: "Behavior Figures"
+output: html_document
+date: "2023-11-07"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(rcartocolor)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+```{r load-data}
+
+
+pilot_game_data_clean <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data.csv"))
+pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+
+```
+
+```{r plot-reward-turning-distance}
+
+turn_reward_plot <- pilot_game_data_distance %>%
+  select(reward_groups, last_away, trial_numeric, subject) %>%
+  filter(last_away != 0) %>%
+  mutate(large_reward = if_else(reward_groups %in% c(3, 4), "Large", "Small")) %>%
+  mutate(last_away = scale(last_away)) %>%
+  select(-reward_groups) %>%
+  distinct() %>%
+  ggplot(., aes(x = large_reward, y = last_away, fill = large_reward)) +
+  geom_hline(yintercept = 0, color = "#2D2327", linetype = "dashed") +
+  geom_jitter(alpha = .2, color = "grey") +
+  geom_boxplot(notch = T) +
+  coord_flip() +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "none",
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = "bold")) +
+  scale_fill_manual(values = c("#2ec4b6", "#cbf3f0")) +
+  labs(x = "Last Reward", y = "Distance to Ghost at Turnaround", fill = "Reward Groups", title = "Turnaround Distance by Reward Groups", subtitle = 
+         "Players were willing to get closer to the ghost when the last reward was large")
+
+
+
+
+ggsave(path(here(), "figures", "behavior", "turnaround_reward_plot.png"),
+         plot = turn_reward_plot,
+         width = 9,
+         height = 5,
+         units = "in",
+         dpi = 300)
+
+```
+
+
+```{r}
+
+tmp <- pilot_game_data_distance %>%
+  filter(ghost_start_dir == "towards") %>%
+  filter(trial_flip == 2) %>%
+  select(subject, Trial, TrialType, GhostLocation, ghost_direction) %>%
+  distinct() 
+
+
+```
+
+
+```{r}
+
+pilot_game_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_pacman_200_trial_n69.csv'), 
+                            col_types = cols(X1 = col_double(),
+                                                                                              subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double(),
+                                                                                              final_score = col_double()))
+
+tmp3 <- pilot_game_data %>% filter(subject == "Subject_1" & Trial == "Trial_8")
+
+test <- pilot_game_data_clean %>%
+  select(subject, trial_numeric, trial_flip, ghost_start_dir, ghost_direction) %>%
+  filter(trial_flip == 2) %>%
+  
+
+```
+
+

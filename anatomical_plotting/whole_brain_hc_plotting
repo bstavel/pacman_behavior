@@ -1,0 +1,38 @@
+
+
+% Add toolboxes to the path
+addpath('/Users/bstavel/Projects/knight_server/remote/lbellier/DataWorkspace/_tools/');
+ftDir = '/Users/bstavel/Projects/knight_server/remote/lbellier/DataWorkspace/_tools/git/fieldtrip/';
+if exist('ft_defaults.m', 'file') == 0
+    addpath(ftDir); ft_defaults;
+end
+
+% read in electrode loactions
+elec_mnis = readtable('/Users/bstavel/Projects/pacman/behavioral_analysis/data/electrode_mni_coords.csv')
+
+% read in mesh
+pial = load([ftDir 'template/anatomy/surface_pial_left.mat']);
+pial_lh = pial.mesh;
+pial = load([ftDir 'template/anatomy/surface_pial_right.mat']);
+pial_rh = pial.mesh;
+clear pial mesh_lh mesh_rh
+
+% create electrode location Structure
+elecCoordBipo = struct()
+elecCoordBipo.unit = 'mm'
+elecCoordBipo.tra = eye(29)
+elecCoordBipo.elecpos = [elec_mnis.mni_x, elec_mnis.mni_y, elec_mnis.mni_z]
+elecCoordBipo.chancpos = [elec_mnis.mni_x, elec_mnis.mni_y, elec_mnis.mni_z]
+elecCoordBipo.label =  elec_mnis.electrode
+
+elecColors = [repmat([228 141 183]/255, 9, 1); repmat([85 187 200]/255, 6, 1); repmat([222 13 22]/255, 14, 1)]; %order is BJH016, SLCH002, LL10
+
+hf = figure('Position', [1 1 1000 1000], 'Color', [1 1 1]);
+
+ft_plot_mesh(pial_lh, 'facealpha', .2);
+ft_plot_mesh(pial_rh, 'facealpha', .3);
+viewPoint = [180 0];
+ft_plot_sens(elecCoordBipo, 'elecsize', 40, 'facecolor', elecColors);
+
+view(viewPoint);
+material shiny; lighting gouraud; camlight;
