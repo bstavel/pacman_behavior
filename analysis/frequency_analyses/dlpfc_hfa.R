@@ -45,7 +45,7 @@ registerDoParallel(nCores)
 
 
 # ieeg data #
-insula_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_insula_all_subs_logged_iti_onset.csv"))
+dlpfc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_dlpfc_all_subs_iti_onset.csv"))
 
 # behavioral data #
 all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
@@ -65,17 +65,23 @@ behavior_iti_df <- all_subs_dist %>%
 all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 
 
-# insula and Theta Onset Before Turnaround plot
-individual_and_overall_robust_lme_onset_before_turn_model_and_plot("insula", "theta", 
-                                all_subs_g_dist, insula_theta_data, 
+# merge behavior data with ieeg data
+dlpfc_hfa_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               dlpfc_hfa_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+
+# dlpfc and hfa Onset Before Turnaround plot
+individual_and_overall_robust_lme_onset_before_turn_model_and_plot("dlpfc", "hfa", 
+                                all_subs_g_dist, dlpfc_hfa_data, 
                                 y_low = -6, y_high = 6,
-                                plot_title = "Theta encodes some reward values in the insula at trial onset",
-                                rerun_model = FALSE)
+                                plot_title = "hfa encodes some threat values in the dlpfc at trial onset",
+                                rerun_model = TRUE)
 
 
 
-# individual_and_overall_robust_lme_onset_turnaround_model_and_plot("insula", "theta", 
-#                                 all_subs_g_dist, insula_theta_data, 
-#                                 y_low = -5, y_high = 5,
-#                                 plot_title = "Theta encodes reward values in the insula after turnaround",
-#                                 rerun_model = TRUE)
+individual_and_overall_robust_lme_onset_turnaround_model_and_plot("dlpfc", "hfa", 
+                                all_subs_g_dist, dlpfc_hfa_data, 
+                                y_low = -5, y_high = 5,
+                                plot_title = "hfa encodes threat values adn some reward in the dlpfc after Turnaround",
+                                rerun_model = TRUE)
