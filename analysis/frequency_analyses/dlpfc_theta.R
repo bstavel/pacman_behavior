@@ -68,56 +68,57 @@ all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 # dlpfc and Theta Onset Before Turnaround plot
 individual_and_overall_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", 
                                 all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -6, y_high = 6,
+                                y_low = -3, y_high = 3,
                                 plot_title = "Theta encodes some threat values in the dlpfc at trial onset",
-                                rerun_model = FALSE)
-
-## subject specific
-individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "BJH016", "#E48DB7",
-                                all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -6, y_high = 6,
-                                plot_title = "Theta, dlPFC, BJH016",
                                 rerun_model = TRUE)
 
-individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "BJH021", "#FCC673",
+individual_and_overall_robust_lme_onset_turnaround_model_and_plot("dlpfc", "theta", 
                                 all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -6, y_high = 6,
-                                plot_title = "Theta, dlPFC, BJH021",
+                                y_low = -3, y_high = 3,
+                                plot_title = "Theta encodes threat values adn some reward in the dlpfc after Turnaround",
                                 rerun_model = TRUE)
 
-individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "BJH025", "#55BBC8",
-                                all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -6, y_high = 6,
-                                plot_title = "Theta, dlPFC, BJH025",
-                                rerun_model = TRUE)
-
-individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "LL10", "#palegreen2",
-                                all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -6, y_high = 6,
-                                plot_title = "Theta, dlPFC, LL10",
-                                rerun_model = TRUE)
-
-individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL12", "#deeppink1",
-                                all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -6, y_high = 6,
-                                plot_title = "Theta, dlPFC, LL12",
-                                rerun_model = TRUE)
-
-individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL13", "#brown",
-                                all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -6, y_high = 6,
-                                plot_title = "Theta, dlPFC, LL13",
-                                rerun_model = TRUE)
-
-individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "SLCH002", "#6A3D9A",
-                                all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -6, y_high = 6,
-                                plot_title = "Theta, dlpfc, SLCH002",
-                                rerun_model = TRUE)
-
-
-# individual_and_overall_robust_lme_onset_turnaround_model_and_plot("dlpfc", "theta", 
+# ## subject specific
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "BJH016", "#E48DB7",
 #                                 all_subs_g_dist, dlpfc_theta_data, 
-#                                 y_low = -5, y_high = 5,
-#                                 plot_title = "Theta encodes threat values adn some reward in the dlpfc after Turnaround",
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, dlPFC, BJH016",
 #                                 rerun_model = TRUE)
+
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "BJH021", "#FCC673",
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, dlPFC, BJH021",
+#                                 rerun_model = TRUE)
+
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "BJH025", "#55BBC8",
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, dlPFC, BJH025",
+#                                 rerun_model = TRUE)
+
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "LL10", "#palegreen2",
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, dlPFC, LL10",
+#                                 rerun_model = TRUE)
+
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL12", "#deeppink1",
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, dlPFC, LL12",
+#                                 rerun_model = TRUE)
+
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL13", "#brown",
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, dlPFC, LL13",
+#                                 rerun_model = TRUE)
+
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "SLCH002", "#6A3D9A",
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, dlpfc, SLCH002",
+#                                 rerun_model = TRUE)
+
+

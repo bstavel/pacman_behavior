@@ -66,13 +66,17 @@ all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 
 
 # hc and Theta Onset Before Turnaround plot
-individual_and_overall_robust_lme_onset_before_turn_model_and_plot("hc", "theta", 
+# individual_and_overall_robust_lme_onset_before_turn_model_and_plot("hc", "theta", 
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -3, y_high = 3,
+#                                 plot_title = "Theta encodes reward and threat values in the hippocampus\n at trial onset",
+#                                 rerun_model = FALSE)
+
+individual_and_overall_robust_lme_onset_turnaround_model_and_plot("hc", "theta", 
                                 all_subs_g_dist, hc_theta_data, 
-                                y_low = -2.5, y_high = 3,
-                                plot_title = "Theta encodes reward and threat values in the hippocampus\n at trial onset",
-                                rerun_model = FALSE)
-
-
+                                y_low = -3, y_high = 3,
+                                plot_title = "Theta does not encode threat or reward values in the hippocampus after turnaround",
+                                rerun_model = TRUE)
 # ## subject specific
 # individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "BJH016", "#E48DB7",
 #                                 all_subs_g_dist, hc_theta_data, 
@@ -114,8 +118,3 @@ individual_and_overall_robust_lme_onset_before_turn_model_and_plot("hc", "theta"
 #                                 rerun_model = TRUE)
 
 
-# individual_and_overall_robust_lme_onset_turnaround_model_and_plot("hc", "theta", 
-#                                 all_subs_g_dist, hc_theta_data, 
-#                                 y_low = -5, y_high = 5,
-#                                 plot_title = "Theta does not encode threat or reward values in the hippocampus after turnaround",
-#                                 rerun_model = TRUE)

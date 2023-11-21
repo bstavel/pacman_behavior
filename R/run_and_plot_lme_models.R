@@ -1,5 +1,5 @@
 individual_and_overall_robust_lme_onset_before_turn_model_and_plot <- function(region, freq, distance_df, brain_df, plot_title, y_low, y_high, rerun_model = TRUE){
-  
+
   
   if(rerun_model == TRUE){
     
@@ -207,7 +207,7 @@ individual_and_overall_robust_lme_onset_before_turn_model_and_plot <- function(r
 }
 
 individual_subject_robust_lme_onset_before_turn_model_and_plot <- function(region, freq, sub, color_sub, distance_df, brain_df, plot_title, y_low, y_high, rerun_model = TRUE){
-  
+### Only single subject at a time, no overall model  
   
   if(rerun_model == TRUE){
     
@@ -399,7 +399,7 @@ individual_subject_robust_lme_onset_before_turn_model_and_plot <- function(regio
     guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
     scale_color_manual(values = c("black", color_sub)) + #"white", "#FCC673"
     scale_size_manual(values = c(1, .5), guide  = "none") +
-    scale_alpha_manual(values = c(1, .5), guide = "none") +
+    scale_alpha_manual(values = c(1, .18), guide = "none") +
     xlim(0, 1.5)  + ylim(y_low, y_high) + labs(color = "", x = "Time from movement onset (in seconds)", y = "Beta Coefficient") +
     facet_wrap(~regressor, ncol = 1) +
     ggtitle(plot_title)
@@ -415,7 +415,7 @@ individual_subject_robust_lme_onset_before_turn_model_and_plot <- function(regio
 }
 
 individual_and_overall_robust_interact_lme_onset_before_turn_model_and_plot <- function(region, freq, distance_df, brain_df, threat_pred, reward_pred, plot_title, y_low, y_high, rerun_model = TRUE){
-  
+## interaction model  
   
   if(rerun_model == TRUE){
     
@@ -672,7 +672,7 @@ individual_and_overall_robust_interact_lme_onset_before_turn_model_and_plot <- f
     guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
     scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
     scale_size_manual(values = c(1, .5), guide  = "none") +
-    scale_alpha_manual(values = c(1, .5), guide = "none") +
+    scale_alpha_manual(values = c(1, .18), guide = "none") +
     xlim(0, 1.5)  + ylim(y_low, y_high) + labs(color = "", x = "Time from movement onset (in seconds)", y = "Beta Coefficient") +
     facet_wrap(~regressor, ncol = 1) +
     ggtitle(plot_title)
@@ -874,7 +874,7 @@ individual_and_overall_robust_lme_onset_turnaround_model_and_plot <- function(re
     guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
     scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
     scale_size_manual(values = c(1, .5), guide  = "none") +
-    scale_alpha_manual(values = c(1, .5), guide = "none") +
+    scale_alpha_manual(values = c(1, .18), guide = "none") +
     xlim(-2, 2)  + ylim(y_low, y_high) + labs(color = "", x = "Time at turnaround (in seconds)", y = "Beta Coefficient") +
     facet_wrap(~regressor, ncol = 1) +
     ggtitle(plot_title)
@@ -1083,7 +1083,7 @@ individual_and_overall_lme_onset_combval_before_turn_model_and_plot <- function(
     guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
     scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
     scale_size_manual(values = c(1, .5), guide  = "none") +
-    scale_alpha_manual(values = c(1, .5), guide = "none") +
+    scale_alpha_manual(values = c(1, .18), guide = "none") +
     xlim(0, 1.5)  + ylim(y_low, y_high) + labs(color = "", x = "Time (in seconds)", y = "Beta Coefficient") +
     facet_wrap(~regressor, ncol = 1) +
     ggtitle(plot_title)
@@ -1292,7 +1292,7 @@ individual_and_overall_robust_equal_time_lme_onset_before_turn_model_and_plot <-
     guides(colour = guide_legend(direction = "horizontal", title.position = "top", label.position = "right", nrow = 1)) +
     scale_color_manual(values = c("black", "#E48DB7", "#FCC673", "#55BBC8", "palegreen2", "deeppink1", "brown", "#6A3D9A")) + #"white", "#FCC673"
     scale_size_manual(values = c(1, .5), guide  = "none") +
-    scale_alpha_manual(values = c(1, .5), guide = "none") +
+    scale_alpha_manual(values = c(1, .18), guide = "none") +
     xlim(0, 1.2)  + ylim(y_low, y_high) + labs(color = "", x = "Time from movement onset (in seconds)", y = "Beta Coefficient") +
     facet_wrap(~regressor, ncol = 1) +
     ggtitle(plot_title)

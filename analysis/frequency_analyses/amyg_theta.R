@@ -67,14 +67,14 @@ all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 # amyg and Theta Onset Before Turnaround plot
 individual_and_overall_robust_lme_onset_before_turn_model_and_plot("amyg", "theta", 
                                 all_subs_g_dist, amyg_theta_data, 
-                                y_low = -6, y_high = 6,
+                                y_low = -3, y_high = 3,
                                 plot_title = "Theta does not  encode reward/threat values in the Amyg. at
 onset",
-                                rerun_model = FALSE)
+                                rerun_model = TRUE)
 
-# individual_and_overall_robust_lme_onset_turnaround_model_and_plot("amyg", "theta", 
-#                                 all_subs_g_dist, amyg_theta_data, 
-#                                 y_low = -5, y_high = 5,
-#                                 plot_title = "Theta encodes threat values in the Amyg. after Turnaround",
-#                                 rerun_model = TRUE)
+individual_and_overall_robust_lme_onset_turnaround_model_and_plot("amyg", "theta", 
+                                all_subs_g_dist, amyg_theta_data, 
+                                y_low = -3, y_high = 3,
+                                plot_title = "Theta encodes threat values in the Amyg. after Turnaround",
+                                rerun_model = TRUE)
 
