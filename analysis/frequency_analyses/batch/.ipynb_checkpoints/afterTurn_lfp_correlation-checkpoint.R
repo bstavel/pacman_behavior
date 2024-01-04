@@ -50,15 +50,14 @@ theta_turnaround_df <- theta_turnaround_df %>%
 
 ## Subject List ##
 sub_list <- c("LL10", "LL13", "LL12", "BJH021", "BJH025", "SLCH002", "BJH016")
-sub_list_short <- c("BJH025", "SLCH002", "BJH016")
 
 
 ## Compute Correlation ##
 
 # # dlPFC #
-# # try({
-# #     compute_lfp_correlation(sub_list, "dlpfc", "hc", theta_turnaround_df, "after_only")
-# #     }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "dlpfc", "hc", theta_turnaround_df, "after_only")
+    }, TRUE)
 # try({
 #     compute_lfp_correlation(sub_list, "dlpfc", "ofc", theta_turnaround_df, "after_only")
 #     }, TRUE)
@@ -73,18 +72,18 @@ sub_list_short <- c("BJH025", "SLCH002", "BJH016")
 #     }, TRUE)
 
 # # # HC #
-# # try({
-# #     compute_lfp_correlation(sub_list, "hc", "ofc", theta_turnaround_df, "after_only")
-# #     }, TRUE)
-# # try({
-# #     compute_lfp_correlation(sub_list, "hc", "cing", theta_turnaround_df, "after_only")
-# #     }, TRUE)
-# # try({
-# #     compute_lfp_correlation(sub_list, "hc", "amyg", theta_turnaround_df, "after_only")
-# #     }, TRUE)
-# # try({
-# #     compute_lfp_correlation(sub_list, "hc", "insula", theta_turnaround_df, "after_only")
-# #     }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "ofc", theta_turnaround_df, "after_only")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "cing", theta_turnaround_df, "after_only")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "amyg", theta_turnaround_df, "after_only")
+    }, TRUE)
+try({
+    compute_lfp_correlation(sub_list, "hc", "insula", theta_turnaround_df, "after_only")
+    }, TRUE)
 # # OFC #
 # try({
 #     compute_lfp_correlation(sub_list, "ofc", "cing", theta_turnaround_df, "after_only")
@@ -92,18 +91,18 @@ sub_list_short <- c("BJH025", "SLCH002", "BJH016")
 # try({
 #     compute_lfp_correlation(sub_list, "ofc", "amyg", theta_turnaround_df, "after_only")
 #     }, TRUE)
-try({
-    compute_lfp_correlation(sub_list_short, "ofc", "insula", theta_turnaround_df, "after_only")
-    }, TRUE)
-# Cingulate #
-try({
-    compute_lfp_correlation(sub_list, "cing", "amyg", theta_turnaround_df, "after_only")
-    }, TRUE)
-try({
-    compute_lfp_correlation(sub_list, "cing", "insula", theta_turnaround_df, "after_only")
-    }, TRUE)
+# try({
+#     compute_lfp_correlation(sub_list_short, "ofc", "insula", theta_turnaround_df, "after_only")
+#     }, TRUE)
+# # Cingulate #
+# try({
+#     compute_lfp_correlation(sub_list, "cing", "amyg", theta_turnaround_df, "after_only")
+#     }, TRUE)
+# try({
+#     compute_lfp_correlation(sub_list, "cing", "insula", theta_turnaround_df, "after_only")
+#     }, TRUE)
 
-# Amygdala #
-try({
-    compute_lfp_correlation(sub_list, "amyg", "insula", theta_turnaround_df, "after_only")
-    }, TRUE)
+# # Amygdala #
+# try({
+#     compute_lfp_correlation(sub_list, "amyg", "insula", theta_turnaround_df, "after_only")
+#     }, TRUE)

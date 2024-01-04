@@ -45,7 +45,7 @@ registerDoParallel(nCores)
 
 
 # ieeg data #
-insula_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_insula_all_subs_iti_onset.csv"))
+insula_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_insula_all_subs_logged_iti_onset.csv"))
 
 # behavioral data #
 all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
@@ -65,16 +65,10 @@ behavior_iti_df <- all_subs_dist %>%
 all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 
 
-# merge behavior data with ieeg data
-insula_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
-                               insula_theta_data %>% mutate(trial_time = round(trial_time, 2)))
-
-
-
 # insula and Theta Onset Before Turnaround plot
 individual_and_overall_robust_lme_onset_before_turn_model_and_plot("insula", "theta", 
                                 all_subs_g_dist, insula_theta_data, 
-                                y_low = -6, y_high = 6,
+                                y_low = -3, y_high = 3,
                                 plot_title = "Theta encodes some reward values in the insula at trial onset",
                                 rerun_model = FALSE)
 
@@ -82,6 +76,6 @@ individual_and_overall_robust_lme_onset_before_turn_model_and_plot("insula", "th
 
 individual_and_overall_robust_lme_onset_turnaround_model_and_plot("insula", "theta", 
                                 all_subs_g_dist, insula_theta_data, 
-                                y_low = -5, y_high = 5,
+                                y_low = -3, y_high = 3,
                                 plot_title = "Theta encodes reward values in the insula after turnaround",
-                                rerun_model = FALSE)
+                                rerun_model = TRUE)

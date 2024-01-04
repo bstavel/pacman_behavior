@@ -45,7 +45,7 @@ registerDoParallel(nCores)
 
 
 # ieeg data #
-hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_iti_onset.csv"))
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
 
 # behavioral data #
 all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
@@ -65,23 +65,56 @@ behavior_iti_df <- all_subs_dist %>%
 all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 
 
-# merge behavior data with ieeg data
-hc_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
-                               hc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
-
-
-
 # hc and Theta Onset Before Turnaround plot
-individual_and_overall_robust_lme_onset_before_turn_model_and_plot("hc", "theta", 
-                                all_subs_g_dist, hc_theta_data, 
-                                y_low = -6, y_high = 6,
-                                plot_title = "Theta encodes reward and some threat values in the hippocampus at trial onset",
-                                rerun_model = FALSE)
-
-
+# individual_and_overall_robust_lme_onset_before_turn_model_and_plot("hc", "theta", 
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -3, y_high = 3,
+#                                 plot_title = "Theta encodes reward and threat values in the hippocampus\n at trial onset",
+#                                 rerun_model = FALSE)
 
 individual_and_overall_robust_lme_onset_turnaround_model_and_plot("hc", "theta", 
                                 all_subs_g_dist, hc_theta_data, 
-                                y_low = -5, y_high = 5,
+                                y_low = -3, y_high = 3,
                                 plot_title = "Theta does not encode threat or reward values in the hippocampus after turnaround",
-                                rerun_model = FALSE)
+                                rerun_model = TRUE)
+# ## subject specific
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "BJH016", "#E48DB7",
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, HC, BJH016",
+#                                 rerun_model = TRUE)
+
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "BJH021", "#FCC673",
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, HC, BJH021",
+#                                 rerun_model = TRUE)
+
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "BJH025", "#55BBC8",
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, HC, BJH025",
+#                                 rerun_model = TRUE)
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "LL10", "#palegreen2",
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, HC, LL10",
+#                                 rerun_model = TRUE)
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL12", "#deeppink1",
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, OFC, LL12",
+#                                 rerun_model = TRUE)
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL13", "#brown",
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, OFC, LL13",
+#                                 rerun_model = TRUE)
+
+# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "SLCH002", "#6A3D9A",
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -6, y_high = 6,
+#                                 plot_title = "Theta, HC, SLCH002",
+#                                 rerun_model = TRUE)
+
+
