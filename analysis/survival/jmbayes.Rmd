@@ -710,22 +710,22 @@ sub_df <- pilot_game_data_distance %>%
   # filter(dots_eaten != 0) %>%
   group_by(trial_numeric) %>%
   mutate(trial_time = trial_time - first(trial_time)) %>%
-  mutate(final_reward = if_else(reward_groups >2, "big", "small")) %>%
-  mutate(Bisc4_tmp = if_else(Biscuit4 == 1111, UserLocation, Biscuit4)) %>%
-  mutate(dist_to_dot_4 = abs(Bisc4_tmp - UserLocation)) %>%
-  mutate(Bisc4_tmp = if_else(Biscuit4 == 1111, UserLocation, Biscuit4)) %>%
-  mutate(dist_to_dot_4 = abs(Bisc4_tmp - UserLocation)) %>%
-  mutate(last_big_reward = if_else(reward_groups %in% c(3, 4), Biscuit5, if_else(reward_groups == 2, Biscuit4, Biscuit3))) %>%
-  mutate(dist_last_big_rtmp = if_else(last_big_reward == 1111, UserLocation, last_big_reward)) %>%
-  mutate(dist_last_big_r = abs(dist_last_big_rtmp - UserLocation)) %>%
+  # mutate(final_reward = if_else(reward_groups >2, "big", "small")) %>%
+  # mutate(Bisc4_tmp = if_else(Biscuit4 == 1111, UserLocation, Biscuit4)) %>%
+  # mutate(dist_to_dot_4 = abs(Bisc4_tmp - UserLocation)) %>%
+  # mutate(Bisc4_tmp = if_else(Biscuit4 == 1111, UserLocation, Biscuit4)) %>%
+  # mutate(dist_to_dot_4 = abs(Bisc4_tmp - UserLocation)) %>%
+  # mutate(last_big_reward = if_else(reward_groups %in% c(3, 4), Biscuit5, if_else(reward_groups == 2, Biscuit4, Biscuit3))) %>%
+  # mutate(dist_last_big_rtmp = if_else(last_big_reward == 1111, UserLocation, last_big_reward)) %>%
+  # mutate(dist_last_big_r = abs(dist_last_big_rtmp - UserLocation)) %>%
   ungroup() %>%
-  select(subject, trial_numeric, distance_to_ghost, last_away, final_reward, points_remaining, dist_last_big_r,
-         away_choice, trial_time, TrialType, dist_to_dot_4) %>%
+  select(subject, trial_numeric, distance_to_ghost, last_away, points_remaining,
+         away_choice, trial_time, TrialType) %>%
   mutate(EVENT = 1) %>%
   mutate(points_remaining = scale(points_remaining)) %>%
   mutate(distance_to_ghost = scale(distance_to_ghost))
 
-# # get hold out trials #
+# # # get hold out trials #
 # set.seed(56)
 # hold_out_trials <- sample(unique(sub_df$trial_numeric), 20)
 

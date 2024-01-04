@@ -85,1962 +85,343 @@ Compiles all the ieeg data for given time locks, but does not bind with the beha
 
 Run by knitting
 
+```{r lists}
 
-## Merge with Delta
+## region lists ##
+hc_list <- c('BJH021', 'BJH025', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH039', 'BJH041', 
+              'LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
-```{r merge-delta-data-and-combine-hc}
+ofc_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH039', 'BJH041', 
+              'LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+amyg_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH039', 'BJH041', 
+              'LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+cing_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002',  'BJH039', 
+              'LL10', 'LL12', 'LL13',  'LL17', 'LL19')
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+dlpfc_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH039',
+              'LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
+insula_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH041', 'LL12')
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+## loma linda list ##
+ll_list <- c('LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "delta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+freq_list <- c("delta", "theta", "alpha", "beta", "gamma", "hfa")
 
 ```
 
 
-```{r merge-delta-data-and-combine-ofc}
+## Merge HC
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+```{r merge-and-combine-hc}
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+for(frq in freq_list){
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+    onset_df <- NULL
+    
+    for(cur_sub in hc_list){
+      
+      if(cur_sub %in% ll_list){
+        
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 512, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+    
+        
+      } else {
+      
+        #  onset Data
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "hc", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 1000, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+      }
+      
+      if(is.null(onset_df)) {
+        
+        onset_df <- tmp_onset_df
+        
+      } else {
+        
+        onset_df <- rbind(onset_df, tmp_onset_df)
+        
+      }
+      
+      onset_df <- rbind(onset_df, tmp_onset_df)
+    
+    }
+    
+    # save #
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_hc_all_subs_logged_iti_onset.csv")))
 
+}
 
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+```
 
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+## Merge Amygdala
 
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+```{r merge-and-combine-amyg}
 
+for(frq in freq_list){
 
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
+    onset_df <- NULL
+    
+    for(cur_sub in amyg_list){
+      
+      if(cur_sub %in% ll_list){
+        
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 512, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+    
+        
+      } else {
+      
+        #  onset Data
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 1000, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+      }
+      
+      if(is.null(onset_df)) {
+        
+        onset_df <- tmp_onset_df
+        
+      } else {
+        
+        onset_df <- rbind(onset_df, tmp_onset_df)
+        
+      }
+      
+      onset_df <- rbind(onset_df, tmp_onset_df)
+    
+    }
+    
+    # save #
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_amyg_all_subs_logged_iti_onset.csv")))
 
-# save #
-write_csv(onset_df, path(here(), "munge", "delta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+}
 
+```
+
+## Merge OFC
+
+```{r merge-and-combine-ofc}
+
+for(frq in freq_list){
+
+    onset_df <- NULL
+    
+    for(cur_sub in ofc_list){
+      
+      if(cur_sub %in% ll_list){
+        
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 512, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+    
+        
+      } else {
+      
+        #  onset Data
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 1000, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+      }
+      
+      if(is.null(onset_df)) {
+        
+        onset_df <- tmp_onset_df
+        
+      } else {
+        
+        onset_df <- rbind(onset_df, tmp_onset_df)
+        
+      }
+      
+      onset_df <- rbind(onset_df, tmp_onset_df)
+    
+    }
+    
+    # save #
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_ofc_all_subs_logged_iti_onset.csv")))
+
+}
+
+```
+
+## Merge Ant. Cingulate
+
+```{r merge-and-combine-cing}
+
+for(frq in freq_list){
+
+    onset_df <- NULL
+    
+    for(cur_sub in cing_list){
+      
+      if(cur_sub %in% ll_list){
+        
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 512, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+    
+        
+      } else {
+      
+        #  onset Data
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "cing", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 1000, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+      }
+      
+      if(is.null(onset_df)) {
+        
+        onset_df <- tmp_onset_df
+        
+      } else {
+        
+        onset_df <- rbind(onset_df, tmp_onset_df)
+        
+      }
+      
+      onset_df <- rbind(onset_df, tmp_onset_df)
+    
+    }
+    
+    # save #
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_cing_all_subs_logged_iti_onset.csv")))
+
+}
 
 ```
 
 
-```{r merge-delta-data-and-combine-ac}
+## Merge dlPFC
 
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+```{r merge-and-combine-dlpfc}
 
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+for(frq in freq_list){
 
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
+    onset_df <- NULL
+    
+    for(cur_sub in dlpfc_list){
+      
+      if(cur_sub %in% ll_list){
+        
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 512, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+    
+        
+      } else {
+      
+        #  onset Data
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 1000, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+      }
+      
+      if(is.null(onset_df)) {
+        
+        onset_df <- tmp_onset_df
+        
+      } else {
+        
+        onset_df <- rbind(onset_df, tmp_onset_df)
+        
+      }
+      
+      onset_df <- rbind(onset_df, tmp_onset_df)
+    
+    }
+    
+    # save #
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_dlpfc_all_subs_logged_iti_onset.csv")))
 
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "delta_ieeg_cing_all_subs_logged_iti_onset.csv"))
-
+}
 
 ```
 
-
-```{r merge-delta-data-and-combine-amyg}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "delta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-delta-data-and-combine-dlpfc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "delta_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-
-```{r merge-delta-data-and-combine-insula}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_delta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll12_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "delta_ieeg_insula_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-## Merge with Theta
-
-```{r merge-theta-data-and-combine-hc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
-
-```
-
-```{r merge-theta-data-and-combine-ofc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-theta-data-and-combine-ac}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "theta_ieeg_cing_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-theta-data-and-combine-amyg}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "theta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-theta-data-and-combine-dlpfc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "theta_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-theta-data-and-combine-insula}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_theta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll12_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "theta_ieeg_insula_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-## Merge with alpha
-
-```{r merge-alpha-data-and-combine-hc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "alpha_ieeg_hc_all_subs_logged_iti_onset.csv"))
-
-```
-
-```{r merge-alpha-data-and-combine-ofc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "alpha_ieeg_ofc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-alpha-data-and-combine-ac}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "alpha_ieeg_cing_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-alpha-data-and-combine-amyg}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "alpha_ieeg_amyg_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-alpha-data-and-combine-dlpfc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "alpha_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-alpha-data-and-combine-insula}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_alpha_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll12_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "alpha_ieeg_insula_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-## Merge with beta
-
-```{r merge-beta-data-and-combine-hc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "beta_ieeg_hc_all_subs_logged_iti_onset.csv"))
-
-```
-
-```{r merge-beta-data-and-combine-ofc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "beta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-beta-data-and-combine-ac}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "beta_ieeg_cing_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-beta-data-and-combine-amyg}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "beta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-beta-data-and-combine-dlpfc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "beta_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-beta-data-and-combine-insula}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512,  
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_beta_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll12_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "beta_ieeg_insula_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-
-## Merge with gamma
-
-```{r merge-gamma-data-and-combine-hc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-# save #
-write_csv(onset_df, path(here(), "munge", "gamma_ieeg_hc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-gamma-data-and-combine-amyg}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "gamma_ieeg_amyg_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-gamma-data-and-combine-ofc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "gamma_ieeg_ofc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-gamma-data-and-combine-cing}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "gamma_ieeg_cing_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-gamma-data-and-combine-dlpfc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "gamma_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-gamma-data-and-combine-insula}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_gamma_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df, ll12_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "gamma_ieeg_insula_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-## Merge with HFA
-
-```{r merge-hfa-data-and-combine-hc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "hc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-# save #
-write_csv(onset_df, path(here(), "munge", "hfa_ieeg_hc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-hfa-data-and-combine-amyg}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "amyg", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "hfa_ieeg_amyg_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-hfa-data-and-combine-ofc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "ofc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "hfa_ieeg_ofc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-hfa-data-and-combine-cing}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "cing", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "hfa_ieeg_cing_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-hfa-data-and-combine-dlpfc}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll10_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL10", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll13_onset_df <- compile_ieeg_csv_files(roi = "dlpfc", 
-                                                  sub = "LL13", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df,
-                  ll10_onset_df, ll12_onset_df, ll13_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "hfa_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
-
-
-```
-
-```{r merge-hfa-data-and-combine-insula}
-
-#  onset Data
-slch2_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "SLCH002", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-  
-bjh16_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH016", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh21_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH021", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-bjh25_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "BJH025", 
-                                                  sample_freq = 1000, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-ll12_onset_df <- compile_ieeg_csv_files(roi = "insula", 
-                                                  sub = "LL12", 
-                                                  sample_freq = 512, 
-                                                  timelock_folder = "trial_onset",
-                                                  keyword_include = "trial_hfa_onset_locked_logged_itibase.csv", keyword_exclude = "99999")
-
-# Bind together
-onset_df <- rbind(slch2_onset_df, bjh16_onset_df, bjh21_onset_df, bjh25_onset_df, ll12_onset_df)
-
-# save #
-write_csv(onset_df, path(here(), "munge", "hfa_ieeg_insula_all_subs_logged_iti_onset.csv"))
-
+## Merge Insula
+
+```{r merge-and-combine-insula}
+
+for(frq in freq_list){
+
+    onset_df <- NULL
+    
+    for(cur_sub in insula_list){
+      
+      if(cur_sub %in% ll_list){
+        
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 512, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+    
+        
+      } else {
+      
+        #  onset Data
+        tmp_onset_df <- compile_ieeg_csv_files(roi = "insula", 
+                                                    sub = cur_sub, 
+                                                    sample_freq = 1000, 
+                                                    timelock_folder = "trial_onset",
+                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_exclude = "99999")
+      }
+      
+      if(is.null(onset_df)) {
+        
+        onset_df <- tmp_onset_df
+        
+      } else {
+        
+        onset_df <- rbind(onset_df, tmp_onset_df)
+        
+      }
+      
+      onset_df <- rbind(onset_df, tmp_onset_df)
+    
+    }
+    
+    # save #
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_insula_all_subs_logged_iti_onset.csv")))
+
+}
 
 ```

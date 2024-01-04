@@ -254,7 +254,7 @@ get_across_task_variables_bci <- function(clean_df){
     ungroup()
   
   all_vars_df <- all_vars_df %>%
-    mutate(block = factor(block, levels = 0:23, labels = 0:23))
+    mutate(block = factor(block, levels = 1:max(block), labels = 1:max(block)))
   
   return(all_vars_df)
   

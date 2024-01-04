@@ -1,0 +1,780 @@
+---
+title: "Cleaning LL14"
+output: html_document
+date: "2023-12-06"
+---
+
+Yikes need to fix!
+
+unique(tmp$ttype_sum)
+ [1] 210 192 225 219 216 218 194 222 214 209 223 220 195 217 211 205 207 213 202 206 208 201 197 204 226
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 6,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'create_timelock_event_tables.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+## LL14
+
+```{r LL14-data-load}
+
+LL14_data <- read_csv(path(here(), './data/ieeg_behave/LL14_raw_behave.csv'), col_types = cols(`...1` = col_double(),
+                                                                                              Subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              Trial_on_off = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double()))
+
+
+```
+
+```{r LL14-data-prep}
+
+# incorrect new trial
+LL14_data <- LL14_data %>%
+  mutate(Trial = as.numeric(Trial)) %>%
+  mutate(Trial = if_else(Trial < 82, Trial, Trial -1)) %>%
+  filter(Trial != 121) %>%
+  mutate(Trial = if_else(Trial < 121, Trial, Trial -1)) %>%
+  mutate(neural_trial_numeric = Trial - 1) %>%
+  mutate(Trial = if_else(Trial < 338, Trial, Trial + 3)) %>% # player pressed n to start whole new game/ refreshed or something but new block begins
+  mutate(Trial = if_else(Trial < 731, Trial, Trial + 9)) %>% # player pressed n to start whole new game/ refreshed or something but new block begins
+  mutate(Trial = as.character(Trial))
+
+# if we start a new block at trial 338 does it fix it?
+
+
+# clean Biscuits #
+LL14_data_clean <- clean_bci_data(LL14_data, 512)
+
+# create distance df #
+LL14_data_distance <- create_distance_df_bci(LL14_data_clean)
+
+# task vars df #
+LL14_all_vars_df <- get_across_task_variables_bci(LL14_data_clean)
+
+LL14_all_vars_df <- LL14_all_vars_df %>% group_by(block) %>% mutate(ttype_sum = sum(TrialType))
+```
+
+
+```{r}
+
+LL14_all_vars_df %>%
+  ggplot(., aes(x = block, y = block_deaths)) +
+  geom_point(size = 3) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Deaths across blocks")
+
+
+LL14_all_vars_df %>%
+  ggplot(., aes(x = block, y = average_dots_per_block)) +
+  geom_point(size = 3) +
+  theme(panel.background = element_rect(fill = "white"))+
+  ggtitle("Dots across blocks")
+
+
+```
+
+
+```{r trials-no-biscuits}
+
+
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  group_by(trial_numeric) %>%
+  mutate(total_eaten = max(Eaten)) %>%
+  filter(total_eaten == 0) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+no_biscuits_trials <- LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  group_by(trial_numeric) %>%
+  mutate(total_eaten = max(Eaten)) %>%
+  select(trial_numeric, neural_trial_numeric, total_eaten) %>%
+  distinct() %>%
+  filter(total_eaten == 0) %>%
+  # exclude fake trial 0 
+  filter(neural_trial_numeric >= 0) %>%
+  ungroup() %>%
+  pull(neural_trial_numeric)
+
+# possible paused trials
+
+
+```
+
+
+```{r how-long-do-trials-last}
+
+
+LL14_all_vars_df %>%
+  ggplot(., aes(x = trial_length)) +
+  geom_histogram() +
+  geom_vline(xintercept =10) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+
+## No long trials
+
+
+
+
+```
+
+
+```{r compile-bad-trials}
+
+
+bad_trials <- c(no_biscuits_trials)
+
+
+```
+
+
+## all other trials look good (mostly)
+
+It looks like movement get a little "wobbly" towards the end. I haven't seen this before in the data. Is there something happening with dirft in the time window? Could it be a BCI block size thing? Not sure yet will need to watch out for it in the future. Not sure how much it could affect or bias the analysis though, give it would be off by 2 units in position at most with 50ms variability at worst. Not great for the brain but I am not doing an fast temporal precision things as of now. Pulled out a good example of the issue and print it below.
+
+```{r all-other-trials}
+
+# no ghost trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(TrialType > 16) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  ylim(0, 200) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+
+# first 100 trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric < 100) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  ylim(0, 200) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+# 100-200 trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 100 & trial_numeric < 200) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+
+# 200-300 trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 200 & trial_numeric < 300) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+# 300-400 trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 300 & trial_numeric < 400) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+# 400-500 trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 400 & trial_numeric < 500) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+# 500-600 trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 500 & trial_numeric < 600) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+# 600-700 trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 600 & trial_numeric < 700) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+# 700-800 trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 300 & trial_numeric < 400) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+# 800-900 trials
+LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_length <= 10) %>%
+  filter(trial_numeric != 0) %>%
+  filter(TrialType <=16) %>%
+  filter(!(neural_trial_numeric %in% bad_trials)) %>%
+  filter(trial_numeric >= 800 & trial_numeric < 900) %>%
+  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+  geom_hline(yintercept = 170, color = "black") +
+  geom_hline(yintercept = 10, color = "black") +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+```
+
+```{r more-than-240-trials}
+
+
+length(unique(LL14_data_clean$trial_numeric))
+
+# omg this poor person
+```
+
+```{r custom-time-lockfuncs}
+
+create_last_away_events <- function(df, fname) {
+  
+  last_away_df <- df %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_numeric != 0) %>%
+    filter(died == 0) %>%
+    group_by(neural_trial_numeric) %>%
+    mutate(towards_ghost = if_else(Direction == "Left" & starting_side == "Right", "Towards",  # Left:2 Right :11
+                                   if_else(Direction == "Right" & starting_side == "Left", "Towards",
+                                           if_else(Direction == "Left" & starting_side == "Left", "Away",  # Left:2 Right :11
+                                                   if_else(Direction == "Right" & starting_side == "Right", "Away",
+                                                           if_else(Direction == "Still", "Still", "Unsure")))))) %>%
+    mutate(away_choice_tmp = c(0, diff(factor(towards_ghost)))) %>%
+    mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_ghost == "Away") | 
+                                    (away_choice_tmp == -1 & towards_ghost == "Away"), sample, 0)) %>%
+    select(-away_choice_tmp) %>%
+    mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
+    mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
+    ungroup() %>%
+    filter(sample == last_away)
+  
+  print(anyDuplicated(last_away_df$neural_trial_numeric))
+  
+  
+  last_away_clean_df <- last_away_df %>%
+    ungroup() %>%
+    mutate(sample_before = 0) %>%
+    mutate(event = 1) %>%
+    select(neural_trial_numeric, TrialType, sample, sample_before, event)
+  
+  
+  write_csv(last_away_clean_df, paste0(path(here(), './data/ieeg_behave/', fname)))
+  
+  # diagnostic plots to check it works
+  test <- left_join(df, last_away_clean_df %>% select(sample, event))
+  
+  plot1 <- test %>%
+    mutate(event = if_else(event ==1, trial_time, event)) %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_length <= 10) %>%
+    filter(trial_numeric != 0) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    filter(trial_numeric < 100) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_vline(aes(xintercept = event), color = 'black') +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)
+  
+  plot2 <- test %>%
+    mutate(event = if_else(event ==1, trial_time, event)) %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_length <= 10) %>%
+    filter(trial_numeric != 0) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    filter(trial_numeric > 100 & trial_numeric <=200) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_vline(aes(xintercept = event), color = 'black') +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)
+  
+  plot3 <- test %>%
+    mutate(event = if_else(event ==1, trial_time, event)) %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_length <= 10) %>%
+    filter(trial_numeric != 0) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    filter(trial_numeric > 200) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_vline(aes(xintercept = event), color = 'black') +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)
+  
+  print(plot1)
+  print(plot2)
+  print(plot3)
+}
+
+
+create_first_dot_events <- function(df, fname) {
+  
+  first_dot_df <- df %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_numeric != 0) %>%
+    group_by(neural_trial_numeric) %>%
+    filter(Biscuit1 == 1111) %>%
+    filter(trial_time == min(trial_time)) %>%
+    ungroup() %>%
+    mutate(sample_before = 0) %>%
+    mutate(event = 1) %>%
+    select(neural_trial_numeric, TrialType, sample, sample_before, event)
+ 
+  
+  print(anyDuplicated(first_dot_df$neural_trial_numeric))
+  
+  
+  first_dot_clean_df <- first_dot_df %>%
+    ungroup() %>%
+    mutate(sample_before = 0) %>%
+    mutate(event = 1) %>%
+    select(neural_trial_numeric, TrialType, sample, sample_before, event)
+  
+  
+  write_csv(first_dot_clean_df, paste0(path(here(), './data/ieeg_behave/', fname)))
+  
+}
+
+
+create_first_move_events <- function(df, fname) {
+  
+  first_move_df <- df %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_numeric != 0) %>%
+    group_by(neural_trial_numeric) %>%
+    filter(Direction != "Still") %>%
+    filter(trial_time == min(trial_time)) %>%
+    ungroup() %>%
+    mutate(sample_before = 0) %>%
+    mutate(event = 1) %>%
+    select(neural_trial_numeric, TrialType, sample, sample_before, event)
+  
+  
+  print(anyDuplicated(first_move_df$neural_trial_numeric))
+  
+  
+  first_move_clean_df <- first_move_df %>%
+    ungroup() %>%
+    mutate(sample_before = 0) %>%
+    mutate(event = 1) %>%
+    select(neural_trial_numeric, TrialType, sample, sample_before, event)
+  
+  
+  write_csv(first_move_clean_df, paste0(path(here(), './data/ieeg_behave/', fname)))
+  
+}
+
+
+create_died_events <- function(df, fname) {
+  
+  # for Died events, we will time lock to end trial, so we do not need to get event samples. 
+  # Instead, we will create a metadata df that we can easily stratify trials where they died or not
+  # if ghost last position if across midline of starting side, count as chase, this way we exclude chases that only just began
+  # as the person exited the trial
+  
+ 
+  died_df <- df %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_numeric != 0) %>%
+    group_by(neural_trial_numeric) %>%
+    mutate(Attack = any(Attack))%>%
+    mutate(ghost_cross_tmp = if_else(starting_side == "Right" & as.numeric(GhostLocation > 100), 1,
+                                     if_else(starting_side == "Left" & as.numeric(GhostLocation < 100), 1, 0))) %>%
+    mutate(ghost_cross = sum(ghost_cross_tmp)) %>%
+    mutate(Chase = any(Chase)) %>%
+    mutate(chase_trial = if_else(TrialType <= 16 & (Chase == TRUE | Attack == TRUE) & died == 0 & ghost_cross > 3, 1, 0)) %>%
+    select(neural_trial_numeric, TrialType, died, Attack, chase_trial, trial_length) %>%
+    ungroup() %>%
+    distinct()
+  
+  print(anyDuplicated(died_df$neural_trial_numeric))
+  
+  
+  write_csv(died_df, paste0(path(here(), './data/ieeg_behave/', fname)))
+  
+  # diagnostic plots
+  chase_trials <- died_df %>%
+    filter(chase_trial == 1) %>%
+    pull(neural_trial_numeric)
+  attack_trials <- died_df %>%
+    filter(died == 1) %>%
+    pull(neural_trial_numeric)
+  
+  plot1 <- df %>%
+    filter(Trial != "ITI") %>%
+    filter(neural_trial_numeric %in% chase_trials) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric) +
+    ggtitle("chase")
+  
+  plot2 <- df %>%
+    filter(Trial != "ITI") %>%
+    filter(neural_trial_numeric %in% attack_trials) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)  +
+    ggtitle("attack")
+  
+  print(plot1)
+  print(plot2)
+  
+  
+}
+
+
+
+create_attack_events <- function(df, fname) {
+  
+  # moment of attack when the person was still approaching.
+  # includes diagnostic plots to ensure it is working as expected
+  
+  
+  attack_df <- df %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_numeric != 0) %>%
+    filter(TrialType <= 16) %>%
+    group_by(neural_trial_numeric) %>%
+    # mutate(towards_ghost = if_else(Direction == "Left" & starting_side == "Right", "Towards",  # Left:2 Right :11
+    #                                if_else(Direction == "Right" & starting_side == "Left", "Towards",
+    #                                        if_else(Direction == "Left" & starting_side == "Left", "Away",  # Left:2 Right :11
+    #                                                if_else(Direction == "Right" & starting_side == "Right", "Away",
+    #                                                        if_else(Direction == "Still", "Still", "Unsure")))))) %>%
+    mutate(dist_to_exit = if_else(starting_side == "Left", UserLocation - 10, 170 - UserLocation)) %>%
+    mutate(distance_to_ghost = abs(UserLocation - GhostLocation)) %>%
+    filter(Chase == TRUE | Attack == TRUE) %>%
+    filter(sample == first(sample)) %>%
+    filter(distance_to_ghost <= dist_to_exit) %>%
+    ungroup()
+  
+  print(anyDuplicated(attack_df$neural_trial_numeric))
+  
+  
+  attack_clean_df <- attack_df %>%
+    ungroup() %>%
+    mutate(sample_before = 0) %>%
+    mutate(event = 1) %>%
+    select(neural_trial_numeric, TrialType, sample, sample_before, event)
+  
+  
+  write_csv(attack_clean_df, paste0(path(here(), './data/ieeg_behave/', fname)))
+  
+  # diagnostic plots to check it works
+  test <- left_join(df, attack_clean_df %>% select(sample, event))
+  
+  plot1 <- test %>%
+    mutate(event = if_else(event ==1, trial_time, event)) %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_length <= 10) %>%
+    filter(trial_numeric != 0) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    filter(trial_numeric < 100) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_vline(aes(xintercept = event), color = 'black') +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)
+  
+  plot2 <- test %>%
+    mutate(event = if_else(event ==1, trial_time, event)) %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_length <= 10) %>%
+    filter(trial_numeric != 0) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    filter(trial_numeric > 100 & trial_numeric <=200) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_vline(aes(xintercept = event), color = 'black') +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)
+  
+  plot3 <- test %>%
+    mutate(event = if_else(event ==1, trial_time, event)) %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_length <= 10) %>%
+    filter(trial_numeric != 0) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    filter(trial_numeric > 200) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_vline(aes(xintercept = event), color = 'black') +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)
+  
+  print(plot1)
+  print(plot2)
+  print(plot3)
+  
+  
+}
+   
+
+```
+
+
+```{r save-bad-trials}
+
+
+bad_trials <- c(no_biscuits_trials, 80)
+
+bad_df <- data_frame("neural_trial_numeric" = bad_trials)
+
+write_csv(bad_df, path(here(), './data/ieeg_behave/LL14_bad_trials.csv'))
+
+```
+
+```{r time-lock-events, fig.width = 24, fig.height = 40}
+
+bad_df <- read_csv(path(here(), './data/ieeg_behave/LL14_bad_trials.csv'))
+
+create_last_away_events(LL14_data_clean, 'LL14_last_away_events.csv')
+create_first_dot_events(LL14_data_clean, 'LL14_first_dot_events.csv')
+create_first_move_events(LL14_data_clean, 'LL14_first_move_events.csv')
+create_died_events(LL14_data_clean, 'LL14_died_events.csv')
+create_attack_events(LL14_data_clean, 'LL14_attack_events.csv')
+
+
+
+# on 239 they didn't really die
+died_events <- read_csv(path(here(), './data/ieeg_behave/LL14_died_events.csv'))
+died_events <- died_events %>%
+  mutate(died = if_else(neural_trial_numeric == 239, 0, died))
+write_csv(died_events, path(here(), './data/ieeg_behave/LL14_died_events.csv'))
+```
+
+
+```{r longest-trial}
+
+# read in bad df
+bad_df <- read_csv(path(here(), './data/ieeg_behave/LL14_bad_trials.csv'))
+
+
+trial_times <- LL14_data_clean %>%
+  filter(Trial != "ITI") %>%
+  filter(trial_numeric != 0) %>%
+  mutate(neural_trial_numeric = trial_numeric - 1) %>%
+  select(trial_length, neural_trial_numeric) %>%
+  mutate(tfr_length = trial_length + 3) %>%
+  distinct()
+
+write_csv(trial_times, path(here(), './data/ieeg_behave/LL14_trial_times.csv'))
+
+max(trial_times$trial_length)
+```
+

@@ -1,0 +1,396 @@
+---
+title: "Distributions of Permuted and True Scores"
+output: html_document
+date: "2024-01-03"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+# Permuted vs True Model Comparison
+
+Compares the `standard_model` (`points_remaining` + `distance_to_ghost`) and the `permtued_model` where the timing information for each trial is preserved but the `points_remaining` and `distance_to_ghost` values are shuffled/shuffled. I look at the distriutions of the following performance metrics
+
+ * AUC
+ * ICI
+ * E50
+ * E90
+ * Brier Score
+ * Predicted vs Observed Correlations
+ 
+ From the initial look, the `standard_model` is significantly outperforming the `permuted_model` in AUC, meaning that it is correctly ranking trials in terms of risk. However, the calibration metrics are all *worse* in the `standard_model` compared to the `permuted_model`, so the model is still pretty far off from correctly predicting the probability of turnaround at any moment. I think the reason the measures are better in the `permuted_model` is that it just uses the average time of turnaround, which is maybe less dramatically off in terms of specific probabilities, but can't differentiate the trials very well. 
+ 
+ If I look at the calibration plots for subjects 14 and 15, I think you can see what is happening. For 14, the calibration metrics are better in the `standard_model` and the red line follows the dotted line pretty well. However, in 15, in the `standard_model` the red line is very off at the edges. However, the `permuted_model` has a red line that is defined on only a short range of the x-axis, so it is not as off, even though I think it is a worse model. 
+
+
+```{r load-data, results='asis', echo=FALSE}
+
+## load distance data
+pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+
+## remove sub who won't converge ##
+pilot_game_data_distance <- pilot_game_data_distance %>%
+  filter(subject != "Subject_57")
+
+```
+
+
+```{r concat-perm-model-diagnostics, results='asis', echo=FALSE}
+
+auc_perm_list <- c()
+ici_perm_list <- c()
+e50_perm_list <- c()
+e90_perm_list <- c()
+brier_perm_list <- c()
+core_perm_list <- c()
+
+for(current_subject in unique(pilot_game_data_distance$subject)){
+    permuted <- TRUE
+    file_name <- paste0(current_subject, "_", as.character(permuted))
+    
+    ## load model ##
+    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+    
+    ## Prep DF for Joint Model Fitting and select predictor variables ##
+    joint_dist_df <- prep_joint_df(pilot_game_data_distance, current_subject, permuted)
+    
+    ## Create Test/Train ##
+    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+    split_index <- create_test_train(split_df, 123)
+    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    
+    ## prediction time ##
+    prediction_time <- median(split_df$turnaround_time)
+    
+    ## Prep dfs ##
+    # longitudinal dfs
+    train_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    # survival dfs
+    cox_df <- create_survival_df(joint_dist_df)
+    train_cox_df <- cox_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_cox_df <- cox_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    ### Calibration/Discrimintation ###
+    ## AUC ##
+    auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    auc_perm_list <- c(auc_perm_list, auc$auc)
+    
+    ### Calibration ###
+    toi <- prediction_time - .5
+    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    ici_perm_list <- c(ici_perm_list, cal_mets[1])
+    e50_perm_list <- c(e50_perm_list, cal_mets[2])
+    e90_perm_list <- c(e90_perm_list, cal_mets[3])
+    
+    ### Brier Scores ###
+    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+    brier_perm_list <- c(brier_perm_list, brier_scores$Brier)
+    
+    ## Custom Checks ##
+    test_three_trials <- test_long_data %>% 
+      filter(trial_time < .5) %>%
+      select(-turnaround_time, -EVENT)
+    
+    test_preds <- predict(jm_fit, 
+              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+    
+    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+    test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+    
+    test_preds_true <- test_preds_true %>%
+      arrange(turntime_real) %>%
+      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+    
+    # correaltions between pred and real
+    scatter_pred_df <- test_preds_true %>%
+      mutate(near_50 = abs(pred_CIF - .5)) %>%
+      group_by(trial_numeric) %>%
+      mutate(closest_to_50 = min(near_50)) %>%
+      filter(closest_to_50 == near_50) %>%
+      mutate(turntime_pred = trial_time) %>%
+      ungroup() %>%
+      select(trial_numeric, turntime_real, turntime_pred) %>%
+      distinct() 
+    
+    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+    core_perm_list <- c(core_perm_list, cor_score)
+
+}
+```
+
+
+```{r concat-true-model-diagnostics,, results='asis', echo=FALSE}
+
+auc_true_list <- c()
+ici_true_list <- c()
+e50_true_list <- c()
+e90_true_list <- c()
+brier_true_list <- c()
+core_true_list <- c()
+
+for(current_subject in unique(pilot_game_data_distance$subject)){
+    permuted <- FALSE
+    file_name <- paste0(current_subject, "_", as.character(permuted))
+    
+    ## load model ##
+    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+    
+    ## Prep DF for Joint Model Fitting and select predictor variables ##
+    joint_dist_df <- prep_joint_df(pilot_game_data_distance, current_subject, permuted)
+    
+    ## Create Test/Train ##
+    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+    split_index <- create_test_train(split_df, 123)
+    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    
+    ## prediction time ##
+    prediction_time <- median(split_df$turnaround_time)
+    
+    ## Prep dfs ##
+    # longitudinal dfs
+    train_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    # survival dfs
+    cox_df <- create_survival_df(joint_dist_df)
+    train_cox_df <- cox_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_cox_df <- cox_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    ### Calibration/Discrimintation ###
+    ## AUC ##
+    auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    auc_true_list <- c(auc_true_list, auc$auc)
+    
+    ### Calibration ###
+    toi <- prediction_time - .5
+    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    ici_true_list <- c(ici_true_list, cal_mets[1])
+    e50_true_list <- c(e50_true_list, cal_mets[2])
+    e90_true_list <- c(e90_true_list, cal_mets[3])
+    
+    ### Brier Scores ###
+    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+    brier_true_list <- c(brier_true_list, brier_scores$Brier)
+    
+    ## Custom Checks ##
+    test_three_trials <- test_long_data %>% 
+      filter(trial_time < .5) %>%
+      select(-turnaround_time, -EVENT)
+    
+    test_preds <- predict(jm_fit, 
+              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+    
+    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+    test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+    
+    test_preds_true <- test_preds_true %>%
+      arrange(turntime_real) %>%
+      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+    
+    # correaltions between pred and real
+    scatter_pred_df <- test_preds_true %>%
+      mutate(near_50 = abs(pred_CIF - .5)) %>%
+      group_by(trial_numeric) %>%
+      mutate(closest_to_50 = min(near_50)) %>%
+      filter(closest_to_50 == near_50) %>%
+      mutate(turntime_pred = trial_time) %>%
+      ungroup() %>%
+      select(trial_numeric, turntime_real, turntime_pred) %>%
+      distinct() 
+    
+    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+    core_true_list <- c(core_true_list, cor_score)
+
+}
+```
+
+
+```{r combine-lists}
+
+true_df <- tibble("subjects" = unique(pilot_game_data_distance$subject),
+                  "auc" = auc_true_list,
+                  "ici" = ici_true_list,
+                  "e50" = e50_true_list,
+                  "e90" = e90_true_list,
+                  "brier" = brier_true_list,
+                  "cor" = core_true_list)
+
+perm_df <- tibble("subjects" = unique(pilot_game_data_distance$subject),
+                  "auc" = auc_perm_list,
+                  "ici" = ici_perm_list,
+                  "e50" = e50_perm_list,
+                  "e90" = e90_perm_list,
+                  "brier" = brier_perm_list,
+                  "cor" = core_perm_list)
+
+
+model_compare_df <- rbind(true_df %>% mutate(case = "true"),
+                          perm_df %>% mutate(case = "permuted"))
+
+model_wide_df <- left_join(true_df, perm_df, by = "subjects", suffix = c("_true", "_perm"))
+
+
+```
+
+
+```{r visualizastions, fig.width = 15, fig.height = 8}
+
+model_compare_df %>%
+  pivot_longer(cols = auc:cor, names_to = "metric", values_to = "value") %>%
+  ggplot(aes(x = metric, y = value, fill = case, color = case)) +
+  geom_boxplot(notch = TRUE, color = "black") +
+  geom_point(position = position_dodge(width = .75), alpha = .5) +
+  facet_wrap(~metric, scales = "free") +
+  theme_bw() +
+  theme(legend.position = "top", 
+        strip.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  labs(title = "Model Performance Comparison",
+       subtitle = "True vs. Permuted",
+       x = "Metric",
+       y = "Value")
+
+
+
+
+
+```
+
+
+```{r auc-indv-improvement, fig.width = 12, fig.height = 12}
+
+model_wide_df %>%
+  mutate(auc_dif = auc_true - auc_perm) %>%
+  arrange(auc_dif) %>%
+  mutate(subjects = factor(subjects, levels = unique(subjects))) %>%
+  mutate(auc_true = auc_true - auc_perm) %>%
+  mutate(auc_perm = 0) %>%
+  ggplot(.,) +
+    geom_segment( aes(x=subjects, xend=subjects, y=auc_perm, yend=auc_true), color="black") +
+    geom_point( aes(x=subjects, y=auc_true), color=rgb(0.2,0.7,0.1,0.8), size=3 ) + # green true
+    geom_point( aes(x=subjects, y=auc_perm), color=rgb(0.7,0.2,0.1,0.8), size=3 ) +
+    geom_vline(xintercept  = "Subject_25", color = "grey") +
+    coord_flip()+
+    theme(
+      panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+    ) +
+    labs(x = "Subject", y = "AUC Improvement", title = "AUC Improvement", subtitle = "Green = True, Red = Permuted")
+
+
+```
+
+```{r cor-indv-improvement, fig.width = 12, fig.height = 12}
+
+model_wide_df %>%
+  mutate(cor_dif = cor_true - cor_perm) %>%
+  arrange(cor_dif) %>%
+  mutate(subjects = factor(subjects, levels = unique(subjects))) %>%
+  mutate(cor_true = cor_true - cor_perm) %>%
+  mutate(cor_perm = 0) %>%
+  ggplot(.,) +
+    geom_segment( aes(x=subjects, xend=subjects, y=cor_perm, yend=cor_true), color="black") +
+    geom_point( aes(x=subjects, y=cor_true), color=rgb(0.2,0.7,0.1,0.8), size=3 ) + # green true
+    geom_point( aes(x=subjects, y=cor_perm), color=rgb(0.7,0.2,0.1,0.8), size=3 ) +
+    geom_vline(xintercept  = "Subject_45", color = "grey") +
+    coord_flip()+
+    theme(
+      panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+    ) +
+    labs(x = "Subject", y = "Correlation Improvement", title = "Correlation Improvement", subtitle = "Green = True, Red = Permuted")
+
+
+```
+
+
+
+

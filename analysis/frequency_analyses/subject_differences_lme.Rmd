@@ -67,13 +67,19 @@ c25 <- c(
 ```
 
 
+git filter-branch --force --index-filter \
+"git rm --cached --ignore-unmatch analysis/jules/cleaned_pilot_distance_data.csv" \
+--prune-empty --tag-name-filter cat -- --all
+
+
+
 ```{r}
 
 dlpfc_theta_turnaround <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "dlpfc_theta_model_results_turnaround_all_subs_robust.csv"))
 
 ofc_theta_turnaround <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "OFC_theta_model_results_turnaround_all_subs_robust.csv"))
 
-ofc_theta_onset <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "OFC_theta_model_results_onset_before_turn_all_subs_robust.csv"))
+ofc_theta_onset <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "OFC_theta_model_results_onset_before_turn_all_subs_log_robust.csv"))
 
 # ofc comparison
 ofc_theta_discount <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results",

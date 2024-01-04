@@ -81,7 +81,7 @@ c25 <- c(
 ```{r load-data}
 
 # ieeg data #
-ofc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_ofc_all_subs_iti_onset.csv"))
+ofc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_ofc_all_subs_logged_iti_onset.csv"))
 
 # behavioral data #
 all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
@@ -123,6 +123,7 @@ avg_ofc_hfa_data %>%
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
   facet_wrap(~elec_id, ncol = 6) +
+  scale_color_manual(values = getPalette(17)) +
   ylim(-.5, .5)
 
 ```

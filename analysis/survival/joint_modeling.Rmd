@@ -1,0 +1,314 @@
+---
+title: "Joint Model Fitting"
+output: html_document
+date: "2023-12-12"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+Okay, I need to come up with a model fitting framework. I will use DIC to compare models, but I need to figure out what my approach is for going through the different options.
+
+First, I think we should add in Lives and possibly Score, because I know this definitely effects the players choices. Is it possible to include interactions within this framework, not sure.
+
+Then I think I want to gather a full list of options for operationalizing reward and compare that in a couple of subjects. I think starting out with ~5 subjects is optimal because I don't have a good prior about whether or not people are solving it in the same way and if I move to a hierarcical modeling option then I have to disentangle how well the model is doing as parsing subejct variance as well as parsing the different reward options. 
+
+Cognitive Strategies for Reward
+
+* go out and get a certain amount of reward and then come back
+* try to get as much reward as possible until the ghost gets to close and then turn around
+* pay attention to how close the next reward is and how big it is
+
+Possible quantifications of reward
+
+* amount of dots remaining
+* amount of points remaining
+* discounted by distance number of points remaining 
+* number of big rewards left, number of small rewards left
+* 5 different variables for the distance to each reward
+* 5 different variables for the amount each reward/ if it is remaining
+
+In general variables should be mean-centered:
+
+The Cox PH submodel can be formulated as
+
+ℎ𝑖(𝑡)=ℎ0(𝑡)exp(𝛾𝑇𝑤𝑖),
+
+where ℎ0(𝑡) is the baseline hazard function at time 𝑡 and 𝑤𝑖is a vector of baseline predictors with corresponding regression coefficients 𝛾
+The submodel has two distinct parts. First, ℎ0(𝑡) describes the hazard (e.g., risk of the event occurring, given it has not yet occurred) when all covariates 𝑤𝑖 have value zero. This baseline hazard function is assumed invariant across all individuals ( ℎ0(𝑡) does not depend on 𝑖). 
+Second, the effect parameters 𝛾𝑇𝑤𝑖describe how the hazard varies as a function of the explanatory covariates 𝑤𝑖.
+
+
+NOTES
+
+Functions start to break if Thoriz is larger than the longest turn time!
+
+Next to figure out, why does AUC, ROC chane so much with different Thoriz??
+
+```{r load-data}
+
+pilot_behave_data_clean <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior.csv"))
+pilot_game_data_clean <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data.csv"))
+pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+pilot_all_vars_df <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data.csv"))
+
+```
+
+
+## Random Permuted
+
+check to make sure the shuffling works by comparing distance to ghost at turnaround in shuffled vs real
+
+
+```{r random-time-series}
+
+random_time_series <- function(n, low_val, high_val) {
+  timeseries = numeric(n)
+  timeseries[1] = sample(low_val:high_val, 1)
+  
+  for (i in 2:n) {
+    change = sample(c(-2, 2), 1)
+    
+    # Check boundaries and adjust if necessary
+    if (timeseries[i-1] + change < 0) {
+      change = 2
+    } else if (timeseries[i-1] + change > 100) {
+      change = -2
+    }
+    
+    timeseries[i] = timeseries[i-1] + change
+  }
+  return(timeseries)
+
+}
+# Plotting the timeseries
+plot(random_time_series(50, 0, 100), type = 'l', ylim = c(0, 100), xlab = "Time", ylab = "Value")
+
+```
+
+
+```{r train-test-split}
+
+current_subject <- "Subject_11"
+permuted <- FALSE
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(pilot_game_data_distance, current_subject, permuted)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+split_index <- create_test_train(split_df, 123)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+prediction_time <- median(split_df$turnaround_time)
+ 
+split_df %>%
+  mutate(split = if_else(trial_numeric %in% train_trials, "train", "test")) %>%
+  ggplot(., aes(x = turnaround_time, fill = split)) +
+  geom_density(alpha = 0.5, color = "black") +
+  geom_vline(xintercept = prediction_time, color = "black") +
+  theme(panel.background = element_rect(fill = "white", colour = "black"))
+  
+
+
+```
+
+
+```{r prep-long-surivval-df}
+
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+```
+
+
+```{r fit-models}
+## fit the longitudinal, survival, and joint models and print the summaries
+file_name <- paste0(current_subject, "_", as.character(permuted))
+fit_joint_models(train_long_data, train_cox_df, "Subject_11_test")
+
+```
+
+```{r test-model-standard}
+
+## load model ##
+jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+
+### ROC/AUC ###
+## ROC ##
+roc <- tvROC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+plot(roc)   
+## AUC ##
+tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+
+### Calibration ###
+toi <- prediction_time - .5
+calibration_plot(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+
+### Brier Scores ###
+tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = T)
+
+
+```
+```{r test-model-custom}
+ggthemr("solarized")
+
+test_three_trials <- test_long_data %>% 
+  filter(trial_time < .5) %>%
+  select(-turnaround_time, -EVENT)
+
+test_preds <- predict(jm_fit, 
+          newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+          idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+
+test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+
+test_preds_true <- test_preds_true %>%
+  arrange(turntime_real) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+
+# Now use 'numeric_for_color' for the color aesthetic in ggplot
+plot <- ggplot(test_preds_true, aes(x = trial_time, y = pred_CIF, color = trial_numeric)) +
+  geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
+  geom_vline(aes(xintercept = turntime_real, color = trial_numeric, alpha = .7)) +
+  geom_point() +
+  scale_color_viridis_d() +  # Using Viridis color scale
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text = element_text(color = "black", size = 12),
+        axis.title = element_text(color = "black", size = 12),
+        legend.position =  'none',
+        plot.title  = element_text(color = "black", size = 16, face = "plain")) +
+  ylim(0, 1) + xlim(0, 2.5) + labs(color = "Test Trial") +
+  ggtitle("Prediction on held out trials") +
+  labs(x = "Time", y = "Probability of Turning Around")
+plot
+
+
+test_preds_true %>%
+  mutate(near_50 = abs(pred_CIF - .5)) %>%
+  group_by(trial_numeric) %>%
+  mutate(closest_to_50 = min(near_50)) %>%
+  filter(closest_to_50 == near_50) %>%
+  mutate(turntime_pred = trial_time) %>%
+  ungroup() %>%
+  select(trial_numeric, turntime_real, turntime_pred) %>%
+  distinct() %>%
+  ggplot(., aes(x = turntime_real, y = turntime_pred)) +
+  geom_point(size = 4) +
+  theme(panel.background = element_rect(fill = "white")) +
+  labs(x = "True Turnaround Time", y = "Predicted Turnaround Time") +
+  ylim(.5, 2) + xlim(.5, 2)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

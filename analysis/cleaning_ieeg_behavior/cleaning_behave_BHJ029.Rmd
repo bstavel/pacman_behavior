@@ -305,6 +305,7 @@ create_last_away_events(bjh29_data_clean, 'BJH029_last_away_events.csv')
 create_first_dot_events(bjh29_data_clean, 'BJH029_first_dot_events.csv')
 create_first_move_events(bjh29_data_clean, 'BJH029_first_move_events.csv')
 create_died_events(bjh29_data_clean, 'BJH029_died_events.csv')
+create_attack_events(bjh29_data_clean, 'BJH029_attack_events.csv')
 
 ```
 
@@ -761,10 +762,9 @@ trial_times <- bjh29_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_numeric != 0) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
-  select(trial_length, trial_numeric) %>%
+  select(trial_length, neural_trial_numeric) %>%
   distinct()
 
-max(trial_times$trial_length)
+write_csv(trial_times, path(here(), './data/ieeg_behave/BJH029_trial_times.csv'))
 ```
 

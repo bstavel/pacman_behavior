@@ -226,4 +226,106 @@ create_died_events <- function(df, fname) {
   
   
 }
+
+
+
+create_attack_events <- function(df, fname) {
+  
+  # moment of attack when the person was still approaching.
+  # includes diagnostic plots to ensure it is working as expected
+  
+  
+  attack_df <- df %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_numeric != 0) %>%
+    filter(TrialType <= 16) %>%
+    mutate(neural_trial_numeric = trial_numeric - 1) %>%
+    group_by(neural_trial_numeric) %>%
+    # mutate(towards_ghost = if_else(Direction == "Left" & starting_side == "Right", "Towards",  # Left:2 Right :11
+    #                                if_else(Direction == "Right" & starting_side == "Left", "Towards",
+    #                                        if_else(Direction == "Left" & starting_side == "Left", "Away",  # Left:2 Right :11
+    #                                                if_else(Direction == "Right" & starting_side == "Right", "Away",
+    #                                                        if_else(Direction == "Still", "Still", "Unsure")))))) %>%
+    mutate(dist_to_exit = if_else(starting_side == "Left", UserLocation - 10, 170 - UserLocation)) %>%
+    mutate(distance_to_ghost = abs(UserLocation - GhostLocation)) %>%
+    filter(Chase == TRUE | Attack == TRUE) %>%
+    filter(sample == first(sample)) %>%
+    filter(distance_to_ghost <= dist_to_exit) %>%
+    ungroup()
+  
+  print(anyDuplicated(attack_df$neural_trial_numeric))
+  
+  
+  attack_clean_df <- attack_df %>%
+    ungroup() %>%
+    mutate(sample_before = 0) %>%
+    mutate(event = 1) %>%
+    select(neural_trial_numeric, TrialType, sample, sample_before, event)
+  
+  
+  write_csv(attack_clean_df, paste0(path(here(), './data/ieeg_behave/', fname)))
+  
+  # diagnostic plots to check it works
+  test <- left_join(df, attack_clean_df %>% select(sample, event))
+  
+  plot1 <- test %>%
+    mutate(event = if_else(event ==1, trial_time, event)) %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_length <= 10) %>%
+    filter(trial_numeric != 0) %>%
+    mutate(neural_trial_numeric = trial_numeric - 1) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    filter(trial_numeric < 100) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_vline(aes(xintercept = event), color = 'black') +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)
+  
+  plot2 <- test %>%
+    mutate(event = if_else(event ==1, trial_time, event)) %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_length <= 10) %>%
+    filter(trial_numeric != 0) %>%
+    mutate(neural_trial_numeric = trial_numeric - 1) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    filter(trial_numeric > 100 & trial_numeric <=200) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_vline(aes(xintercept = event), color = 'black') +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)
+  
+  plot3 <- test %>%
+    mutate(event = if_else(event ==1, trial_time, event)) %>%
+    filter(Trial != "ITI") %>%
+    filter(trial_length <= 10) %>%
+    filter(trial_numeric != 0) %>%
+    mutate(neural_trial_numeric = trial_numeric - 1) %>%
+    filter(!(neural_trial_numeric %in% bad_df$neural_trial_numeric)) %>%
+    filter(trial_numeric > 200) %>%
+    pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+    ggplot(., aes(x = trial_time, y = location, color = unit)) +
+    geom_hline(yintercept = 170, color = "black") +
+    geom_hline(yintercept = 10, color = "black") +
+    geom_vline(aes(xintercept = event), color = 'black') +
+    geom_point() +
+    geom_line() +
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~neural_trial_numeric)
+  
+  print(plot1)
+  print(plot2)
+  print(plot3)
+  
+  
+}
    
