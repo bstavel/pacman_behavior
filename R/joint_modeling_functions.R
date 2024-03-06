@@ -101,7 +101,7 @@ prep_joint_df <- function(distance_df, sub, permute = FALSE, ieeg = FALSE) {
       mutate(points_remaining = sample(points_remaining, length(points_remaining))) %>%
       ungroup() %>%
       select(subject, trial_numeric, distance_to_ghost, last_away, event, turnaround_time,
-             away_choice, trial_time, TrialType, points_remaining, reward_groups, ghost_direction) %>%
+             away_choice, trial_time, TrialType, points_remaining, reward_groups) %>%
       mutate(EVENT = 1)  %>%
       mutate(points_remaining = scale(points_remaining)) %>%
       mutate(distance_to_ghost = scale(distance_to_ghost))
@@ -125,7 +125,7 @@ prep_joint_df <- function(distance_df, sub, permute = FALSE, ieeg = FALSE) {
       filter(turnaround_time != 0) %>% # exclude trials where they just ran into the ghost
       filter(trial_time <= turnaround_time) %>%
       select(subject, trial_numeric, distance_to_ghost, last_away, points_remaining, event, turnaround_time,
-             away_choice, trial_time, TrialType, reward_groups, ghost_direction) %>%
+             away_choice, trial_time, TrialType, reward_groups) %>%
       mutate(EVENT = 1) %>%
       mutate(points_remaining = scale(points_remaining)) %>%
       mutate(distance_to_ghost = scale(distance_to_ghost))
