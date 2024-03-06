@@ -1,0 +1,260 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-02-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+```{r load-data}
+
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_g_dist %>% 
+  select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
+
+
+
+```
+
+```{r}
+
+ofc_turn_lme_df <- read_csv(path(here(), "data_mount", "remote", "pacman_behavior", "munge", "lme_model_results", "OFC_theta_distance_to_ghost_points_remaining_model_interaction_results_turnaround_all_subs_robust.csv"))
+
+```
+
+```{r}
+
+sub_threat_df <- all_subs_g_dist %>%
+  filter(subject == "BJH021") %>%
+  mutate(model_threat = -1.5 * distance_to_ghost) %>%
+  mutate(model_reward = -1.5 * points_remaining) %>%
+  mutate(model_interact = model_threat + model_reward + (3 * points_remaining * distance_to_ghost))
+
+
+sub_threat_df %>%
+  filter(points_remaining < 100) %>%
+  ggplot(., aes(x = distance_to_ghost, y = points_remaining, fill =  model_interact)) +
+  geom_raster(interpolate = T) + 
+  theme(panel.background = element_rect(fill = "white"))
+  
+
+```
+
+```{r}
+
+
+inter_pred_df <- crossing("distance_to_ghost" = unique(all_subs_g_dist$distance_to_ghost), "points_remaining" = unique(all_subs_g_dist$points_remaining)) 
+
+
+inter_pred_df <- inter_pred_df %>%
+  mutate(model_threat = -1.5 * distance_to_ghost) %>%
+  mutate(model_reward = -1.5 * points_remaining) %>%
+  mutate(model_interact = model_threat + model_reward + (3 * points_remaining * distance_to_ghost))
+
+
+inter_pred_df %>%
+  filter(points_remaining < 100) %>%
+  ggplot(., aes(x = distance_to_ghost, y = points_remaining, fill =  model_interact)) +
+  geom_raster(interpolate = T) + 
+  theme(panel.background = element_rect(fill = "white"))
+  
+
+```
+
+
+
+```{r}
+
+ofc_turn_coef_df <- ofc_turn_lme_df %>%
+  filter(case == "all_subs")
+
+ofc_turn_coef_df %>%
+  ggplot(., aes(x = time, y = Estimate, color = pred)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+ofc_turn_coef_df %>%
+  group_by(time) %>%
+  mutate(estimate_sum = sum(Estimate)) %>%
+  ggplot(., aes(x = time, y = Estimate, color = pred)) +
+  geom_point() +
+  geom_line() +
+  geom_point(aes(y = estimate_sum), color = "black") +
+  geom_line(aes(y = estimate_sum), color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+
+```{r}
+
+early <- ofc_turn_coef_df %>%
+  filter(time == -1.9)
+
+before_switch <- ofc_turn_coef_df %>%
+  filter(time == -1.1)
+
+after_switch <- ofc_turn_coef_df %>%
+  filter(time == -.6)
+
+after_turn <- ofc_turn_coef_df %>%
+  filter(time == .8)
+
+print(early)
+print(before_switch)
+print(after_switch)
+print(after_turn)
+
+
+
+```
+
+```{r}
+
+inter_pred_df <- crossing("distance_to_ghost" = unique(all_subs_g_dist$distance_to_ghost), "points_remaining" = unique(all_subs_g_dist$points_remaining)) 
+
+
+early_pred_df <- inter_pred_df %>%
+  mutate(model_threat = early$Estimate[1] * distance_to_ghost) %>%
+  mutate(model_reward = early$Estimate[2] * points_remaining) %>%
+  mutate(model_interact = model_threat + model_reward + (early$Estimate[3] * points_remaining * distance_to_ghost)) %>%
+  mutate(case = "Early")
+
+before_switch_pred_df <- inter_pred_df %>%
+  mutate(model_threat = before_switch$Estimate[1] * distance_to_ghost) %>%
+  mutate(model_reward = before_switch$Estimate[2] * points_remaining) %>%
+  mutate(model_interact = model_threat + model_reward + (before_switch$Estimate[3] * points_remaining * distance_to_ghost)) %>%
+  mutate(case = "Before Switch")
+
+after_switch_pred_df <- inter_pred_df %>%
+  mutate(model_threat = after_switch$Estimate[1] * distance_to_ghost) %>%
+  mutate(model_reward = after_switch$Estimate[2] * points_remaining) %>%
+  mutate(model_interact = model_threat + model_reward + (after_switch$Estimate[3] * points_remaining * distance_to_ghost)) %>%
+  mutate(case = "After Switch")
+
+after_turn_pred_df <- inter_pred_df %>%
+  mutate(model_threat = after_turn$Estimate[1] * distance_to_ghost) %>%
+  mutate(model_reward = after_turn$Estimate[2] * points_remaining) %>%
+  mutate(model_interact = model_threat + model_reward + (after_turn$Estimate[3] * points_remaining * distance_to_ghost)) %>%
+  mutate(case = "After Turn")
+
+
+pred_df <- rbind(early_pred_df, before_switch_pred_df, after_switch_pred_df, after_turn_pred_df)
+
+```
+
+
+```{r, fig.width=15, fig.height=10}
+
+pred_df %>%
+  mutate(case = factor(case, levels = c("Early", "Before Switch", "After Switch", "After Turn"))) %>%
+  filter(points_remaining < 100) %>%
+  ggplot(., aes(x = distance_to_ghost, y = points_remaining, fill =  model_interact)) +
+  geom_raster(interpolate = T) + 
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        strip.text = element_text(size = 14, color = "black"),
+        legend.title  = element_text(size = 14, color = "black"),
+        axis.title = element_text(size = 14, color = "black")) +
+  scale_fill_gradient2(low = "#30C5FF", high = "#CA3F72", mid = "white", midpoint = 0) +
+  labs(fill = "Predicted Theta", x= "Threat", y = "Reward Remaining") +
+  facet_wrap(~case, scales = "free") +
+  scale_x_reverse() +
+  ggtitle("Predicted Theta by Time in Trial")
+
+
+
+```
+
+
+
+

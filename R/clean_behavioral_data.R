@@ -98,96 +98,6 @@ clean_bci_data <- function(df, sample_rate){
   return(df_clean)
 }
 
-
-clean_data_for_aalen <- function(df){
-  
-  df_clean <- df %>%
-    # ungrouped timing variables
-    mutate(time_step = c(FALSE, diff(Time))) %>%
-    mutate(trial_numeric = as.numeric(gsub("Trial_", "", Trial))) %>%
-    ## grouped by trial variables
-    group_by(subject, Trial) %>%
-    mutate(jittered_start_location = first(UserLocation)) %>%
-    mutate(base_start_location = if_else(TrialType %in% c(16, 8), 30,
-                                         if_else(TrialType %in% c(19, 15, 14, 7, 6), 50,
-                                                 if_else(TrialType %in% c(20, 13, 5), 70,
-                                                         if_else(TrialType %in% c(17, 12, 4), 110,
-                                                                 if_else(TrialType %in% c(18, 11, 10, 3, 2), 130,
-                                                                         if_else(TrialType %in% c(9, 1), 150, 999))))))) %>%
-    # biscuit location
-    mutate(Biscuit1 = if_else(Biscuit1 == FALSE & base_start_location <= 80,  base_start_location + 12, 
-                              if_else(Biscuit1 == FALSE & base_start_location > 80, base_start_location -12, 1111)))  %>%
-    mutate(Biscuit2 = if_else(Biscuit2 == FALSE & base_start_location <= 80,  base_start_location + 22, 
-                              if_else(Biscuit2 == FALSE & base_start_location > 80, base_start_location -22, 1111)))  %>%
-    mutate(Biscuit3 = if_else(Biscuit3 == FALSE & base_start_location <= 80,  base_start_location + 32, 
-                              if_else(Biscuit3 == FALSE & base_start_location > 80, base_start_location -32, 1111)))  %>%
-    mutate(Biscuit4 = if_else(Biscuit4 == FALSE & base_start_location <= 80,  base_start_location + 42, 
-                              if_else(Biscuit4 == FALSE & base_start_location > 80, base_start_location -42, 1111)))  %>%
-    mutate(Biscuit5 = if_else(Biscuit5 == FALSE & base_start_location <= 80,  base_start_location + 52, 
-                              if_else(Biscuit5 == FALSE & base_start_location > 80, base_start_location -52, 1111)))  %>%
-    # Fix Direction
-    mutate(move = c(0, diff(UserLocation))) %>%
-    mutate(Direction = if_else(move %in% c(-2, -4), "Left",
-                               if_else(move %in% c(2, 4), "Right", 
-                                       if_else(move == 0, "Still", "Unsure")))) %>%
-    select(-move) %>%
-    # trial timing information
-    mutate(Trial = if_else(Trial == "Trial_1", Trial, if_else(Time == first(Time), "ITI", Trial))) %>%
-    mutate_cond(Trial == "ITI", 
-                GhostLocation = NA, UserLocation = NA, 
-                Biscuit1 = NA, Biscuit2 = NA, Biscuit3 = NA, Biscuit4 = NA, Biscuit5 = NA, Direction = NA,
-                Attack = NA, Chase = NA, Eaten = NA, TrialType = NA) %>%
-    mutate(trial_time = if_else(Trial == "ITI", 999, Time - first(Time))) %>%
-    mutate(trial_flip = 1:n()) %>%
-    mutate(time_lag = c(FALSE, diff(trial_time))) %>%
-    mutate(trial_end = as.numeric(c(diff(trial_numeric) > 0, FALSE))) %>%
-    mutate(trial_length = max(trial_time)) %>%
-    # trial grouping variables
-    mutate(reward_groups = if_else(TrialType %in% c(1, 5, 9, 13), 2, 
-                                   if_else(TrialType %in% c(2, 6, 10, 14), 3, 
-                                           if_else(TrialType %in% c(3, 7, 11, 15), 1, 
-                                                   if_else(TrialType %in% c(4, 8, 12, 16), 4, 99))))) %>%
-    mutate(dots_eaten = max(Eaten)) %>%
-    mutate(ghost_start_dir = if_else(TrialType > 16, "no_ghost", 
-                                     if_else(TrialType <= 4 | TrialType >= 13, "away", "towards"))) %>%
-    mutate(rewards_direction_groups = paste0(reward_groups, "_", ghost_start_dir)) %>%
-    mutate(attack_chase_bob = if_else(Attack == T, "Attack", if_else(Chase == T, "Chase", "Bob"))) %>%
-    mutate(ghost_objective_direction_tmp = c(FALSE, diff(GhostLocation))) %>%
-    mutate(ghost_objective_direction = if_else(ghost_objective_direction_tmp >= 2, "Right", 
-                                               if_else(ghost_objective_direction_tmp <= -2, "Left", "still"))) %>%
-    select(-ghost_objective_direction_tmp) %>%
-    mutate(ghost_direction = if_else((base_start_location < 100 & ghost_objective_direction == "Left") |
-                                       (base_start_location > 100 & ghost_objective_direction == "Right") , "Towards",
-                                     if_else(ghost_objective_direction == "still", "still", "Away"))) %>%
-    ungroup() %>%
-    group_by(subject) %>%
-    arrange(subject, trial_numeric) %>%
-    mutate(life_change = as.numeric(c(diff(Score) < 0, FALSE))) %>%
-    group_by(subject, Trial) %>%
-    mutate(died = sum(life_change)) %>%
-    select(-life_change) %>%
-    ungroup()
-  
-  # get rid of paused trials #
-  paused_trials <- df_clean %>%
-    filter(time_step > 1 & trial_flip != 1 & Trial != "ITI") %>%
-    ungroup() %>%
-    mutate(trial_ids = paste0(subject, "_", trial_numeric)) %>%
-    pull(trial_ids) %>%
-    unique()
-  
-  df_clean <- df_clean %>%
-    ungroup() %>%
-    mutate(trial_ids = paste0(subject, "_", trial_numeric)) %>%
-    filter(!trial_ids %in% paused_trials)
-  
-  
-  return(df_clean)
-  
-  
-}
-
-
 get_across_task_variables_bci <- function(clean_df){
   
   all_vars_df <- clean_df %>%
@@ -324,10 +234,10 @@ clean_prolific_data <- function(df){
     mutate(trial_end = as.numeric(c(diff(trial_numeric) > 0, FALSE))) %>%
     mutate(trial_length = max(trial_time)) %>%
     # trial grouping variables
-    mutate(reward_groups = if_else(TrialType %in% c(1, 5, 9, 13), 2, 
-                                   if_else(TrialType %in% c(2, 6, 10, 14), 3, 
-                                           if_else(TrialType %in% c(3, 7, 11, 15), 1, 
-                                                   if_else(TrialType %in% c(4, 8, 12, 16), 4, 99))))) %>%
+    mutate(reward_groups = if_else(TrialType %in% c(1, 5, 9, 13, 20), 2, 
+                                   if_else(TrialType %in% c(2, 6, 10, 14, 19), 3, 
+                                           if_else(TrialType %in% c(3, 7, 11, 15, 18), 1, 
+                                                   if_else(TrialType %in% c(4, 8, 12, 16, 17), 4, 99))))) %>%
     mutate(dots_eaten = max(Eaten)) %>%
     mutate(ghost_start_dir = if_else(TrialType > 16, "no_ghost", 
                                      if_else(TrialType <= 4 | TrialType >= 13, "away", "towards"))) %>%
@@ -354,9 +264,14 @@ clean_prolific_data <- function(df){
     # filter out trials where they didn't get any points, because it gets confusing it they didn't lose points
     group_by(trial_numeric) %>%
     mutate(total_eaten = max(Eaten)) %>%
+    mutate(score_orig = Score) %>%
     mutate(Score = if_else(trial_numeric %% 20 == 1 & Eaten == 0, Score - first(Score), Score)) %>%
+    mutate(Lives = if_else(trial_numeric %% 20 == 1, 3, Lives)) %>%
+    mutate(escape = if_else(UserLocation < 10, 1,
+                            if_else(UserLocation > 170, 1, 0))) %>%
+    mutate(escaped = if_else(sum(escape) > 0, 1, 0)) %>% 
     ungroup() %>%
-    select(trial_numeric, Lives, Score, total_eaten, TrialType) %>%
+    select(trial_numeric, Lives, Score, total_eaten, TrialType, score_orig, escaped) %>%
     distinct() %>%
     mutate(died_lives = abs(as.numeric(c(diff(Lives), 0)))) %>%
     mutate(died_lives = if_else(died_lives == 0, 0, 1)) %>%
@@ -366,10 +281,9 @@ clean_prolific_data <- function(df){
     mutate(died_score = sum(died_score)) %>%
     mutate(died_lives = sum(died_lives)) %>%
     ungroup() %>%
-    mutate(died = if_else(died_score == 1 | died_lives == 1, 1, 0)) %>%
+    mutate(died = if_else(escaped == 0 & (died_score == 1 | died_lives == 1 | trial_numeric == max(clean_df$trial_numeric)), 1, 0)) %>%
     select(trial_numeric, died) %>%
     distinct()
-  
   
   clean_df <- left_join(clean_df, died_trials)  
   

@@ -57,41 +57,57 @@ c25 <- c(
 
 
 ## Load Data ##
-pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+# pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+# pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data_newsample.csv"))
+pilot_game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+
+pilot_game_data_distance <- pilot_game_data_distance %>%
+  filter(attack_chase_bob == 'Bob')
 
 ## Permuted? ##
-permuted <- FALSE
-final_sub_list <-  c("Subject_67" )
+permuted <- TRUE
+seed <- 123
+final_sub_list <-  unique(pilot_game_data_distance$subject)
 
 for(current_subject in final_sub_list){
-    print(current_subject)
+  
 
-    ## Prep DF for Joint Model Fitting and select predictor variables ##
-    joint_dist_df <- prep_joint_df(pilot_game_data_distance, current_subject, permuted)
-    
-    ## Create Test/Train ##
-    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
-    split_index <- create_test_train(split_df, 123)
-    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
-    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
-    
-    ## Prep Train/Test DFs ##
-    # longitudinal dfs
-    train_long_data <- joint_dist_df %>%
-      filter(trial_numeric %in% train_trials)
-    test_long_data <- joint_dist_df %>%
-      filter(trial_numeric %in% test_trials)
-    
-    # survival dfs
-    cox_df <- create_survival_df(joint_dist_df)
-    train_cox_df <- cox_df %>%
-      filter(trial_numeric %in% train_trials)
-    test_cox_df <- cox_df %>%
-      filter(trial_numeric %in% test_trials)
-    
-    ## Fit Joint Model ##
-    file_name <- paste0(current_subject, "_", as.character(permuted))
-    fit_joint_models(train_long_data, train_cox_df, file_name)
+  print(current_subject)
+  
+  try({
+
+      ## Prep DF for Joint Model Fitting and select predictor variables ##
+      joint_dist_df <- prep_joint_df(pilot_game_data_distance, current_subject, permuted)
+      
+      ## Create Test/Train ##
+      split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+      split_index <- create_test_train(split_df, seed)
+      train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      
+      ## Prep Train/Test DFs ##
+      # longitudinal dfs
+      train_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+      # survival dfs
+      cox_df <- create_survival_df(joint_dist_df)
+      train_cox_df <- cox_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_cox_df <- cox_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+  
+
+      ## Fit Joint Model ##
+      file_name <- paste0(current_subject, "_", permuted)
+      fit_joint_models(train_long_data, train_cox_df, file_name)
+
+
+  }, silent = TRUE)
     
 }
 

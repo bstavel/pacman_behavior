@@ -1,0 +1,407 @@
+---
+title: "LL14"
+output: html_document
+date: "2024-02-12"
+---
+
+```{r setup, include=FALSE}
+### batch files for joint modeling ###
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(9, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+### Trial Number and Joint Modeling
+
+
+I am worried that the trial number has a profound affect on the AUC. I noticed this when comparing the models with neural predictors compared with those with pure behavioral measures. The AUC differed substantially, with the AUC being much higher in models with lower trial counts. Here I try to formalize this effect and see at what number of trials we see the AUC stabilize.
+
+
+The analyses below reveal that trial number was not actually the culprit. As I lower the trial number for subject LL14, the AUC does not change. This is partly because of how I lowered the trial count, by subsampling the hold trials for each test of trial number. If I had created new hold out sets with smaller numbers of trials, I probably would have seen an effect, because it seems that the seed is what is causing the changes in AUC. The AUC seems to be very dependent on the trials in the hold out set, to the point that I do not think it is a reliable measure of performance. At the end of this script I also try different ways of averaging AUC over different prediction times, but it does seem to help. See comparing `comparing_seeds.Rmd` for work arounds and further evidence of this problem.
+
+
+```{r}
+
+## Load Data ##
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+game_data_behavior <-  read_csv(path(here(), "munge", "all_subs_complete_behavior_df.csv"))
+
+bjh16_behave <- game_data_behavior %>%
+  filter(subject == "BJH016")
+
+bjh16_distance <- game_data_distance %>%
+  filter(subject == "BJH016")
+
+## Only Bob data #
+game_data_distance <- game_data_distance %>%
+  filter(attack_chase_bob == 'Bob') 
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(subject != "BJH026") %>% # no hc data
+  filter(trial_time <= 5.10) 
+
+
+```
+### LL14 - dropping trial counts
+
+The next 3 blocks of code are the same, except for the number of trials in the hold out set. I am trying to see if the AUC changes as I lower the number of trials in the hold out set. I am using the same seed for each trial count, so the only thing that should change is the number of trials in the hold out set. 
+
+AUC does not change much between all, half, and quarter trials.
+
+```{r all-trials}
+
+current_subject <- "LL14"
+permuted <- FALSE
+seed <- 123
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted, ieeg = FALSE)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+split_index <- create_test_train(split_df, seed)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+  
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_all_trials_", permuted)
+fit_joint_models(train_long_data, train_cox_df, file_name)
+
+all_trials_jm <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+prediction_time <- median(split_df$turnaround_time)
+tvAUC(all_trials_jm, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+  
+  
+```
+
+```{r half-trials}
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted, ieeg = FALSE)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+split_index <- create_test_train(split_df, seed)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# get half
+train_trials <- sample(train_trials, length(train_trials)/2)
+test_trials <- sample(test_trials, length(test_trials)/2)
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_half_trials_", permuted)
+fit_joint_models(train_long_data, train_cox_df, file_name)
+
+half_trials_jm <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+tvAUC(half_trials_jm, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+  
+  
+```
+
+```{r quarter-trials}
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted, ieeg = FALSE)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+split_index <- create_test_train(split_df, seed)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# get half
+train_trials <- sample(train_trials, length(train_trials)/4)
+test_trials <- sample(test_trials, length(test_trials)/4)
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_quarter_trials_", permuted)
+fit_joint_models(train_long_data, train_cox_df, file_name)
+
+quarter_trials_jm <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+tvAUC(quarter_trials_jm, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+  
+  
+```
+
+### BJH029 -- different test sets and prediction times
+
+Here I use different ways of averaging across the AUC to try to find a way to stabilize AUC estimates across different train/test splits. I am trying to avoid having to split the data into train/test sets many times, as this is time consuming. 
+
+```{r BJH029-all_trials}
+
+current_subject <- "BJH029"
+permuted <- FALSE
+file_name <- paste0(current_subject, "_hc_theta-basic_", as.character(permuted))
+
+## load model ##
+jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+
+```
+
+
+```{r 29-all_trials}
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+split_index <- create_test_train(split_df, 123)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# prediction times
+prediction_time <- median(split_df$turnaround_time)
+
+## Prep dfs ##
+# longitudinal dfs
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+
+```
+
+```{r BJH029-neural_trials}
+
+hc_sub_trials <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  pull(trial_numeric) %>%
+  unique()
+
+joint_dist_df <- joint_dist_df %>%
+  filter(trial_numeric %in% hc_sub_trials)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+split_index <- create_test_train(split_df, 123)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# prediction times
+prediction_time_neural <- median(split_df$turnaround_time)
+
+## Prep dfs ##
+# longitudinal dfs
+test_long_data_neural <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+```
+
+
+```{r BJH029-subset-trials}
+
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+
+hc_sub_trials <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  pull(trial_numeric) %>%
+  unique()
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+split_index <- create_test_train(split_df, 123)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+test_trials <- test_trials[test_trials %in% hc_sub_trials]
+
+## Prep dfs ##
+# longitudinal dfs
+test_long_data_subset <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+```
+
+
+```{r compare-different-cut-points-based-on-test-set}
+
+
+## AUC - all trials  ##
+auc <- c()
+for(pred_time in unique(test_long_data$turnaround_time)){
+  tmp <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  auc <- c(auc, tmp$auc)
+}
+
+
+## AUC - neural trials as a subset of all trials  ##
+auc_subset <- c()
+for(pred_time in unique(test_long_data_subset$turnaround_time)){
+  tmp <- tvAUC(jm_fit, newdata = test_long_data_subset, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  auc_subset <- c(auc_subset, tmp$auc)
+}
+
+## AUC -- neural trials ##
+auc_neral <- c()
+for(pred_time in unique(test_long_data_neural$turnaround_time)){
+  tmp <- tvAUC(jm_fit, newdata = test_long_data_neural, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  auc_neral <- c(auc_neral, tmp$auc)
+}
+
+print(mean(auc))
+print(mean(auc_subset))
+print(mean(auc_neral))
+
+
+print(median(auc))
+print(median(auc_subset))
+print(median(auc_neral))
+
+```
+
+
+
+```{r compare-same-cut-points-diff-test-set}
+
+timepoints <- seq(.8, 3.7, .1)
+
+## AUC - all trials  ##
+auc <- c()
+for(pred_time in timepoints){
+  tmp <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  auc <- c(auc, tmp$auc)
+}
+
+
+## AUC - neural trials as a subset of all trials  ##
+auc_subset <- c()
+for(pred_time in timepoints){
+  tmp <- tvAUC(jm_fit, newdata = test_long_data_subset, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  auc_subset <- c(auc_subset, tmp$auc)
+}
+
+## AUC -- neural trials ##
+auc_neral <- c()
+for(pred_time in timepoints){
+  tmp <- tvAUC(jm_fit, newdata = test_long_data_neural, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  auc_neral <- c(auc_neral, tmp$auc)
+}
+
+print(mean(auc))
+print(mean(auc_subset))
+print(mean(auc_neral))
+
+
+print(median(auc))
+print(median(auc_subset))
+print(median(auc_neral))
+
+```
+
+```{r}
+
+all_trial_auc <- tibble(auc = auc, trial_type = "all", pred_time = unique(test_long_data$turnaround_time))
+subset_trial_auc <- tibble(auc = auc_subset, trial_type = "subset", pred_time = unique(test_long_data_subset$turnaround_time))
+neural_trial_auc <- tibble(auc = auc_neral, trial_type = "neural", pred_time = unique(test_long_data_neural$turnaround_time))
+
+auc_df <- bind_rows(all_trial_auc, subset_trial_auc, neural_trial_auc)
+
+
+auc_df %>%
+  ggplot(., aes(x = pred_time, y = auc, color = trial_type)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
+
+Even with averaging across different cut points we see the AUC differ across different splits :(

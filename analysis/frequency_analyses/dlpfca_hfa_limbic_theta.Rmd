@@ -1,0 +1,688 @@
+---
+title: "Limbic Theta vs dlPFC HFA"
+output: html_document
+date: "2024-01-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 5,  # set default width of figures
+  fig.height = 8,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+```{r load-data}
+
+# ieeg limbic data #
+cing_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_cing_all_subs_logged_iti_onset.csv"))
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+amyg_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+
+# ieeg dlpfc data #
+dlpfc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+dlpfc_gamma_data <- read_csv( path(here(), "munge", "gamma_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_g_dist %>% 
+  select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
+
+```
+
+
+
+```{r bind-data}
+
+# hfa data #
+dlpfc_hfa_data <- dlpfc_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+dlpfc_gamma_data <- dlpfc_gamma_data %>% 
+  mutate(freq = "gamma") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+# bind gamma, hfa data #
+dlpfc_data <- full_join(dlpfc_hfa_data, dlpfc_gamma_data, by = c("subject", "trial_numeric", "trial_time", "electrode", "freq", "power"))
+
+# average gamma + hfa #
+dlpfc_data <- dlpfc_data %>% 
+  group_by(subject, trial_numeric, trial_time, electrode) %>%
+  mutate(avg_power = mean(power)) %>%
+  select(-freq, -power) %>%
+  distinct() %>%
+  rename(power = avg_power) %>%
+  mutate(freq = "hfa_gamma") %>%
+  mutate(region = "dlpfc")
+
+# prep theta data #
+cing_data <- cing_theta_data %>% 
+  mutate(freq = "theta") %>%
+  mutate(region = "cing") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+ofc_data <- ofc_theta_data %>% 
+  mutate(freq = "theta") %>%
+  mutate(region = "ofc") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+hc_data <- hc_theta_data %>% 
+  mutate(freq = "theta") %>%
+  mutate(region = "hc") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+amyg_data <- amyg_theta_data %>% 
+  mutate(freq = "theta") %>%
+  mutate(region = "amyg") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+# bind ieeg data #
+ieeg_data <- bind_rows(dlpfc_data, cing_data, ofc_data, hc_data, amyg_data)
+
+
+# bind with behavioral data #
+ieeg_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ieeg_data %>% mutate(trial_time = round(trial_time, 2)))
+
+```
+
+```{r read-in-attack-tables}
+
+## load and compile attack tables ##
+for(sub in unique(all_subs_dist$subject)){
+  
+  tmp <- read_csv(path(here(), "data", "ieeg_behave", paste0(sub, "_attack_events.csv")))
+  tmp <- tmp %>%
+    mutate(subject = sub)
+  
+  if(exists("attack_events")){
+    attack_events <- bind_rows(attack_events, tmp)
+  } else {
+    attack_events <- tmp
+  }
+  
+}
+
+## modify to get trials of interest ##
+attack_events <- attack_events %>%
+  mutate(trial_numeric = neural_trial_numeric + 1) %>%
+  mutate(attacks_ids = paste0(subject, "_", trial_numeric))
+
+
+```
+
+## Turnaround
+
+```{r shift-to-turnaround}
+
+# shift to center around turnaround  #
+turnaround_df <- ieeg_behave_df %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time)) %>%
+  mutate(time = trial_time - turnaround_time) %>%
+  ungroup() 
+
+
+
+```
+
+
+
+```{r plot-dlpfc, fig.height= 14, fig.width = 20}
+
+dlpfc_average_df <- turnaround_df %>%
+  mutate(time = round(time, 2)) %>%
+  select(subject, electrode, trial_numeric, time, power, region) %>%
+  distinct() %>%
+  filter(region == "dlpfc") %>%
+  group_by(time, electrode, subject) %>%
+  mutate(mean_elec = mean(power, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(time, subject) %>%
+  mutate(mean_sub = mean(mean_elec, na.rm = T)) %>%
+  ungroup()
+
+
+dlpfc_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  group_by(time) %>%
+  mutate(mean_power = mean(mean_sub, na.rm = T)) %>%
+  ggplot(., aes(x = time, y = mean_power)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("dlPFC ~ HFA/Gamma")
+
+
+dlpfc_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  filter(!subject %in% c("BJH021", "BJH016", "SLCH002", "BJH026", "BJH027", "BJH039", "LL10", "LL17", "LL19")) %>%
+  group_by(time) %>%
+  mutate(mean_power = mean(mean_sub, na.rm = T)) %>%
+  ggplot(., aes(x = time, y = mean_power)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("SFG ~ HFA/Gamma")
+
+
+dlpfc_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  filter(subject %in% c("BJH021", "BJH016", "SLCH002", "BJH026", "BJH027", "BJH039", "LL10", "LL17", "LL19")) %>%
+  group_by(time) %>%
+  mutate(mean_power = mean(mean_sub, na.rm = T)) %>%
+  ggplot(., aes(x = time, y = mean_power)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("MFG ~ HFA/Gamma")
+
+
+
+dlpfc_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  ggplot(., aes(x = time, y = mean_sub, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = getPalette(15)) +
+  facet_wrap(~subject) +
+  ggtitle("dlPFC ~ HFA/Gamma")
+
+
+
+
+
+```
+
+```{r plot-cing, fig.height= 24, fig.width = 20}
+
+cing_average_df <- turnaround_df %>%
+  mutate(time = round(time, 2)) %>%
+  select(subject, electrode, trial_numeric, time, power, region) %>%
+  distinct() %>%
+  filter(region == "cing") %>%
+  group_by(time, electrode, subject) %>%
+  mutate(mean_elec = mean(power, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(time, subject) %>%
+  mutate(mean_sub = mean(mean_elec, na.rm = T)) %>%
+  ungroup()
+
+
+cing_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  group_by(time) %>%
+  mutate(mean_power = mean(mean_sub, na.rm = T)) %>%
+  ggplot(., aes(x = time, y = mean_power)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Ant. Cingulate ~ Theta")
+
+
+cing_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  ggplot(., aes(x = time, y = mean_sub, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = getPalette(15)) +
+  facet_wrap(~subject, ncol = 3) +
+  ggtitle("Ant. Cingulate ~ Theta")
+
+
+
+
+```
+
+```{r plot-ofc, fig.height= 24, fig.width = 20}
+
+ofc_average_df <- turnaround_df %>%
+  mutate(time = round(time, 2)) %>%
+  select(subject, electrode, trial_numeric, time, power, region) %>%
+  distinct() %>%
+  filter(region == "ofc") %>%
+  group_by(time, electrode, subject) %>%
+  mutate(mean_elec = mean(power, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(time, subject) %>%
+  mutate(mean_sub = mean(mean_elec, na.rm = T)) %>%
+  ungroup()
+
+
+ofc_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  group_by(time) %>%
+  mutate(mean_power = mean(mean_sub, na.rm = T)) %>%
+  ggplot(., aes(x = time, y = mean_power)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("OFC ~ Theta")
+
+ofc_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  ggplot(., aes(x = time, y = mean_sub, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = getPalette(15)) +
+  facet_wrap(~subject, ncol = 3) +
+  ggtitle("OFC ~ Theta")
+
+
+
+
+```
+```{r plot-hc, fig.height= 24, fig.width = 20}
+
+hc_average_df <- turnaround_df %>%
+  mutate(time = round(time, 2)) %>%
+  select(subject, electrode, trial_numeric, time, power, region) %>%
+  distinct() %>%
+  filter(region == "hc") %>%
+  group_by(time, electrode, subject) %>%
+  mutate(mean_elec = mean(power, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(time, subject) %>%
+  mutate(mean_sub = mean(mean_elec, na.rm = T)) %>%
+  ungroup()
+
+
+hc_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  group_by(time) %>%
+  mutate(mean_power = mean(mean_sub, na.rm = T)) %>%
+  ggplot(., aes(x = time, y = mean_power)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("HC ~ Theta")
+
+hc_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  ggplot(., aes(x = time, y = mean_sub, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = getPalette(15)) +
+  facet_wrap(~subject, ncol = 3) +
+  ggtitle("HC ~ Theta")
+
+
+
+
+```
+
+```{r plot-amyg, fig.height= 24, fig.width = 20}
+
+amyg_average_df <- turnaround_df %>%
+  mutate(time = round(time, 2)) %>%
+  select(subject, electrode, trial_numeric, time, power, region) %>%
+  distinct() %>%
+  filter(region == "amyg") %>%
+  group_by(time, electrode, subject) %>%
+  mutate(mean_elec = mean(power, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(time, subject) %>%
+  mutate(mean_sub = mean(mean_elec, na.rm = T)) %>%
+  ungroup()
+
+
+amyg_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  group_by(time) %>%
+  mutate(mean_power = mean(mean_sub, na.rm = T)) %>%
+  ggplot(., aes(x = time, y = mean_power)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Amygdala ~ Theta")
+
+amyg_average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  ggplot(., aes(x = time, y = mean_sub, color = subject)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = getPalette(15)) +
+  facet_wrap(~subject, ncol = 3) +
+  ggtitle("Amygdala ~ Theta")
+
+
+
+
+```
+
+## Limbic Theta + dlPFC HFA/Gamma
+
+
+```{r plot-limbic-dlpfc, fig.height= 24, fig.width = 20}
+
+average_df <- turnaround_df %>%
+  mutate(time = round(time, 2)) %>%
+  select(subject, electrode, trial_numeric, time, power, region) %>%
+  distinct() %>%
+  group_by(region, time, electrode, subject) %>%
+  mutate(mean_elec = mean(power, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(region, time, subject) %>%
+  mutate(mean_sub = mean(mean_elec, na.rm = T)) %>%
+  ungroup()
+
+
+average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  group_by(region, time) %>%
+  mutate(mean_power = mean(mean_sub, na.rm = T)) %>%
+  ggplot(., aes(x = time, y = mean_power, color = region)) +
+  geom_point(size = 3) +
+  geom_line(size = 3) +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) 
+
+average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  ggplot(., aes(x = time, y = mean_sub, color = region)) +
+  geom_point(size = 2) +
+  geom_line(size = 2) +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = getPalette(15)) +
+  facet_wrap(~subject, ncol = 3) 
+
+
+
+
+```
+
+## Attack Events
+
+```{r plot-cing-dlpfc, fig.height= 14, fig.width = 18}
+
+average_attack_df <- turnaround_df %>%
+  mutate(trial_ids = paste0(subject, "_", trial_numeric)) %>%
+  filter(trial_ids %in% attack_events$attacks_ids) %>%
+  mutate(time = round(time, 2)) %>%
+  select(subject, electrode, trial_numeric, time, power, region) %>%
+  distinct() %>%
+  group_by(region, time, electrode, subject) %>%
+  mutate(mean_elec = mean(power, na.rm = T)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(region, time, subject) %>%
+  mutate(mean_sub = mean(mean_elec, na.rm = T)) %>%
+  ungroup()
+
+average_attack_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  group_by(region, time) %>%
+  mutate(mean_power = mean(mean_sub, na.rm = T)) %>%
+  ggplot(., aes(x = time, y = mean_power, color = region)) +
+  geom_point(size = 3) +
+  geom_line(size = 3) +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Limbic Theta + dlPFC HFA/Gamma during attack")
+
+
+average_df %>%
+  select(-mean_elec, electrode) %>%
+  distinct() %>%
+  filter(time > -2 & time < 2) %>%
+  ggplot(., aes(x = time, y = mean_sub, color = region)) +
+  geom_point(size = 2) +
+  geom_line(size = 2) +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_color_manual(values = getPalette(15)) +
+  facet_wrap(~subject, ncol = 3) +
+  ggtitle("Cing Theta + dlPFC HFA/Gamma during attack")
+
+
+
+
+```
+
+```{r attack, fig.height= 10, fig.width = 16}
+
+
+
+# shift to center around turnaround  # THIS NEEDS TO BE REWORKED!!!!
+turnaround_df <- ieeg_behave_df %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # filter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time)) %>%
+  mutate(time = trial_time - turnaround_time) %>%
+  ungroup() %>%
+  distinct()
+
+average_attack_df <- turnaround_df %>%
+  mutate(trial_ids = paste0(subject, "_", trial_numeric)) %>%
+  filter(trial_ids %in% attack_events$attacks_ids) %>%
+  mutate(time = round(time, 2)) %>%
+  select(subject, electrode, sample, trial_numeric, time, power, region) %>%
+  distinct() 
+  
+attack_rt_prep <- attack_events %>%
+  select(subject, trial_numeric, attacks_ids, sample) %>%
+  rename(attack_sample = sample)
+  
+
+average_attack_rt_df <- left_join(average_attack_df, attack_rt_prep)
+
+# calculate RT
+average_attack_rt_df <- average_attack_rt_df %>%
+  group_by(subject, trial_numeric, electrode, region) %>%
+  mutate(tmp = any(sample == attack_sample)) %>%
+  filter(tmp == T) %>%
+  mutate(attack_time = time[sample == attack_sample]) %>%
+  select(-tmp) %>%
+  ungroup() 
+
+rt_df <- average_attack_rt_df %>%
+  select(subject, trial_numeric, time, attack_sample, attack_time) %>%
+  distinct() 
+
+
+tmp <- rt_df %>%
+  select(-time) %>%
+  distinct() %>%
+  mutate(rt = abs(attack_time)) %>%
+  filter(rt > .1) %>%
+  ggplot(., aes(x = rt)) +
+  geom_histogram(binwidth = 0.05) +
+  theme(panel.background = element_rect(fill = "white")) 
+
+```
+
+
+```{r attack-rt, fig.height= 30, fig.width = 16}
+
+
+tmp <- average_attack_rt_df %>%
+  mutate(rt = abs(attack_time)) %>%
+  arrange(rt) %>%
+  mutate(attacks_ids = factor(attacks_ids, levels = unique(attacks_ids))) %>%
+  filter(region == 'dlpfc') %>%
+  # mutate(attack_time = round(time - rt, 2)) %>%
+  mutate(power = if_else(power >5, 5, if_else(power < -5, -5, power))) %>%
+  ggplot(., aes(x = time, y = attacks_ids, fill = power)) +
+  geom_tile() +
+  geom_point(aes(x = attack_time, y = attacks_ids), color = "white", size = 1) +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_viridis() +
+  xlim(-1, 1)
+
+
+
+```
+
+
+
+
