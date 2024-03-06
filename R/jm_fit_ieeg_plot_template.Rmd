@@ -118,7 +118,7 @@ num_train_trials <- c()
 seed_list <- c()
 survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
 
-for(current_seed in sample(1:100, 1)){
+for(current_seed in sample(1:100, 10)){
 
     cat(paste0("\n\n## ", current_subject, " - ", current_seed, "\n"))
     seed_list <- c(seed_list, current_seed)
