@@ -274,7 +274,7 @@ fit_joint_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
   control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
-  lm_threat <- lme(distance_to_ghost ~ trial_time*ghost_direction, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
+  lm_threat <- lme(distance_to_ghost ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
   lm_reward <- lme(points_remaining ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
   
   # survival model #

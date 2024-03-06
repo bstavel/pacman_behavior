@@ -92,17 +92,15 @@ cat(paste0("\n\n## ", current_subject, "\n"))
 ```{r load-data, results='asis', echo=FALSE, eval = T}
 
 ## Load Data ##
-game_data_behavior <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data_2-3-24.csv"))
-pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data_2-3-24.csv"))
-ns_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data_newsample_2-3-24.csv"))
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
 
-## Bind Rows ##
-game_data_distance <- bind_rows(pilot_game_data_distance, ns_game_data_distance)
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(subject != "BJH026") %>% # no hc data
+  filter(trial_time <= 5.10) 
 
 ```
-
-
-
 
 
 ```{r fit-model-over-10-splits, results='asis', echo=FALSE, eval = T}
@@ -127,6 +125,15 @@ for(current_seed in sample(1:100, 1)){
     
     ## Prep DF for Joint Model Fitting and select predictor variables ##
     joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+    
+    # only ieeg trials
+    hc_sub_trials <- hc_theta_data %>%
+      filter(subject == current_subject) %>%
+      pull(trial_numeric) %>%
+      unique()
+  
+    joint_dist_df <- joint_dist_df %>%
+      filter(trial_numeric %in% hc_sub_trials)
     
     ## Create Test/Train ##
     split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups) %>% distinct()
@@ -183,73 +190,73 @@ for(current_seed in sample(1:100, 1)){
     print(paste0("Max Test Time: ", max_time))
     cat(paste0("\n\n"))
 
-    # ### Calibration/Discrimintation ###
-    # ## Loop over different prediction times ##
-    # auc <- c()
-    # ici <- c()
-    # e50 <- c()
-    # e90 <- c()
-    # brier <- c()
-    # timepoints <- unique(test_cox_df$turnaround_time)
-    # test_times <- quantile(timepoints[timepoints > .5], probs = c(.2, .4, .5, .6, .8))
-    # for(pred_time in test_times){
-    #   # AUC #
-    #   tmp_auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5,
-    #                Thoriz = pred_time, idVar = 'trial_numeric')
-    #   auc <- c(auc, tmp_auc$auc)
-    # 
-    #   ## Calibration ##
-    #   toi <- pred_time - .5
-    #   # calibration plot
-    #   calibration_plot(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
-    #   # calibration metrics
-    #   tmp_cal <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
-    #   ici <- c(ici, tmp_cal[1])
-    #   e50 <- c(e50, tmp_cal[2])
-    #   e90 <- c(e90, tmp_cal[3])
-    # 
-    #   # rbier scores
-    #   tmp_brier <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
-    #   brier <- c(brier, tmp_brier$Brier)
-    # 
-    # }
-    # 
-    # ### Print AUC ###
-    # auc_list <- c(auc_list, mean(auc))
-    # print(paste0("AUC: ", mean(auc)))
-    # cat(paste0("\n\n"))
-    # print("All AUCs: ")
-    # print(sort(auc))
-    # cat(paste0("\n\n"))
-    # 
-    # ### Print Calibration ###
-    # ici_list <- c(ici_list, mean(ici))
-    # print(paste0("ICI: ", mean(ici)))
-    # e50_list <- c(e50_list, mean(e50))
-    # print(paste0("E50: ", mean(e50)))
-    # e90_list <- c(e90_list, mean(e90))
-    # print(paste0("E90: ", mean(e90)))
-    # cat(paste0("\n\n"))
-    # 
-    # ### Brier Scores ###
-    # brier_list <- c(brier_list, mean(brier))
-    # print(paste0("Brier Score: ", mean(brier)))
-    # print("All Bier Scores: ")
-    # print(sort(brier))
-    # cat(paste0("\n\n"))
-    # 
-    # ## Custom Checks ##
-    # 
-    # # get predictions
-    # test_predictions <- predict_on_test_set(jm_fit, test_long_data, test_cox_df)
-    # 
-    # # plot prediction plot
-    # ggthemr("solarized")
-    # plot_survival_predictions(test_predictions, current_subject)
-    # 
-    # # plot correlation plot
-    # cor <- plot_correlation_plot(test_predictions, current_subject)
-    # core_list <- c(core_list, cor)
+    ### Calibration/Discrimintation ###
+    ## Loop over different prediction times ##
+    auc <- c()
+    ici <- c()
+    e50 <- c()
+    e90 <- c()
+    brier <- c()
+    timepoints <- unique(test_cox_df$turnaround_time)
+    test_times <- quantile(timepoints[timepoints > .5], probs = c(.2, .4, .5, .6, .8))
+    for(pred_time in test_times){
+      # AUC #
+      tmp_auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5,
+                   Thoriz = pred_time, idVar = 'trial_numeric')
+      auc <- c(auc, tmp_auc$auc)
+
+      ## Calibration ##
+      toi <- pred_time - .5
+      # calibration plot
+      calibration_plot(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+      # calibration metrics
+      tmp_cal <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+      ici <- c(ici, tmp_cal[1])
+      e50 <- c(e50, tmp_cal[2])
+      e90 <- c(e90, tmp_cal[3])
+
+      # rbier scores
+      tmp_brier <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+      brier <- c(brier, tmp_brier$Brier)
+
+    }
+
+    ### Print AUC ###
+    auc_list <- c(auc_list, mean(auc))
+    print(paste0("AUC: ", mean(auc)))
+    cat(paste0("\n\n"))
+    print("All AUCs: ")
+    print(sort(auc))
+    cat(paste0("\n\n"))
+
+    ### Print Calibration ###
+    ici_list <- c(ici_list, mean(ici))
+    print(paste0("ICI: ", mean(ici)))
+    e50_list <- c(e50_list, mean(e50))
+    print(paste0("E50: ", mean(e50)))
+    e90_list <- c(e90_list, mean(e90))
+    print(paste0("E90: ", mean(e90)))
+    cat(paste0("\n\n"))
+
+    ### Brier Scores ###
+    brier_list <- c(brier_list, mean(brier))
+    print(paste0("Brier Score: ", mean(brier)))
+    print("All Bier Scores: ")
+    print(sort(brier))
+    cat(paste0("\n\n"))
+
+    ## Custom Checks ##
+
+    # get predictions
+    test_predictions <- predict_on_test_set(jm_fit, test_long_data, test_cox_df)
+
+    # plot prediction plot
+    ggthemr("solarized")
+    plot_survival_predictions(test_predictions, current_subject)
+
+    # plot correlation plot
+    cor <- plot_correlation_plot(test_predictions, current_subject)
+    core_list <- c(core_list, cor)
 
 }
 
@@ -268,8 +275,8 @@ metrics_df <- tibble("subjects" = rep(current_subject, length(seed_list)),
                       "brier" = brier_list,
                       "cor" = core_list)
 
-write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", paste0(current_subject, "fit_metrics_base_dir_model_df.csv")))
-write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", paste0(current_subject, "model_params_base_dir_model_df.csv")))
+write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", paste0(current_subject, "fit_metrics_base_model_df.csv")))
+write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", paste0(current_subject, "model_params_base_model_df.csv")))
 
 ```
 
