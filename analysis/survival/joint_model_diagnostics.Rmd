@@ -80,23 +80,38 @@ c25 <- c(
 ```{r load-data, results='asis', echo=FALSE}
 
 ## load distance data
-pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+# game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+## Only Bob data #
+game_data_distance <- game_data_distance %>%
+  filter(attack_chase_bob == 'Bob') 
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(subject != "BJH026") %>% # no hc data
+  filter(trial_time <= 5.10) 
 
 ```
 
 
-```{r load-model, results='asis', echo=FALSE}
+```{r load-model-basic, results='asis', echo=FALSE, eval = F}
 
-for(current_subject in unique(pilot_game_data_distance$subject)){
-    permuted <- TRUE
-    file_name <- paste0(current_subject, "_", as.character(permuted))
+for(current_subject in unique(game_data_distance$subject)){
+    permuted <- FALSE
+    file_name <- paste0(current_subject, "_hc_theta-basic_", as.character(permuted))
     cat(paste0("\n\n## ", current_subject, "\n"))
     
     ## load model ##
     jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
     
+    ## Print summary ##
+    print(kable(summary(jm_fit)$Survival) %>% kable_styling())
+    cat(paste0("\n\n"))
+    
     ## Prep DF for Joint Model Fitting and select predictor variables ##
-    joint_dist_df <- prep_joint_df(pilot_game_data_distance, current_subject, permuted)
+    joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
     
     ## Create Test/Train ##
     split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
@@ -104,8 +119,13 @@ for(current_subject in unique(pilot_game_data_distance$subject)){
     train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
     test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
     
-    ## look at split ##
+    print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+    cat(paste0("\n\n"))
+    
+    # prediction times
     prediction_time <- median(split_df$turnaround_time)
+    
+    ## look at split ##
     split_plot <- split_df %>%
       mutate(split = if_else(trial_numeric %in% train_trials, "train", "test")) %>%
       ggplot(., aes(x = turnaround_time, fill = split)) +
@@ -129,12 +149,20 @@ for(current_subject in unique(pilot_game_data_distance$subject)){
     test_cox_df <- cox_df %>%
       filter(trial_numeric %in% test_trials)
     
+    min_time <- min(test_cox_df$turnaround_time)
+    max_time <- max(test_cox_df$turnaround_time)
+    print(paste0("Prediction Time: ", prediction_time))
+    print(paste0("Min Test Time: ", min_time))
+    print(paste0("Max Test Time: ", max_time))
+    cat(paste0("\n\n"))
+    
     ### Calibration/Discrimintation ###
     ## ROC ##
     roc <- tvROC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
     plot(roc)   
     ## AUC ##
-    tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    print(auc)
     
     ### Calibration ###
     toi <- prediction_time - .5
@@ -201,6 +229,842 @@ for(current_subject in unique(pilot_game_data_distance$subject)){
 }
 ```
 
+```{r load-model-theta-neural-trials, results='asis', echo=FALSE, eval = F}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+survival_df <- tibble("subject"= c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+for(current_subject in unique(game_data_distance$subject)){
+    permuted <- FALSE
+    seed <- 123
+    file_name <- paste0(current_subject, "_hc_theta_", as.character(permuted))
+    cat(paste0("\n\n## ", current_subject, "\n"))
+    
+    ## load model ##
+    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+    
+    ## Print summary ##
+    print(kable(summary(jm_fit)$Survival) %>% kable_styling())
+    cat(paste0("\n\n"))
+    
+    dic_list <- c(dic_list, jm_fit$fit_stats$marginal$DIC)
+    survival_df <- rbind(survival_df, 
+                                     summary(jm_fit)$Survival %>% 
+                                       mutate(predictor = rownames(summary(jm_fit)$Survival)) %>%
+                                       select(predictor, Mean, StDev, `2.5%`, `97.5%`, P, `Rhat`) %>% 
+                                       mutate(subject = current_subject))
+    
+    ## Prep DF for Joint Model Fitting and select predictor variables ##
+    joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+    
+    hc_sub_trials <- hc_theta_data %>%
+      filter(subject == current_subject) %>%
+      pull(trial_numeric) %>%
+      unique()
+    
+    joint_dist_df <- joint_dist_df %>%
+      filter(trial_numeric %in% hc_sub_trials)
+    
+    ## Create Test/Train ##
+    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+    split_index <- create_test_train(split_df, seed)
+    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    num_test_trials <- c(num_test_trials, length(test_trials))
+    num_train_trials <- c(num_train_trials, length(train_trials))
+    
+    print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+    cat(paste0("\n\n"))
+    
+    # prediction times
+    prediction_time <- median(split_df$turnaround_time)
+    pred_time_list <- c(pred_time_list, prediction_time)
+    
+    ## look at split ##
+    split_plot <- split_df %>%
+      mutate(split = if_else(trial_numeric %in% train_trials, "train", "test")) %>%
+      ggplot(., aes(x = turnaround_time, fill = split)) +
+      geom_density(alpha = 0.5, color = "black") +
+      geom_vline(xintercept = prediction_time, color = "black") +
+      theme(panel.background = element_rect(fill = "white", colour = "black"))
+    
+    print(split_plot)
+    
+    ## Merge with the neural predictors ##
+    joint_theta_dist_df <- prep_for_nerual_predictors(joint_dist_df, hc_theta_data)
+
+    ## Prep dfs ##
+    # longitudinal dfs
+    train_long_data <- joint_theta_dist_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_long_data <- joint_theta_dist_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    # survival dfs
+    cox_df <- create_survival_df(joint_theta_dist_df)
+    train_cox_df <- cox_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_cox_df <- cox_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    min_time <- min(test_cox_df$turnaround_time)
+    max_time <- max(test_cox_df$turnaround_time)
+    print(paste0("Prediction Time: ", prediction_time))
+    print(paste0("Min Test Time: ", min_time))
+    print(paste0("Max Test Time: ", max_time))
+    cat(paste0("\n\n"))
+    
+    ### Calibration/Discrimintation ###
+    ## ROC ##
+    roc <- tvROC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    plot(roc)   
+    ## AUC ##
+    auc <- c()
+    v <- sort(unique(test_long_data$turnaround_time))
+    timepoints <- (v[-length(v)] + v[-1]) / 2
+    min_turn_time <- min(v[v > .5])
+    for(pred_time in timepoints[timepoints > min_turn_time]){
+      if(current_subject == "LL10" & pred_time == 3.45){
+        next
+      }
+      tmp <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, 
+                   Thoriz = pred_time, idVar = 'trial_numeric')
+      auc <- c(auc, tmp$auc)
+    }
+    auc_list <- c(auc_list, mean(auc))
+    print(paste0("AUC: ", mean(auc)))
+    cat(paste0("\n\n"))
+    print("All AUCs: ")
+    print(sort(auc))
+    cat(paste0("\n\n"))
+    
+    ### Calibration ###
+    toi <- prediction_time - .5
+    calibration_plot(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    ici_list <- c(ici_list, cal_mets[1])
+    print(paste0("ICI: ", cal_mets[1]))
+    e50_list <- c(e50_list, cal_mets[2])
+    print(paste0("E50: ", cal_mets[2]))
+    e90_list <- c(e90_list, cal_mets[3])
+    print(paste0("E90: ", cal_mets[3]))
+    cat(paste0("\n\n"))
+    
+    ### Brier Scores ###
+    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+    brier_list <- c(brier_list, brier_scores$Brier)
+    print(paste0("Brier Score: ", brier_scores$Brier))
+    
+    ## Custom Checks ##
+    ggthemr("solarized")
+    
+    test_three_trials <- test_long_data %>% 
+      filter(trial_time < .5) %>%
+      select(-turnaround_time, -EVENT)
+    
+    test_preds <- predict(jm_fit, 
+              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+    
+    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+    test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+    
+    test_preds_true <- test_preds_true %>%
+      arrange(turntime_real) %>%
+      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+    
+    # Now use 'numeric_for_color' for the color aesthetic in ggplot
+    prediction_plot <- ggplot(test_preds_true, aes(x = trial_time, y = pred_CIF, color = trial_numeric)) +
+      geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
+      geom_vline(aes(xintercept = turntime_real, color = trial_numeric, alpha = .7)) +
+      geom_point() +
+      scale_color_viridis_d() +  # Using Viridis color scale
+      theme(panel.background = element_rect(fill = "white"),
+            axis.text = element_text(color = "black", size = 12),
+            axis.title = element_text(color = "black", size = 12),
+            legend.position =  'none',
+            plot.title  = element_text(color = "black", size = 16, face = "plain")) +
+      ylim(0, 1) + xlim(0, 2.5) + labs(color = "Test Trial") +
+      ggtitle(paste0("Prediction on held out trials: ", current_subject)) +
+      labs(x = "Time", y = "Probability of Turning Around")
+    
+    print(prediction_plot)
+    
+    
+    scatter_pred_df <- test_preds_true %>%
+      mutate(near_50 = abs(pred_CIF - .5)) %>%
+      group_by(trial_numeric) %>%
+      mutate(closest_to_50 = min(near_50)) %>%
+      filter(closest_to_50 == near_50) %>%
+      mutate(turntime_pred = trial_time) %>%
+      ungroup() %>%
+      select(trial_numeric, turntime_real, turntime_pred) %>%
+      distinct()
+    
+    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+    core_list <- c(core_list, cor_score)
+    print(paste0("Correlation: ", cor_score))
+    
+    scatter_pred_plot <- scatter_pred_df %>%
+      ggplot(., aes(x = turntime_real, y = turntime_pred)) +
+      geom_point(size = 4) +
+      theme(panel.background = element_rect(fill = "white")) +
+      labs(x = "True Turnaround Time", y = "Predicted Turnaround Time") +
+      ylim(.5, 2) + xlim(.5, 2) +
+      ggtitle(paste0("Prediction Scatterplot: ", current_subject))
+    
+    print(scatter_pred_plot)
+
+}
+
+
+metrics_df <- tibble("subjects" = unique(game_data_distance$subject),
+                  "dic"  = dic_list,
+                  "auc" = auc_list,
+                  "ici" = ici_list,
+                  "e50" = e50_list,
+                  "e90" = e90_list,
+                  "brier" = brier_list,
+                  "cor" = core_list)
+
+write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", "fit_metrics_neural_trials_theta_preds_seed123_df.csv"))
+write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", "model_params_neural_trials_theta_preds_seed123_df.csv"))
+
+```
+
+```{r load-model-theta-neural-trials-new-seed, results='asis', echo=FALSE, eval = T}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+survival_df <- tibble("subject"= c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+for(current_subject in unique(game_data_distance$subject)){
+    permuted <- FALSE
+    seed <- 78
+    file_name <- paste0(current_subject, "_hc_theta_", seed, "_", as.character(permuted))
+    cat(paste0("\n\n## ", current_subject, "\n"))
+    
+    ## load model ##
+    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+    
+    ## Print summary ##
+    print(kable(summary(jm_fit)$Survival) %>% kable_styling())
+    cat(paste0("\n\n"))
+    
+    dic_list <- c(dic_list, jm_fit$fit_stats$marginal$DIC)
+    survival_df <- rbind(survival_df, 
+                                     summary(jm_fit)$Survival %>% 
+                                       mutate(predictor = rownames(summary(jm_fit)$Survival)) %>%
+                                       select(predictor, Mean, StDev, `2.5%`, `97.5%`, P, `Rhat`) %>% 
+                                       mutate(subject = current_subject))
+    
+    ## Prep DF for Joint Model Fitting and select predictor variables ##
+    joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+    
+    hc_sub_trials <- hc_theta_data %>%
+      filter(subject == current_subject) %>%
+      pull(trial_numeric) %>%
+      unique()
+    
+    joint_dist_df <- joint_dist_df %>%
+      filter(trial_numeric %in% hc_sub_trials)
+    
+    ## Create Test/Train ##
+    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+    split_index <- create_test_train(split_df, seed)
+    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    num_test_trials <- c(num_test_trials, length(test_trials))
+    num_train_trials <- c(num_train_trials, length(train_trials))
+    
+    print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+    cat(paste0("\n\n"))
+    
+    # prediction times
+    prediction_time <- median(split_df$turnaround_time)
+    pred_time_list <- c(pred_time_list, prediction_time)
+    
+    ## look at split ##
+    split_plot <- split_df %>%
+      mutate(split = if_else(trial_numeric %in% train_trials, "train", "test")) %>%
+      ggplot(., aes(x = turnaround_time, fill = split)) +
+      geom_density(alpha = 0.5, color = "black") +
+      geom_vline(xintercept = prediction_time, color = "black") +
+      theme(panel.background = element_rect(fill = "white", colour = "black"))
+    
+    print(split_plot)
+    
+    ## Merge with the neural predictors ##
+    joint_theta_dist_df <- prep_for_nerual_predictors(joint_dist_df, hc_theta_data)
+
+    ## Prep dfs ##
+    # longitudinal dfs
+    train_long_data <- joint_theta_dist_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_long_data <- joint_theta_dist_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    # survival dfs
+    cox_df <- create_survival_df(joint_theta_dist_df)
+    train_cox_df <- cox_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_cox_df <- cox_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    min_time <- min(test_cox_df$turnaround_time)
+    max_time <- max(test_cox_df$turnaround_time)
+    print(paste0("Prediction Time: ", prediction_time))
+    print(paste0("Min Test Time: ", min_time))
+    print(paste0("Max Test Time: ", max_time))
+    cat(paste0("\n\n"))
+    
+    ### Calibration/Discrimintation ###
+    ## ROC ##
+    roc <- tvROC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    plot(roc)   
+    ## AUC ##
+    auc <- c()
+    v <- sort(unique(test_long_data$turnaround_time))
+    timepoints <- (v[-length(v)] + v[-1]) / 2
+    min_turn_time <- min(v[v > .5])
+    for(pred_time in timepoints[timepoints > min_turn_time]){
+      if(current_subject == "LL10" & pred_time == 3.45){
+        next
+      }
+      tmp <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, 
+                   Thoriz = pred_time, idVar = 'trial_numeric')
+      auc <- c(auc, tmp$auc)
+    }
+    auc_list <- c(auc_list, mean(auc))
+    print(paste0("AUC: ", mean(auc)))
+    cat(paste0("\n\n"))
+    print("All AUCs: ")
+    print(sort(auc))
+    cat(paste0("\n\n"))
+    
+    ### Calibration ###
+    toi <- prediction_time - .5
+    calibration_plot(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    ici_list <- c(ici_list, cal_mets[1])
+    print(paste0("ICI: ", cal_mets[1]))
+    e50_list <- c(e50_list, cal_mets[2])
+    print(paste0("E50: ", cal_mets[2]))
+    e90_list <- c(e90_list, cal_mets[3])
+    print(paste0("E90: ", cal_mets[3]))
+    cat(paste0("\n\n"))
+    
+    ### Brier Scores ###
+    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+    brier_list <- c(brier_list, brier_scores$Brier)
+    print(paste0("Brier Score: ", brier_scores$Brier))
+    
+    ## Custom Checks ##
+    ggthemr("solarized")
+    
+    test_three_trials <- test_long_data %>% 
+      filter(trial_time < .5) %>%
+      select(-turnaround_time, -EVENT)
+    
+    test_preds <- predict(jm_fit, 
+              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+    
+    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+    test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+    
+    test_preds_true <- test_preds_true %>%
+      arrange(turntime_real) %>%
+      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+    
+    # Now use 'numeric_for_color' for the color aesthetic in ggplot
+    prediction_plot <- ggplot(test_preds_true, aes(x = trial_time, y = pred_CIF, color = trial_numeric)) +
+      geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
+      geom_vline(aes(xintercept = turntime_real, color = trial_numeric, alpha = .7)) +
+      geom_point() +
+      scale_color_viridis_d() +  # Using Viridis color scale
+      theme(panel.background = element_rect(fill = "white"),
+            axis.text = element_text(color = "black", size = 12),
+            axis.title = element_text(color = "black", size = 12),
+            legend.position =  'none',
+            plot.title  = element_text(color = "black", size = 16, face = "plain")) +
+      ylim(0, 1) + xlim(0, 2.5) + labs(color = "Test Trial") +
+      ggtitle(paste0("Prediction on held out trials: ", current_subject)) +
+      labs(x = "Time", y = "Probability of Turning Around")
+    
+    print(prediction_plot)
+    
+    
+    scatter_pred_df <- test_preds_true %>%
+      mutate(near_50 = abs(pred_CIF - .5)) %>%
+      group_by(trial_numeric) %>%
+      mutate(closest_to_50 = min(near_50)) %>%
+      filter(closest_to_50 == near_50) %>%
+      mutate(turntime_pred = trial_time) %>%
+      ungroup() %>%
+      select(trial_numeric, turntime_real, turntime_pred) %>%
+      distinct()
+    
+    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+    core_list <- c(core_list, cor_score)
+    print(paste0("Correlation: ", cor_score))
+    
+    scatter_pred_plot <- scatter_pred_df %>%
+      ggplot(., aes(x = turntime_real, y = turntime_pred)) +
+      geom_point(size = 4) +
+      theme(panel.background = element_rect(fill = "white")) +
+      labs(x = "True Turnaround Time", y = "Predicted Turnaround Time") +
+      ylim(.5, 2) + xlim(.5, 2) +
+      ggtitle(paste0("Prediction Scatterplot: ", current_subject))
+    
+    print(scatter_pred_plot)
+
+}
+
+
+metrics_df <- tibble("subjects" = unique(game_data_distance$subject),
+                  "dic"  = dic_list,
+                  "auc" = auc_list,
+                  "ici" = ici_list,
+                  "e50" = e50_list,
+                  "e90" = e90_list,
+                  "brier" = brier_list,
+                  "cor" = core_list)
+
+write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", "fit_metrics_neural_trials_theta_preds_seed78_df.csv"))
+write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", "model_params_neural_trials_theta_preds_seed78_df.csv"))
+
+```
+
+
+```{r load-model-basic-neural-trials, results='asis', echo=FALSE, eval = F}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+survival_df <- tibble("subject"= c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+for(current_subject in unique(game_data_distance$subject)[10:14]){
+    permuted <- FALSE
+    seed <- 123
+    file_name <- paste0(current_subject, "_hc_theta-basic_", as.character(permuted))
+    cat(paste0("\n\n## ", current_subject, "\n"))
+    
+    ## load model ##
+    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+    
+    ## Print summary ##
+    print(kable(summary(jm_fit)$Survival) %>% kable_styling())
+    cat(paste0("\n\n"))
+    
+    dic_list <- c(dic_list, jm_fit$fit_stats$marginal$DIC)
+    survival_df <- rbind(survival_df, 
+                                     summary(jm_fit)$Survival %>% 
+                                       mutate(predictor = rownames(summary(jm_fit)$Survival)) %>%
+                                       select(predictor, Mean, StDev, `2.5%`, `97.5%`, P, `Rhat`) %>% 
+                                       mutate(subject = current_subject))
+    
+    ## Prep DF for Joint Model Fitting and select predictor variables ##
+    joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+    
+    hc_sub_trials <- hc_theta_data %>%
+      filter(subject == current_subject) %>%
+      pull(trial_numeric) %>%
+      unique()
+    
+    joint_dist_df <- joint_dist_df %>%
+      filter(trial_numeric %in% hc_sub_trials)
+    
+    ## Create Test/Train ##
+    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+    split_index <- create_test_train(split_df, seed)
+    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    num_test_trials <- c(num_test_trials, length(test_trials))
+    num_train_trials <- c(num_train_trials, length(train_trials))
+    
+    print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+    cat(paste0("\n\n"))
+    
+    # prediction times
+    prediction_time <- median(split_df$turnaround_time)
+    pred_time_list <- c(pred_time_list, prediction_time)
+    
+    ## look at split ##
+    split_plot <- split_df %>%
+      mutate(split = if_else(trial_numeric %in% train_trials, "train", "test")) %>%
+      ggplot(., aes(x = turnaround_time, fill = split)) +
+      geom_density(alpha = 0.5, color = "black") +
+      geom_vline(xintercept = prediction_time, color = "black") +
+      theme(panel.background = element_rect(fill = "white", colour = "black"))
+    
+    print(split_plot)
+    
+    ## Prep dfs ##
+    # longitudinal dfs
+    train_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    # survival dfs
+    cox_df <- create_survival_df(joint_dist_df)
+    train_cox_df <- cox_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_cox_df <- cox_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    min_time <- min(test_cox_df$turnaround_time)
+    max_time <- max(test_cox_df$turnaround_time)
+    print(paste0("Prediction Time: ", prediction_time))
+    print(paste0("Min Test Time: ", min_time))
+    print(paste0("Max Test Time: ", max_time))
+    cat(paste0("\n\n"))
+    
+    ### Calibration/Discrimintation ###
+    ## ROC ##
+    roc <- tvROC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    plot(roc)   
+    ## AUC ##
+    auc <- c()
+    v <- sort(unique(test_long_data$turnaround_time))
+    timepoints <- (v[-length(v)] + v[-1]) / 2
+    min_turn_time <- min(v[v > .5])
+    for(pred_time in timepoints[timepoints > min_turn_time]){
+      tmp <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+      auc <- c(auc, tmp$auc)
+    }
+    auc_list <- c(auc_list, mean(auc))
+    print(paste0("AUC: ", mean(auc)))
+    cat(paste0("\n\n"))
+    print("All AUCs: ")
+    print(sort(auc))
+    cat(paste0("\n\n"))
+    
+    ### Calibration ###
+    toi <- prediction_time - .5
+    calibration_plot(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    ici_list <- c(ici_list, cal_mets[1])
+    print(paste0("ICI: ", cal_mets[1]))
+    e50_list <- c(e50_list, cal_mets[2])
+    print(paste0("E50: ", cal_mets[2]))
+    e90_list <- c(e90_list, cal_mets[3])
+    print(paste0("E90: ", cal_mets[3]))
+    cat(paste0("\n\n"))
+    
+    ### Brier Scores ###
+    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+    brier_list <- c(brier_list, brier_scores$Brier)
+    print(paste0("Brier Score: ", brier_scores$Brier))
+    
+    ## Custom Checks ##
+    ggthemr("solarized")
+    
+    test_three_trials <- test_long_data %>% 
+      filter(trial_time < .5) %>%
+      select(-turnaround_time, -EVENT)
+    
+    test_preds <- predict(jm_fit, 
+              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+    
+    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+    test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+    
+    test_preds_true <- test_preds_true %>%
+      arrange(turntime_real) %>%
+      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+    
+    # Now use 'numeric_for_color' for the color aesthetic in ggplot
+    prediction_plot <- ggplot(test_preds_true, aes(x = trial_time, y = pred_CIF, color = trial_numeric)) +
+      geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
+      geom_vline(aes(xintercept = turntime_real, color = trial_numeric, alpha = .7)) +
+      geom_point() +
+      scale_color_viridis_d() +  # Using Viridis color scale
+      theme(panel.background = element_rect(fill = "white"),
+            axis.text = element_text(color = "black", size = 12),
+            axis.title = element_text(color = "black", size = 12),
+            legend.position =  'none',
+            plot.title  = element_text(color = "black", size = 16, face = "plain")) +
+      ylim(0, 1) + xlim(0, 2.5) + labs(color = "Test Trial") +
+      ggtitle(paste0("Prediction on held out trials: ", current_subject)) +
+      labs(x = "Time", y = "Probability of Turning Around")
+    
+    print(prediction_plot)
+    
+    
+    scatter_pred_df <- test_preds_true %>%
+      mutate(near_50 = abs(pred_CIF - .5)) %>%
+      group_by(trial_numeric) %>%
+      mutate(closest_to_50 = min(near_50)) %>%
+      filter(closest_to_50 == near_50) %>%
+      mutate(turntime_pred = trial_time) %>%
+      ungroup() %>%
+      select(trial_numeric, turntime_real, turntime_pred) %>%
+      distinct()
+    
+    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+    core_list <- c(core_list, cor_score)
+    print(paste0("Correlation: ", cor_score))
+    
+    scatter_pred_plot <- scatter_pred_df %>%
+      ggplot(., aes(x = turntime_real, y = turntime_pred)) +
+      geom_point(size = 4) +
+      theme(panel.background = element_rect(fill = "white")) +
+      labs(x = "True Turnaround Time", y = "Predicted Turnaround Time") +
+      ylim(.5, 2) + xlim(.5, 2) +
+      ggtitle(paste0("Prediction Scatterplot: ", current_subject))
+    
+    print(scatter_pred_plot)
+
+}
+
+
+metrics_df <- tibble("subjects" = unique(game_data_distance$subject),
+                  "dic"  = dic_list,
+                  "auc" = auc_list,
+                  "ici" = ici_list,
+                  "e50" = e50_list,
+                  "e90" = e90_list,
+                  "brier" = brier_list,
+                  "cor" = core_list)
+
+write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", "fit_metrics_neural_trials_base_preds_seed123_df.csv"))
+write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", "model_params_neural_trials_base_preds_seed123_df.csv"))
+
+```
+
+
+
+```{r load-model-basic-neural-trials-new-seed, results='asis', echo=FALSE, eval = F}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+survival_df <- tibble("subject"= c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+for(current_subject in unique(game_data_distance$subject)){
+    permuted <- FALSE
+    seed <- 78
+    file_name <- paste0(current_subject, "_hc_theta-basic_", seed, "_", as.character(permuted))
+    cat(paste0("\n\n## ", current_subject, "\n"))
+    
+    ## load model ##
+    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+    
+    ## Print summary ##
+    print(kable(summary(jm_fit)$Survival) %>% kable_styling())
+    cat(paste0("\n\n"))
+    
+    dic_list <- c(dic_list, jm_fit$fit_stats$marginal$DIC)
+    survival_df <- rbind(survival_df, 
+                                     summary(jm_fit)$Survival %>% 
+                                       mutate(predictor = rownames(summary(jm_fit)$Survival)) %>%
+                                       select(predictor, Mean, StDev, `2.5%`, `97.5%`, P, `Rhat`) %>% 
+                                       mutate(subject = current_subject))
+    
+    ## Prep DF for Joint Model Fitting and select predictor variables ##
+    joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+    
+    hc_sub_trials <- hc_theta_data %>%
+      filter(subject == current_subject) %>%
+      pull(trial_numeric) %>%
+      unique()
+    
+    joint_dist_df <- joint_dist_df %>%
+      filter(trial_numeric %in% hc_sub_trials)
+    
+    ## Create Test/Train ##
+    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+    split_index <- create_test_train(split_df, seed)
+    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    num_test_trials <- c(num_test_trials, length(test_trials))
+    num_train_trials <- c(num_train_trials, length(train_trials))
+    
+    print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+    cat(paste0("\n\n"))
+    
+    # prediction times
+    prediction_time <- median(split_df$turnaround_time)
+    pred_time_list <- c(pred_time_list, prediction_time)
+    
+    ## look at split ##
+    split_plot <- split_df %>%
+      mutate(split = if_else(trial_numeric %in% train_trials, "train", "test")) %>%
+      ggplot(., aes(x = turnaround_time, fill = split)) +
+      geom_density(alpha = 0.5, color = "black") +
+      geom_vline(xintercept = prediction_time, color = "black") +
+      theme(panel.background = element_rect(fill = "white", colour = "black"))
+    
+    print(split_plot)
+    
+    ## Prep dfs ##
+    # longitudinal dfs
+    train_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    # survival dfs
+    cox_df <- create_survival_df(joint_dist_df)
+    train_cox_df <- cox_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_cox_df <- cox_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    min_time <- min(test_cox_df$turnaround_time)
+    max_time <- max(test_cox_df$turnaround_time)
+    print(paste0("Prediction Time: ", prediction_time))
+    print(paste0("Min Test Time: ", min_time))
+    print(paste0("Max Test Time: ", max_time))
+    cat(paste0("\n\n"))
+    
+    ### Calibration/Discrimintation ###
+    ## ROC ##
+    roc <- tvROC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    plot(roc)   
+    ## AUC ##
+    auc <- c()
+    v <- sort(unique(test_long_data$turnaround_time))
+    timepoints <- (v[-length(v)] + v[-1]) / 2
+    for(pred_time in timepoints){
+      tmp <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+      auc <- c(auc, tmp$auc)
+    }
+    auc_list <- c(auc_list, mean(auc))
+    print(paste0("AUC: ", mean(auc)))
+    cat(paste0("\n\n"))
+    print("All AUCs: ")
+    print(sort(auc))
+    cat(paste0("\n\n"))
+    
+    ### Calibration ###
+    toi <- prediction_time - .5
+    calibration_plot(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    ici_list <- c(ici_list, cal_mets[1])
+    print(paste0("ICI: ", cal_mets[1]))
+    e50_list <- c(e50_list, cal_mets[2])
+    print(paste0("E50: ", cal_mets[2]))
+    e90_list <- c(e90_list, cal_mets[3])
+    print(paste0("E90: ", cal_mets[3]))
+    cat(paste0("\n\n"))
+    
+    ### Brier Scores ###
+    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+    brier_list <- c(brier_list, brier_scores$Brier)
+    print(paste0("Brier Score: ", brier_scores$Brier))
+    
+    ## Custom Checks ##
+    ggthemr("solarized")
+    
+    test_three_trials <- test_long_data %>% 
+      filter(trial_time < .5) %>%
+      select(-turnaround_time, -EVENT)
+    
+    test_preds <- predict(jm_fit, 
+              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+    
+    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+    test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+    
+    test_preds_true <- test_preds_true %>%
+      arrange(turntime_real) %>%
+      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+    
+    # Now use 'numeric_for_color' for the color aesthetic in ggplot
+    prediction_plot <- ggplot(test_preds_true, aes(x = trial_time, y = pred_CIF, color = trial_numeric)) +
+      geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
+      geom_vline(aes(xintercept = turntime_real, color = trial_numeric, alpha = .7)) +
+      geom_point() +
+      scale_color_viridis_d() +  # Using Viridis color scale
+      theme(panel.background = element_rect(fill = "white"),
+            axis.text = element_text(color = "black", size = 12),
+            axis.title = element_text(color = "black", size = 12),
+            legend.position =  'none',
+            plot.title  = element_text(color = "black", size = 16, face = "plain")) +
+      ylim(0, 1) + xlim(0, 2.5) + labs(color = "Test Trial") +
+      ggtitle(paste0("Prediction on held out trials: ", current_subject)) +
+      labs(x = "Time", y = "Probability of Turning Around")
+    
+    print(prediction_plot)
+    
+    
+    scatter_pred_df <- test_preds_true %>%
+      mutate(near_50 = abs(pred_CIF - .5)) %>%
+      group_by(trial_numeric) %>%
+      mutate(closest_to_50 = min(near_50)) %>%
+      filter(closest_to_50 == near_50) %>%
+      mutate(turntime_pred = trial_time) %>%
+      ungroup() %>%
+      select(trial_numeric, turntime_real, turntime_pred) %>%
+      distinct()
+    
+    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+    core_list <- c(core_list, cor_score)
+    print(paste0("Correlation: ", cor_score))
+    
+    scatter_pred_plot <- scatter_pred_df %>%
+      ggplot(., aes(x = turntime_real, y = turntime_pred)) +
+      geom_point(size = 4) +
+      geom_smooth(method = "lm", fill = "lightgrey", color = "black") +
+      theme(panel.background = element_rect(fill = "white")) +
+      labs(x = "True Turnaround Time", y = "Predicted Turnaround Time") +
+      ylim(.5, 4) + xlim(.5, 4) +
+      ggtitle(paste0("Prediction Scatterplot: ", current_subject))
+    
+    print(scatter_pred_plot)
+
+}
+
+
+metrics_df <- tibble("subjects" = unique(game_data_distance$subject),
+                  "dic"  = dic_list,
+                  "auc" = auc_list,
+                  "ici" = ici_list,
+                  "e50" = e50_list,
+                  "e90" = e90_list,
+                  "brier" = brier_list,
+                  "cor" = core_list)
+
+write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", "fit_metrics_neural_trials_base_preds_seed78_df.csv"))
+write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", "model_params_neural_trials_base_preds_seed78_df.csv"))
+
+```
 
 
 

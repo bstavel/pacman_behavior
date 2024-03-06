@@ -1,0 +1,613 @@
+---
+title: "Normative Behavior Anxiety"
+output: html_document
+date: "2024-01-17"
+---
+---
+title: "Normative Gameplay on the Pacman Task from Clinical/Nonclincal Set"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+## Exploratory Data Analysis
+
+```{r load-data, echo = F, warning = F}
+# game data #
+pilot_game_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_pacman_200_trial_CLINICAL_n59.csv'), 
+                                                                                              col_types = cols(X1 = col_double(),
+                                                                                              subject = col_character(),
+                                                                                              Trial = col_character(),
+                                                                                              Lives = col_double(),
+                                                                                              TrialType = col_double(),
+                                                                                              Time = col_double(),
+                                                                                              GhostLocation = col_double(),
+                                                                                              UserLocation = col_double(),
+                                                                                              Direction = col_double(),
+                                                                                              Biscuit1 = col_logical(),
+                                                                                              Biscuit2 = col_logical(),
+                                                                                              Biscuit3 = col_logical(),
+                                                                                              Biscuit4 = col_logical(),
+                                                                                              Biscuit5 = col_logical(),
+                                                                                              Attack = col_logical(),
+                                                                                              Chase = col_logical(),
+                                                                                              Eaten = col_double(),
+                                                                                              Score = col_double(),
+                                                                                              final_score = col_double()))
+
+
+# behavioral data#
+pilot_behave_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_behave_data_200_trial_CLINICAL_n59.csv'), 
+                                       col_types = cols())
+
+```
+
+```{r create-clean-distance-dfs}
+
+pilot_game_data_clean <- clean_prolific_data(pilot_game_data)
+
+pilot_game_data_distance <- create_distance_prolific(pilot_game_data_clean)
+```
+
+
+```{r game-level-variables, echo = F}
+
+
+pilot_all_vars_df <- pilot_game_data_clean %>%
+  group_by(subject) %>%
+  filter(!is.na(Score)) %>%
+  filter(Trial != "ITI") %>%
+  # calculate number of deaths
+  mutate(death_check = as.numeric(c(diff(Score) < 0, FALSE))) %>%
+  mutate(total_deaths = sum(death_check)) %>%
+  mutate(max_trial = max(trial_numeric)) %>%
+  mutate(trial_in_block = trial_numeric %% 20) %>%
+  mutate(trial_in_block = if_else(trial_in_block == 0, 20, trial_in_block)) %>%
+  # new minigame
+  mutate(lives_check = as.numeric(c(diff(Lives) > 0, FALSE))) %>%
+  mutate(total_games = sum(lives_check) + 1) %>%
+  group_by(subject, Trial) %>%
+  mutate(dots_eaten = max(Eaten)) %>%
+  mutate(max_score = max(Score, na.rm = T)) %>%
+  filter(trial_length < 5) %>%
+  mutate(chase_trial = any(Chase)) %>%
+  mutate(attack_trial = any(Attack)) %>%
+  mutate(trial_died = sum(death_check)) %>%
+  mutate(last_trial_in_minigame = sum(lives_check)) %>% # if lose all lives, mark as last trial
+  mutate(last_trial_in_minigame = if_else(trial_in_block == 20, 1, last_trial_in_minigame)) %>% # 20 is always last trial 
+  group_by(subject) %>%
+  mutate(average_score = mean(max_score)) %>%
+  mutate(max_time = max(Time)) %>%
+  select(subject, Trial, trial_numeric, trial_in_block, TrialType, trial_length,
+         trial_died, last_trial_in_minigame, Lives, dots_eaten,
+         chase_trial, attack_trial, 
+         max_trial, total_deaths, average_score, final_score, max_time) %>%
+  distinct()
+
+# get trials in minigame
+round <- 1
+game <- 1
+pilot_all_vars_df$trial_in_minigame <- 0
+pilot_all_vars_df$minigame <- 0
+for(idx in 1:nrow(pilot_all_vars_df)){
+  # add to df
+  pilot_all_vars_df$trial_in_minigame[idx] <- round
+  pilot_all_vars_df$minigame[idx] <- game
+  if(pilot_all_vars_df$last_trial_in_minigame[idx] == 1){
+    round <- 1
+    game <- game + 1
+  } else {
+    round <- round + 1
+  }
+  
+  if(pilot_all_vars_df$subject[idx + 1] != pilot_all_vars_df$subject[idx] & idx != nrow(pilot_all_vars_df)) {
+    round <- 1
+    game <- 1
+  }
+  
+}
+
+# max trials in minigame and such
+pilot_all_vars_df <- pilot_all_vars_df %>%
+  group_by(subject) %>%
+  mutate(longest_minigame = max(trial_in_minigame)) %>%
+  mutate(longest_minigame_under20 = max(trial_in_minigame[trial_in_minigame < 20])) %>%
+  mutate(number_of_minigames = max(minigame)) %>%
+  mutate(block = ceiling(trial_numeric/20)) %>%
+  group_by(subject, block) %>%
+  mutate(block_deaths = sum(trial_died)) %>%
+  mutate(average_dots_per_block = mean(dots_eaten))
+
+```
+
+```{r save-files, eval =T}
+
+write_csv(pilot_behave_data, path(here(), "munge", "prolific", "cleaned_pilot_behavior_clinical.csv"))
+write_csv(pilot_game_data_clean, path(here(), "munge", "prolific", "cleaned_pilot_game_data_clinical.csv"))
+write_csv(pilot_game_data_distance, path(here(), "munge", "prolific", "cleaned_pilot_distance_data_clinical.csv"))
+write_csv(pilot_all_vars_df, path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data_clinical.csv"))
+
+```
+
+
+## Game play over time
+
+People seem to be very good at the game-- every player had at least one block where they did not have a new minigame (no more than 3 deaths). People get better over time, especially over the first two blocks.
+
+```{r game-level-time, echo = F, fig.width=9, fig.height=4.5}
+
+
+pilot_all_vars_df %>%
+  ggplot(., aes(x = factor(block), y = block_deaths)) +
+  geom_boxplot() +
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text = element_text(color = "black", size = 12),
+        axis.title = element_text(color = "black", size = 12),
+        plot.title  = element_text(color = "black", size = 16),
+        plot.subtitle = element_text(color = "black", size = 14)) +
+    labs(subtitle = "Players were eaten ~3x per block, and tended to do better over time", x = "Block", y = "Deaths") +
+  ggtitle("Number of Deaths per Block")
+
+pilot_all_vars_df %>%
+  ggplot(., aes(x = factor(block), y = average_dots_per_block, fill = 'f')) +
+  geom_violin(alpha = .7) +
+  geom_boxplot(notch = T, width =.2) +
+  labs(y = "Dots") +
+ theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(color = "black", size = 12),
+        axis.title = element_text(color = "black", size = 12),
+        plot.title  = element_text(color = "black", size = 16),
+        plot.subtitle = element_text(color = "black", size = 14))  +
+  labs(subtitle = "People most often collected 4 dots and then turned around", x = "Block") +
+  ggtitle("Average Dots Eaten per Block")
+
+
+
+```
+
+## Trial Level Variables
+
+### Avoiding the Ghost
+
+```{r distance, warning=F, fig.width=9, fig.height=4.5, echo = F}
+
+
+# number of turns #
+pilot_game_data_distance %>%
+  select(subject, trial_numeric, number_of_runs) %>%
+  distinct() %>%
+  ggplot(., aes(x = subject, fill = factor(number_of_runs))) +
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text.x = element_blank(), 
+        legend.position = "top") +
+  labs(fill = "Number of turns from ghost", title = "Number of turns per trial by subject", subtitle = "Most subjects had a single turn from the ghost") +
+  geom_bar() +
+  scale_fill_viridis(discrete = T, direction = -1) +
+  guides(fill=guide_legend(nrow=1,byrow=TRUE))
+
+
+# by subject hist of distance #
+pilot_game_data_distance %>%
+  filter(Trial != "ITI") %>%
+  ggplot(., aes(x = distance_to_ghost)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  geom_histogram(binwidth = 10, alpha = .7) +
+  labs(title = "Histogram of distance to ghost within and across trials")
+
+
+```
+
+#### Operationalizing the choice to avoid
+
+There are two reasonable choices for characterizing risk or avoidance during the trial. The first is the distance to the ghost when the player turned away from the ghost and the second is the minimum distance from the ghost on any given trial. I tend to think that the former is a slightly better choice since it is more closely tied to player choice, whereas the min distance can also be driven by the ghost turning around when the subject didn't expect it.
+
+```{r last_away_min_dist, warning=F, fig.width=9, fig.height=4.5, echo = F}
+
+
+# last away #
+pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, last_away) %>%
+  distinct() %>%
+  filter(subject %in% sample(subject, 20)) %>%
+  ggplot(., aes(x = subject, y = last_away)) +
+  # geom_point(alpha = .3) +
+  # geom_violin() +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  ylab("Distance to Ghost at Turnaround") + xlab("Subjects") +
+  theme(panel.background = element_rect(fill = "white"), axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  ggtitle("Subject Variability in Turning Distance", subtitle = "Random sample of 20 subjects shows that the within subject variability \nin turn around time is usually less than across subject variability")
+
+
+# min distance #
+pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, min_distance) %>%
+  distinct() %>%
+  filter(subject %in% sample(subject, 20)) %>%
+  ggplot(., aes(x = subject, y = min_distance)) +
+  # geom_point(alpha = .3) +
+  # geom_violin() +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  ylab("Minimum Distance from Ghost") + xlab("Subjects") +
+  theme(panel.background = element_rect(fill = "white"), axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  ggtitle("Subject Variability in Minimum Distance", subtitle = "Random sample of 20 subjects shows that the within subject variability \nin min distance to ghost each trial is usually less than across subject variability")
+
+
+```
+
+
+```{r dsitance-with-or-without-chaseattack-trials, fig.width=10, fig.height=5, warning = F, eval = F}
+
+clean_distance_bob_data <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  mutate(dist_ghost_nobob = distance_to_ghost) %>%
+  select(subject, trial_numeric, dist_ghost_nobob)
+  
+
+clean_distance_data <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0)%>%
+  select(subject, trial_numeric, distance_to_ghost)
+
+distance_compare <- full_join(clean_distance_data, clean_distance_bob_data)
+
+subs <- sample(clean_distance_data$subject, 10)
+
+distance_compare %>%
+  filter(subject %in% subs) %>%
+  pivot_longer(cols = c(distance_to_ghost, dist_ghost_nobob), values_to = "last_away", names_to = "type") %>%
+  ggplot(., aes(x = subject, y = last_away, fill = type )) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+tmp_33_bob <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  filter(subject== "Subject_33") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_33 <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0) %>%
+  filter(subject== "Subject_33") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+
+tmp_14_bob <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  filter(subject== "Subject_14") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_14 <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0) %>%
+  filter(subject== "Subject_14") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_29_bob <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  filter(subject== "Subject_29") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_29 <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0) %>%
+  filter(subject== "Subject_29") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+
+tmp_42_bob <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & attack_chase_bob == 'Bob' & dots_eaten > 0) %>%
+  filter(subject== "Subject_42") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+tmp_42 <- pilot_game_data_distance %>%
+  filter(away_choice == last_away & away_choice != 0 & dots_eaten > 0) %>%
+  filter(subject== "Subject_42") %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small"))
+
+summary(lm(last_away ~ rewardgroup, data = tmp_33_bob))
+summary(lm(last_away ~ rewardgroup, data = tmp_33))
+
+summary(lm(last_away ~ rewardgroup, data = tmp_14_bob))
+summary(lm(last_away ~ rewardgroup, data = tmp_14))
+
+summary(lm(last_away ~ rewardgroup, data = tmp_29_bob))
+summary(lm(last_away ~ rewardgroup, data = tmp_29))
+
+summary(lm(last_away ~ rewardgroup, data = tmp_42_bob))
+summary(lm(last_away ~ rewardgroup, data = tmp_42))
+
+# subject 33 stayed further back than other subjects
+tmp_33_bob %>%
+  ggplot(aes(x = dots_eaten)) +
+  geom_bar() +
+  theme(panel.background = element_rect(fill = "white"))
+
+# What made them go for the 4th reward? it doesn't seem to matter if the reward was large or not#
+tmp_33_bob %>%
+  mutate(reward_4_large = if_else(reward_groups %in% c(2, 4), "large", "small")) %>%
+  ggplot(., aes(x = factor(dots_eaten), y = last_away, fill = reward_4_large)) +
+  geom_boxplot(notch = F) +
+  geom_point(aes(color = reward_4_large), color = "black", position = position_dodge(width = .8)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("4 dot large") + labs(fill = "")
+
+tmp_33_bob %>%
+  mutate(reward_4_large = if_else(reward_groups %in% c(2, 4), "large", "small")) %>%
+  ggplot(., aes(x = factor(dots_eaten), y = last_away, fill = rewardgroup)) +
+  geom_boxplot(notch = F) +
+  geom_point(aes(color = rewardgroup), color = "black", position = position_dodge(width = .8)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("last two dots large") + labs(fill = "")
+
+# Was it the direction of the ghost
+tmp2_33_bob <- pilot_game_data_distance %>%
+  filter(attack_chase_bob == 'Bob' & dots_eaten >= 3) %>%
+  filter(subject== "Subject_33") %>%
+  filter(Eaten > 2) %>%
+  mutate(rewardgroup = if_else(reward_groups > 2, "large", "small")) %>%
+  group_by(trial_numeric) %>%
+  mutate(ghost_dir_at_dot_3 = first(ghost_direction)) %>%
+  select(trial_numeric, Eaten, Lives, ghost_dir_at_dot_3) %>%
+  distinct() 
+
+tmp2_33_bob %>%
+  ggplot(., aes(fill = ghost_dir_at_dot_3, x = factor(Eaten)))+
+  geom_bar(position= position_dodge2()) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+tmp2_33_bob %>%
+  ggplot(., aes(fill = factor(Lives), x = factor(Eaten)))+
+  geom_bar(position= position_dodge2()) +
+  theme(panel.background = element_rect(fill = "white"))
+
+# Found it! This subject would only get the 4th dot if they had full lives, they never lost a minigame!
+pilot_game_data_distance %>%
+  filter(subject== "Subject_33") %>%
+  filter(trial_flip == 1) %>%
+  ggplot(., aes(fill = factor(Lives), x = factor(dots_eaten)))+
+  geom_bar(position= position_dodge2()) +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
+### How did distance to ghost change based on other trial dynamics
+
+```{r distance_reward, warning=F, fig.width=9, fig.height=4.5, echo = F}
+
+# last away ~ reward groups
+pilot_game_data_distance %>%
+  select(reward_groups, last_away, min_distance, trial_numeric, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x = factor(reward_groups), y = last_away, fill = factor(reward_groups))) +
+  geom_jitter(alpha = .2, color = "grey") +
+  geom_boxplot(notch = T) +
+  coord_flip() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top") +
+  scale_fill_viridis(discrete = T, direction = -1) +
+  labs(y = "Reward Groups", x = "Distance to Ghost at Turnaround", fill = "Reward Groups", title = "Turnaround Dsitance by Reward Groups", subtitle = 
+         "Reward Groups with the larger reward in the last position had shorter turnaround distances")
+
+
+# Eaten ~ reward groups
+pilot_game_data_distance %>%
+  select(reward_groups, Eaten, trial_numeric, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x = factor(Eaten), fill = factor(reward_groups))) +
+  geom_bar(position = "dodge2") +
+  # geom_errorbar(aes(ymin=stat_count()-sd, ymax=stat_count()+sd), width=.2,
+                 # position="dodge2") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top") +
+  scale_fill_viridis(discrete = T, direction = -1) +
+  labs(x = "Number of Dots Eaten", y = "Eaten", fill = "Reward Groups", title = "Number of Dots Eaten by Reward Group", subtitle = 
+         "All 5 dots were eaten more often when the last dot was the higher reward")
+
+
+# last_away ~ lives
+pilot_game_data_distance %>%
+  select(Lives, last_away, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x = factor(Lives), y = last_away, fill = factor(Lives))) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "none") +
+  labs(x = "Lives", y = "Distance to Ghost at Turnaround", fill = "Lives", title = "Turn Around Distance By Number of Remaining Lives", subtitle = "Subjects stayed farther away from the ghost when they only had one life remaining")
+
+
+
+# Did the the ghost direction make it more likely to turn around?
+pilot_game_data_distance %>%
+  filter(last_away == away_choice) %>%
+  filter(ghost_direction != "still") %>%
+  ggplot(., aes(x = ghost_direction, fill = ghost_direction)) +
+  geom_bar() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "none") +
+  labs(x = "Ghost Direction", title = "Ghost Direction at time of last turnaround", subtitle = "Players were more likely to turnaround if the ghost was moving towards them")
+
+
+pilot_game_data_distance %>%
+  filter(number_of_runs > 0) %>%
+  filter(last_away == away_choice) %>%
+  filter(ghost_direction != "still") %>%
+  ggplot(., aes(x = ghost_direction, y = last_away, fill = ghost_direction)) +
+  geom_jitter(color = 'grey', alpha = .2) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "none") +
+  labs(x = "Ghost Direction", title = "Turnaround Distance by Ghost Direction", subtitle = "Players turnaround at a farther distance from the ghost when the ghost was moving ~away~ from them")
+```
+
+## Chase and Attack
+
+### Chase
+
+```{r chase-df, warning=F, fig.width=9, fig.height=4.5, echo = F}
+
+pilot_all_vars_df %>%
+  filter(chase_trial == T) %>%
+  select(subject, trial_numeric) %>%
+  distinct() %>%
+  group_by(subject) %>%
+  add_count() %>%
+  ggplot(., aes(x = n)) +
+  geom_histogram() +
+  theme(panel.background = element_rect(fill = "white")) +
+  labs(x = "Number of Trials", title = "Number of Trials with a Chase", subtitle = "10-35% of trials include a chase (out of 200 trials total)")
+
+
+pilot_all_vars_df %>%
+  ungroup() %>%
+  filter(chase_trial == T & trial_died) %>%
+  select(subject, trial_numeric) %>%
+  distinct() %>%
+  group_by(subject) %>%
+  add_count() %>%
+  ggplot(., aes(x = n)) +
+  geom_histogram(binwidth = 1) +
+  theme(panel.background = element_rect(fill = "white")) +
+  labs(x = "Number of Deaths", title = "Number of deaths on chase trials by subject", subtitle = "Dying on a chase trial is fairly rare, with most players dying on about 5 chase trials (out of 20-70 trials)")
+
+
+```
+
+### Attack
+
+```{r attack-df, warning=F, fig.width=9, fig.height=4.5, echo = F}
+
+pilot_all_vars_df %>%
+  filter(attack_trial == T) %>%
+  select(subject, trial_numeric) %>%
+  distinct() %>%
+  group_by(subject) %>%
+  add_count() %>%
+  ggplot(., aes(x = n)) +
+  geom_histogram() +
+  theme(panel.background = element_rect(fill = "white")) +
+  labs(x = "Number of Trials", title = "Number of Trials with a Attack", subtitle = "5-20% of trials include a attack (out of 200 trials total)")
+
+
+pilot_all_vars_df %>%
+  ungroup() %>%
+  filter(attack_trial == T & trial_died == 1) %>%
+  select(subject, trial_numeric) %>%
+  distinct() %>%
+  group_by(subject) %>%
+  add_count() %>%
+  ggplot(., aes(x = n)) +
+  geom_histogram(binwidth = 1) +
+  theme(panel.background = element_rect(fill = "white")) +
+  labs(x = "Number of Deaths", title = "Number of deaths on attack trials by subject", subtitle = "Dying on an attack trial is common (by design), with most players dying on most of their attack trials")
+
+
+```
+
+
+## Were Number of Dots Eaten / Distance to Ghost affected by 'irrelevant' variables?
+
+
+```{r eaten_irrev, warning=F, fig.width=9, fig.height=4.5, echo = F}
+
+# eaten ~ direction
+pilot_game_data_distance %>%
+  select(subject, trial_numeric, dots_eaten, base_start_location) %>%
+  mutate(left_right = if_else(base_start_location < 100, "Left", "Right")) %>%
+  group_by(subject, left_right) %>%
+  mutate(average_dots_eaten = mean(dots_eaten)) %>%
+  distinct() %>%
+  ggplot(., aes(x = left_right, y = average_dots_eaten)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  labs(y = "Average Dots Eaten", x= "", title = "Dots Eaten by Starting Location", subtitle = "No effect of starting location on the number of dots eaten")
+
+
+# last away ~ direction
+pilot_game_data_distance %>%
+  select(subject, trial_numeric, last_away, base_start_location) %>%
+  mutate(left_right = if_else(base_start_location < 100, "Left", "Right")) %>%
+  group_by(subject, left_right) %>%
+  mutate(average_last_away = mean(last_away)) %>%
+  distinct() %>%
+  ggplot(., aes(x = left_right, y = average_last_away)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white")) +
+  labs(y = "Average Turnaround Distance", x= "", title = "Last Away Distance by Starting Location", subtitle = "No effect of starting location on turnaround distance")
+
+
+```
+

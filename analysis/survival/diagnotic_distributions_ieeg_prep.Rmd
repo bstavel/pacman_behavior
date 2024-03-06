@@ -1,0 +1,962 @@
+---
+title: "Model Diagnostics prep - iEEG Sample"
+output: html_document
+date: "2024-02-02"
+---
+
+---
+title: "Distributions of Permuted and True Scores"
+output: html_document
+date: "2024-01-03"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+# Permuted vs True Model Comparison
+
+Compares the `standard_model` (`points_remaining` + `distance_to_ghost`) and the `permtued_model` where the timing information for each trial is preserved but the `points_remaining` and `distance_to_ghost` values are shuffled/shuffled. I look at the distriutions of the following performance metrics
+
+ * AUC
+ * ICI
+ * E50
+ * E90
+ * Brier Score
+ * Predicted vs Observed Correlations
+ 
+ From the initial look, the `standard_model` is significantly outperforming the `permuted_model` in AUC, meaning that it is correctly ranking trials in terms of risk. However, the calibration metrics are all *worse* in the `standard_model` compared to the `permuted_model`, so the model is still pretty far off from correctly predicting the probability of turnaround at any moment. I think the reason the measures are better in the `permuted_model` is that it just uses the average time of turnaround, which is maybe less dramatically off in terms of specific probabilities, but can't differentiate the trials very well. 
+ 
+ If I look at the calibration plots for subjects 14 and 15, I think you can see what is happening. For 14, the calibration metrics are better in the `standard_model` and the red line follows the dotted line pretty well. However, in 15, in the `standard_model` the red line is very off at the edges. However, the `permuted_model` has a red line that is defined on only a short range of the x-axis, so it is not as off, even though I think it is a worse model. 
+
+
+```{r load-data, results='asis', echo=FALSE}
+
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+
+
+```
+
+
+```{r concat-perm-model-diagnostics, results='asis', echo=FALSE}
+
+perm_sub_list <- c()
+auc_perm_list <- c()
+ici_perm_list <- c()
+e50_perm_list <- c()
+e90_perm_list <- c()
+brier_perm_list <- c()
+core_perm_list <- c()
+dic_perm_list <- c()
+rhat_dist_perm_list <- c()
+rhat_points_perm_list <- c()
+p_dist_perm_list <- c()
+p_points_perm_list <- c()
+beta_dist_perm_list <- c()
+beta_points_perm_list <- c()
+
+for(current_subject in unique(game_data_distance$subject)){
+    permuted <- TRUE
+    file_name <- paste0(current_subject, "_", as.character(permuted))
+    
+    try({
+    
+      ## load model ##
+      jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+      
+      ## get subject list ##
+      perm_sub_list <- c(perm_sub_list, current_subject)
+      
+      ## fit metrics ##
+      dic_perm_list <- c(dic_perm_list, jm_fit$fit_stats$marginal$DIC)
+      rhat_dist_perm_list <- c(rhat_dist_perm_list, summary(jm_fit)$Survival[1, 6])   
+      rhat_points_perm_list <- c(rhat_points_perm_list, summary(jm_fit)$Survival[2, 6])   
+      p_dist_perm_list <- c(p_dist_perm_list, summary(jm_fit)$Survival[1, 5])   
+      p_points_perm_list <- c(p_points_perm_list, summary(jm_fit)$Survival[2, 5])   
+      beta_dist_perm_list <- c(beta_dist_perm_list, summary(jm_fit)$Survival[1, 1])   
+      beta_points_perm_list <- c(beta_points_perm_list, summary(jm_fit)$Survival[2, 1])  
+      
+      ## Prep DF for Joint Model Fitting and select predictor variables ##
+      joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+      
+      ## Create Test/Train ##
+      split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+      split_index <- create_test_train(split_df, 123)
+      train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      
+      ## prediction time ##
+      prediction_time <- median(split_df$turnaround_time)
+      
+      ## Prep dfs ##
+      # longitudinal dfs
+      train_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+      # survival dfs
+      cox_df <- create_survival_df(joint_dist_df)
+      train_cox_df <- cox_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_cox_df <- cox_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+      ### Calibration/Discrimintation ###
+      ## AUC ##
+      auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+      auc_perm_list <- c(auc_perm_list, auc$auc)
+      
+      ### Calibration ###
+      toi <- prediction_time - .5
+      cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+      ici_perm_list <- c(ici_perm_list, cal_mets[1])
+      e50_perm_list <- c(e50_perm_list, cal_mets[2])
+      e90_perm_list <- c(e90_perm_list, cal_mets[3])
+      
+      ### Brier Scores ###
+      brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+      brier_perm_list <- c(brier_perm_list, brier_scores$Brier)
+      
+      ## Custom Checks ##
+      test_three_trials <- test_long_data %>% 
+        filter(trial_time < .5) %>%
+        select(-turnaround_time, -EVENT)
+      
+      test_preds <- predict(jm_fit, 
+                newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+                idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+      
+      test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+      test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+      
+      test_preds_true <- test_preds_true %>%
+        arrange(turntime_real) %>%
+        mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+      
+      # correaltions between pred and real
+      scatter_pred_df <- test_preds_true %>%
+        mutate(near_50 = abs(pred_CIF - .5)) %>%
+        group_by(trial_numeric) %>%
+        mutate(closest_to_50 = min(near_50)) %>%
+        filter(closest_to_50 == near_50) %>%
+        mutate(turntime_pred = trial_time) %>%
+        ungroup() %>%
+        select(trial_numeric, turntime_real, turntime_pred) %>%
+        distinct() 
+      
+      cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+      core_perm_list <- c(core_perm_list, cor_score)
+      
+    }, silent = TRUE)
+
+}
+```
+
+```{r concat-true-model-diagnostics,, results='asis', echo=FALSE}
+
+auc_true_list <- c()
+ici_true_list <- c()
+e50_true_list <- c()
+e90_true_list <- c()
+brier_true_list <- c()
+core_true_list <- c()
+dic_true_list <- c()
+rhat_dist_true_list <- c()
+rhat_points_true_list <- c()
+p_dist_true_list <- c()
+p_points_true_list <- c()
+beta_dist_true_list <- c()
+beta_points_true_list <- c()
+
+for(current_subject in unique(game_data_distance$subject)){
+    permuted <- FALSE
+    file_name <- paste0(current_subject, "_", as.character(permuted))
+    
+    try({
+    
+      ## load model ##
+      jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+      
+      ## fit metrics ##
+      dic_true_list <- c(dic_true_list, jm_fit$fit_stats$marginal$DIC)
+      rhat_dist_true_list <- c(rhat_dist_true_list, summary(jm_fit)$Survival[1, 6])   
+      rhat_points_true_list <- c(rhat_points_true_list, summary(jm_fit)$Survival[2, 6])   
+      p_dist_true_list <- c(p_dist_true_list, summary(jm_fit)$Survival[1, 5])   
+      p_points_true_list <- c(p_points_true_list, summary(jm_fit)$Survival[2, 5])   
+      beta_dist_true_list <- c(beta_dist_true_list, summary(jm_fit)$Survival[1, 1])   
+      beta_points_true_list <- c(beta_points_true_list, summary(jm_fit)$Survival[2, 1])   
+      
+      ## Prep DF for Joint Model Fitting and select predictor variables ##
+      joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+      
+      ## Create Test/Train ##
+      split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+      split_index <- create_test_train(split_df, 123)
+      train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      
+      ## prediction time ##
+      prediction_time <- median(split_df$turnaround_time)
+      
+      ## Prep dfs ##
+      # longitudinal dfs
+      train_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+      # survival dfs
+      cox_df <- create_survival_df(joint_dist_df)
+      train_cox_df <- cox_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_cox_df <- cox_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+      ### Calibration/Discrimintation ###
+      ## AUC ##
+      auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+      auc_true_list <- c(auc_true_list, auc$auc)
+      
+      ### Calibration ###
+      toi <- prediction_time - .5
+      cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+      ici_true_list <- c(ici_true_list, cal_mets[1])
+      e50_true_list <- c(e50_true_list, cal_mets[2])
+      e90_true_list <- c(e90_true_list, cal_mets[3])
+      
+      ### Brier Scores ###
+      brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+      brier_true_list <- c(brier_true_list, brier_scores$Brier)
+      
+      ## Custom Checks ##
+      test_three_trials <- test_long_data %>% 
+        filter(trial_time < .5) %>%
+        select(-turnaround_time, -EVENT)
+      
+      test_preds <- predict(jm_fit, 
+                newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+                idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+      
+      test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+      test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+      
+      test_preds_true <- test_preds_true %>%
+        arrange(turntime_real) %>%
+        mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+      
+      # correaltions between pred and real
+      scatter_pred_df <- test_preds_true %>%
+        mutate(near_50 = abs(pred_CIF - .5)) %>%
+        group_by(trial_numeric) %>%
+        mutate(closest_to_50 = min(near_50)) %>%
+        filter(closest_to_50 == near_50) %>%
+        mutate(turntime_pred = trial_time) %>%
+        ungroup() %>%
+        select(trial_numeric, turntime_real, turntime_pred) %>%
+        distinct() 
+      
+      cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+      core_true_list <- c(core_true_list, cor_score)
+    
+    }, silent = TRUE)
+
+}
+```
+
+```{r concat-reward-model-diagnostics,, results='asis', echo=FALSE}
+
+reward_sub_list <- c()
+auc_reward_list <- c()
+ici_reward_list <- c()
+e50_reward_list <- c()
+e90_reward_list <- c()
+brier_reward_list <- c()
+core_reward_list <- c()
+dic_reward_list <- c()
+rhat_points_reward_list <- c()
+p_points_reward_list <- c()
+beta_points_reward_list <- c()
+
+for(current_subject in unique(game_data_distance$subject)){
+    permuted <- FALSE
+    file_name <- paste0(current_subject, "_reward-only_", as.character(permuted))
+    
+    try({
+    
+      ## load model ##
+      jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+      
+      ## get subject list ##
+      reward_sub_list <- c(reward_sub_list, current_subject)
+      
+      ## fit metrics ##
+      dic_reward_list <- c(dic_reward_list, jm_fit$fit_stats$marginal$DIC)
+      rhat_points_reward_list <- c(rhat_points_reward_list, summary(jm_fit)$Survival[1, 6])   
+      p_points_reward_list <- c(p_points_reward_list, summary(jm_fit)$Survival[1, 5])   
+      beta_points_reward_list <- c(beta_points_reward_list, summary(jm_fit)$Survival[1, 1])  
+    
+      ## Prep DF for Joint Model Fitting and select predictor variables ##
+      joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+      
+      ## Create Test/Train ##
+      split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+      split_index <- create_test_train(split_df, 123)
+      train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      
+      ## prediction time ##
+      prediction_time <- median(split_df$turnaround_time)
+      
+      ## Prep dfs ##
+      # longitudinal dfs
+      train_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+      # survival dfs
+      cox_df <- create_survival_df(joint_dist_df)
+      train_cox_df <- cox_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_cox_df <- cox_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+      ### Calibration/Discrimintation ###
+      ## AUC ##
+      auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+      auc_reward_list <- c(auc_reward_list, auc$auc)
+      
+      ### Calibration ###
+      toi <- prediction_time - .5
+      cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+      ici_reward_list <- c(ici_reward_list, cal_mets[1])
+      e50_reward_list <- c(e50_reward_list, cal_mets[2])
+      e90_reward_list <- c(e90_reward_list, cal_mets[3])
+      
+      ### Brier Scores ###
+      brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+      brier_reward_list <- c(brier_reward_list, brier_scores$Brier)
+      
+      ## Custom Checks ##
+      test_three_trials <- test_long_data %>% 
+        filter(trial_time < .5) %>%
+        select(-turnaround_time, -EVENT)
+      
+      test_preds <- predict(jm_fit, 
+                newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+                idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+      
+      test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+      test_preds_reward <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+      
+      test_preds_reward <- test_preds_reward %>%
+        arrange(turntime_real) %>%
+        mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+      
+      # correaltions between pred and real
+      scatter_pred_df <- test_preds_reward %>%
+        mutate(near_50 = abs(pred_CIF - .5)) %>%
+        group_by(trial_numeric) %>%
+        mutate(closest_to_50 = min(near_50)) %>%
+        filter(closest_to_50 == near_50) %>%
+        mutate(turntime_pred = trial_time) %>%
+        ungroup() %>%
+        select(trial_numeric, turntime_real, turntime_pred) %>%
+        distinct() 
+      
+      cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+      core_reward_list <- c(core_reward_list, cor_score)
+      
+    }, silent = TRUE)
+
+}
+```
+
+```{r concat-threat-model-diagnostics,, results='asis', echo=FALSE}
+
+threat_sub_list <- c()
+auc_threat_list <- c()
+ici_threat_list <- c()
+e50_threat_list <- c()
+e90_threat_list <- c()
+brier_threat_list <- c()
+core_threat_list <- c()
+dic_threat_list <- c()
+rhat_points_threat_list <- c()
+p_points_threat_list <- c()
+beta_points_threat_list <- c()
+
+for(current_subject in unique(game_data_distance$subject)){
+    permuted <- FALSE
+    file_name <- paste0(current_subject, "_threat-only_", as.character(permuted))
+    
+    try({
+    
+      ## load model ##
+      jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+      
+      ## get subject list ##
+      threat_sub_list <- c(threat_sub_list, current_subject)
+      
+      ## fit metrics ##
+      dic_threat_list <- c(dic_threat_list, jm_fit$fit_stats$marginal$DIC)
+      rhat_points_threat_list <- c(rhat_points_threat_list, summary(jm_fit)$Survival[1, 6])   
+      p_points_threat_list <- c(p_points_threat_list, summary(jm_fit)$Survival[1, 5])   
+      beta_points_threat_list <- c(beta_points_threat_list, summary(jm_fit)$Survival[1, 1])  
+    
+      ## Prep DF for Joint Model Fitting and select predictor variables ##
+      joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+      
+      ## Create Test/Train ##
+      split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+      split_index <- create_test_train(split_df, 123)
+      train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+      
+      ## prediction time ##
+      prediction_time <- median(split_df$turnaround_time)
+      
+      ## Prep dfs ##
+      # longitudinal dfs
+      train_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_long_data <- joint_dist_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+      # survival dfs
+      cox_df <- create_survival_df(joint_dist_df)
+      train_cox_df <- cox_df %>%
+        filter(trial_numeric %in% train_trials)
+      test_cox_df <- cox_df %>%
+        filter(trial_numeric %in% test_trials)
+      
+      ### Calibration/Discrimintation ###
+      ## AUC ##
+      auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+      auc_threat_list <- c(auc_threat_list, auc$auc)
+      
+      ### Calibration ###
+      toi <- prediction_time - .5
+      cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+      ici_threat_list <- c(ici_threat_list, cal_mets[1])
+      e50_threat_list <- c(e50_threat_list, cal_mets[2])
+      e90_threat_list <- c(e90_threat_list, cal_mets[3])
+      
+      ### Brier Scores ###
+      brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+      brier_threat_list <- c(brier_threat_list, brier_scores$Brier)
+      
+      ## Custom Checks ##
+      test_three_trials <- test_long_data %>% 
+        filter(trial_time < .5) %>%
+        select(-turnaround_time, -EVENT)
+      
+      test_preds <- predict(jm_fit, 
+                newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+                idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+      
+      test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+      test_preds_threat <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+      
+      test_preds_threat <- test_preds_threat %>%
+        arrange(turntime_real) %>%
+        mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+      
+      # correaltions between pred and real
+      scatter_pred_df <- test_preds_threat %>%
+        mutate(near_50 = abs(pred_CIF - .5)) %>%
+        group_by(trial_numeric) %>%
+        mutate(closest_to_50 = min(near_50)) %>%
+        filter(closest_to_50 == near_50) %>%
+        mutate(turntime_pred = trial_time) %>%
+        ungroup() %>%
+        select(trial_numeric, turntime_real, turntime_pred) %>%
+        distinct() 
+      
+      cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+      core_threat_list <- c(core_threat_list, cor_score)
+      
+    }, silent = TRUE)
+
+}
+
+```
+
+
+```{r concat-theta-model-diagnostics,, results='asis', echo=FALSE}
+
+auc_theta_list <- c()
+ici_theta_list <- c()
+e50_theta_list <- c()
+e90_theta_list <- c()
+brier_theta_list <- c()
+core_theta_list <- c()
+dic_theta_list <- c()
+rhat_dist_theta_list <- c()
+rhat_points_theta_list <- c()
+rhat_power_theta_list <- c()
+p_dist_theta_list <- c()
+p_points_theta_list <- c()
+p_power_theta_list <- c()
+beta_dist_theta_list <- c()
+beta_points_theta_list <- c()
+beta_power_theta_list <- c()
+
+## Load Data ##
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+## Only Bob data #
+game_data_distance <- game_data_distance %>%
+  filter(attack_chase_bob == 'Bob') 
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(subject != "BJH026") %>% # no hc data
+  filter(trial_time <= 5.10) 
+
+## Permuted? ##
+permuted <- FALSE
+seed <- 123
+final_sub_list <-  unique(game_data_distance$subject)
+
+for(current_subject in final_sub_list){
+    permuted <- FALSE
+    file_name <- paste0(current_subject, "_hc_theta_", as.character(permuted))
+    print(current_subject)
+    
+    ## load model ##
+    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+    
+    ## fit metrics ##
+    dic_theta_list <- c(dic_theta_list, jm_fit$fit_stats$marginal$DIC)
+    rhat_dist_theta_list <- c(rhat_dist_theta_list, summary(jm_fit)$Survival[1, 6])   
+    rhat_points_theta_list <- c(rhat_points_theta_list, summary(jm_fit)$Survival[2, 6])  
+    rhat_power_theta_list <- c(rhat_power_theta_list, summary(jm_fit)$Survival[3, 6])  
+    p_dist_theta_list <- c(p_dist_theta_list, summary(jm_fit)$Survival[1, 5])   
+    p_points_theta_list <- c(p_points_theta_list, summary(jm_fit)$Survival[2, 5])   
+    p_power_theta_list <- c(p_power_theta_list, summary(jm_fit)$Survival[3, 5])   
+    beta_dist_theta_list <- c(beta_dist_theta_list, summary(jm_fit)$Survival[1, 1])   
+    beta_points_theta_list <- c(beta_points_theta_list, summary(jm_fit)$Survival[2, 1])
+    beta_power_theta_list <- c(beta_power_theta_list, summary(jm_fit)$Survival[3, 1])
+    
+    ## Prep DF for Joint Model Fitting and select predictor variables ##
+    joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted, ieeg = FALSE)
+      
+    hc_sub_trials <- hc_theta_data %>%
+      filter(subject == current_subject) %>%
+      pull(trial_numeric) %>%
+      unique()
+    
+    joint_dist_df <- joint_dist_df %>%
+      filter(trial_numeric %in% hc_sub_trials)      
+      
+    ## Create Test/Train ##
+    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+    split_index <- create_test_train(split_df, 123)
+    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    
+    ## Merge with the neural predictors ##
+    joint_theta_dist_df <- prep_for_nerual_predictors(joint_dist_df, hc_theta_data)    
+    
+    ## prediction time ##
+    prediction_time <- median(split_df$turnaround_time)
+    
+    ## Prep dfs ##
+    # longitudinal dfs
+    train_long_data <- joint_theta_dist_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_long_data <- joint_theta_dist_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    # survival dfs
+    cox_df <- create_survival_df(joint_theta_dist_df)
+    train_cox_df <- cox_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_cox_df <- cox_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    ### Calibration/Discrimintation ###
+    ## AUC ##
+    auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    auc_theta_list <- c(auc_theta_list, auc$auc)
+    
+    ### Calibration ###
+    toi <- prediction_time - .5
+    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    ici_theta_list <- c(ici_theta_list, cal_mets[1])
+    e50_theta_list <- c(e50_theta_list, cal_mets[2])
+    e90_theta_list <- c(e90_theta_list, cal_mets[3])
+    
+    ### Brier Scores ###
+    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+    brier_theta_list <- c(brier_theta_list, brier_scores$Brier)
+    
+    ## Custom Checks ##
+    test_three_trials <- test_long_data %>% 
+      filter(trial_time < .5) %>%
+      select(-turnaround_time, -EVENT)
+    
+    test_preds <- predict(jm_fit, 
+              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+    
+    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+    test_preds_theta <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+    
+    test_preds_theta <- test_preds_theta %>%
+      arrange(turntime_real) %>%
+      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+    
+    # correaltions between pred and real
+    scatter_pred_df <- test_preds_theta %>%
+      mutate(near_50 = abs(pred_CIF - .5)) %>%
+      group_by(trial_numeric) %>%
+      mutate(closest_to_50 = min(near_50)) %>%
+      filter(closest_to_50 == near_50) %>%
+      mutate(turntime_pred = trial_time) %>%
+      ungroup() %>%
+      select(trial_numeric, turntime_real, turntime_pred) %>%
+      distinct() 
+    
+    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+    core_theta_list <- c(core_theta_list, cor_score)
+    
+
+
+}
+```
+
+
+```{r concat-theta-model-diagnostics-basic, results='asis', echo=FALSE}
+
+auc_theta_basic_list <- c()
+ici_theta_basic_list <- c()
+e50_theta_basic_list <- c()
+e90_theta_basic_list <- c()
+brier_theta_basic_list <- c()
+core_theta_basic_list <- c()
+dic_theta_basic_list <- c()
+rhat_dist_theta_basic_list <- c()
+rhat_points_theta_basic_list <- c()
+rhat_power_theta_basic_list <- c()
+p_dist_theta_basic_list <- c()
+p_points_theta_basic_list <- c()
+p_power_theta_basic_list <- c()
+beta_dist_theta_basic_list <- c()
+beta_points_theta_basic_list <- c()
+beta_power_theta_basic_list <- c()
+
+## Load Data ##
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+
+## Only Bob data #
+game_data_distance <- game_data_distance %>%
+  filter(attack_chase_bob == 'Bob') 
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(subject != "BJH026") %>% # no hc data
+  filter(trial_time <= 5.10) 
+
+## Permuted? ##
+permuted <- FALSE
+seed <- 123
+final_sub_list <-  unique(game_data_distance$subject)
+
+for(current_subject in final_sub_list){
+  
+    permuted <- FALSE
+    file_name <- paste0(current_subject, "_hc_theta-basic_", as.character(permuted))
+    print(current_subject)
+  
+    ## load model ##
+    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+    
+    ## fit metrics ##
+    dic_theta_basic_list <- c(dic_theta_basic_list, jm_fit$fit_stats$marginal$DIC)
+    rhat_dist_theta_basic_list <- c(rhat_dist_theta_basic_list, summary(jm_fit)$Survival[1, 6])   
+    rhat_points_theta_basic_list <- c(rhat_points_theta_basic_list, summary(jm_fit)$Survival[2, 6])  
+    rhat_power_theta_basic_list <- c(rhat_power_theta_basic_list, summary(jm_fit)$Survival[3, 6])  
+    p_dist_theta_basic_list <- c(p_dist_theta_basic_list, summary(jm_fit)$Survival[1, 5])   
+    p_points_theta_basic_list <- c(p_points_theta_basic_list, summary(jm_fit)$Survival[2, 5])   
+    p_power_theta_basic_list <- c(p_power_theta_basic_list, summary(jm_fit)$Survival[3, 5])   
+    beta_dist_theta_basic_list <- c(beta_dist_theta_basic_list, summary(jm_fit)$Survival[1, 1])   
+    beta_points_theta_basic_list <- c(beta_points_theta_basic_list, summary(jm_fit)$Survival[2, 1])
+    beta_power_theta_basic_list <- c(beta_power_theta_basic_list, summary(jm_fit)$Survival[3, 1])
+      
+    ## Prep DF for Joint Model Fitting and select predictor variables ##
+    joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted, ieeg = FALSE)
+      
+    hc_sub_trials <- hc_theta_data %>%
+      filter(subject == current_subject) %>%
+      pull(trial_numeric) %>%
+      unique()
+    
+    joint_dist_df <- joint_dist_df %>%
+      filter(trial_numeric %in% hc_sub_trials)      
+      
+    ## Create Test/Train ##
+    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+    split_index <- create_test_train(split_df, 123)
+    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    
+    ## Merge with the neural predictors ##
+    joint_theta_basic_dist_df <- prep_for_nerual_predictors(joint_dist_df, hc_theta_data)    
+    
+    ## prediction time ##
+    prediction_time <- median(split_df$turnaround_time)
+    
+    ## Prep dfs ##
+    # longitudinal dfs
+    train_long_data <- joint_theta_basic_dist_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_long_data <- joint_theta_basic_dist_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    # survival dfs
+    cox_df <- create_survival_df(joint_theta_basic_dist_df)
+    train_cox_df <- cox_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_cox_df <- cox_df %>%
+      filter(trial_numeric %in% test_trials)
+    
+    ### Calibration/Discrimintation ###
+    ## AUC ##
+    auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+    auc_theta_basic_list <- c(auc_theta_basic_list, auc$auc)
+    
+    ### Calibration ###
+    toi <- prediction_time - .5
+    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+    ici_theta_basic_list <- c(ici_theta_basic_list, cal_mets[1])
+    e50_theta_basic_list <- c(e50_theta_basic_list, cal_mets[2])
+    e90_theta_basic_list <- c(e90_theta_basic_list, cal_mets[3])
+    
+    ### Brier Scores ###
+    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+    brier_theta_basic_list <- c(brier_theta_basic_list, brier_scores$Brier)
+    
+    ## Custom Checks ##
+    test_three_trials <- test_long_data %>% 
+      filter(trial_time < .5) %>%
+      select(-turnaround_time, -EVENT)
+    
+    test_preds <- predict(jm_fit, 
+              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+    
+    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+    test_preds_theta <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+    
+    test_preds_theta <- test_preds_theta %>%
+      arrange(turntime_real) %>%
+      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+    
+    # correaltions between pred and real
+    scatter_pred_df <- test_preds_theta %>%
+      mutate(near_50 = abs(pred_CIF - .5)) %>%
+      group_by(trial_numeric) %>%
+      mutate(closest_to_50 = min(near_50)) %>%
+      filter(closest_to_50 == near_50) %>%
+      mutate(turntime_pred = trial_time) %>%
+      ungroup() %>%
+      select(trial_numeric, turntime_real, turntime_pred) %>%
+      distinct() 
+    
+    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+    core_theta_basic_list <- c(core_theta_basic_list, cor_score)
+
+}
+```
+
+
+
+```{r combine-lists}
+
+true_df <- tibble("subjects" = true_sub_list,
+                  "dic"  = dic_true_list,
+                  "rhat_threat"  = rhat_dist_true_list,
+                  "rhat_reward"  = rhat_points_true_list,
+                  "p_threat"  = p_dist_true_list,
+                  "p_reward"  = p_points_true_list,
+                  "beta_threat"  = beta_dist_true_list,
+                  "beta_reward"  = beta_points_true_list,
+                  "auc" = auc_true_list,
+                  "ici" = ici_true_list,
+                  "e50" = e50_true_list,
+                  "e90" = e90_true_list,
+                  "brier" = brier_true_list,
+                  "cor" = core_true_list)
+
+write_csv(true_df, path(here(), "data", "joint_models", "model_summaries", "true_ieeg_df.csv"))
+
+theta_df <- tibble("subjects" = final_sub_list,
+                  "dic"  = dic_theta_list,
+                  "rhat_threat"  = rhat_dist_theta_list,
+                  "rhat_reward"  = rhat_points_theta_list,
+                  "rhat_theta"  = rhat_power_theta_list,
+                  "p_threat"  = p_dist_theta_list,
+                  "p_reward"  = p_points_theta_list,
+                  "p_theta"  = p_power_theta_list,
+                  "beta_threat"  = beta_dist_theta_list,
+                  "beta_reward"  = beta_points_theta_list,
+                  "beta_theta"  = beta_power_theta_list,
+                  "auc" = auc_theta_list,
+                  "ici" = ici_theta_list,
+                  "e50" = e50_theta_list,
+                  "e90" = e90_theta_list,
+                  "brier" = brier_theta_list,
+                  "cor" = core_theta_list)
+
+write_csv(theta_df, path(here(), "data", "joint_models", "model_summaries", "theta_ieeg_df.csv"))
+
+theta_basic_df <- tibble("subjects" = final_sub_list,
+                  "dic"  = dic_theta_basic_list,
+                  "rhat_threat"  = rhat_dist_theta_basic_list,
+                  "rhat_reward"  = rhat_points_theta_basic_list,
+                  "rhat_theta_basic"  = rhat_power_theta_basic_list,
+                  "p_threat"  = p_dist_theta_basic_list,
+                  "p_reward"  = p_points_theta_basic_list,
+                  "p_theta_basic"  = p_power_theta_basic_list,
+                  "beta_threat"  = beta_dist_theta_basic_list,
+                  "beta_reward"  = beta_points_theta_basic_list,
+                  "beta_theta_basic"  = beta_power_theta_basic_list,
+                  "auc" = auc_theta_basic_list,
+                  "ici" = ici_theta_basic_list,
+                  "e50" = e50_theta_basic_list,
+                  "e90" = e90_theta_basic_list,
+                  "brier" = brier_theta_basic_list,
+                  "cor" = core_theta_basic_list)
+
+write_csv(theta_basic_df, path(here(), "data", "joint_models", "model_summaries", "theta_basic_ieeg_df.csv"))
+
+
+perm_df <- tibble("subjects" = perm_sub_list,
+                  "dic"  = dic_perm_list,
+                  "rhat_threat"  = rhat_dist_perm_list,
+                  "rhat_reward"  = rhat_points_perm_list,
+                  "p_threat"  = p_dist_perm_list,
+                  "p_reward"  = p_points_perm_list,
+                  "beta_threat"  = beta_dist_perm_list,
+                  "beta_reward"  = beta_points_perm_list,                  
+                  "auc" = auc_perm_list,
+                  "ici" = ici_perm_list,
+                  "e50" = e50_perm_list,
+                  "e90" = e90_perm_list,
+                  "brier" = brier_perm_list,
+                  "cor" = core_perm_list)
+
+write_csv(perm_df, path(here(), "data", "joint_models", "model_summaries", "perm_ieeg_df.csv"))
+
+
+reward_df <- tibble("subjects" = reward_sub_list,
+                  "dic"  = dic_reward_list,
+                  "rhat_reward"  = rhat_points_reward_list,
+                  "p_reward"  = p_points_reward_list,
+                  "beta_reward"  = beta_points_reward_list,                  
+                  "auc" = auc_reward_list,
+                  "ici" = ici_reward_list,
+                  "e50" = e50_reward_list,
+                  "e90" = e90_reward_list,
+                  "brier" = brier_reward_list,
+                  "cor" = core_reward_list)
+
+write_csv(reward_df, path(here(), "data", "joint_models", "model_summaries", "reward_ieeg_df.csv"))
+
+
+threat_df <- tibble("subjects" = threat_sub_list,
+                  "dic"  = dic_threat_list,
+                  "rhat_threat"  = rhat_points_threat_list,
+                  "p_threat"  = p_points_threat_list,
+                  "beta_threat"  = beta_points_threat_list,                  
+                  "auc" = auc_threat_list,
+                  "ici" = ici_threat_list,
+                  "e50" = e50_threat_list,
+                  "e90" = e90_threat_list,
+                  "brier" = brier_threat_list,
+                  "cor" = core_threat_list)
+
+write_csv(threat_df, path(here(), "data", "joint_models", "model_summaries", "threat_ieeg_df.csv"))
+
+
+
+```
+

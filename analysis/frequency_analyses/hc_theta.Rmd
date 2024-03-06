@@ -89,14 +89,15 @@ Due to unbalanced groups, there are some singular fits. I have looked into this 
 
 ## Data Prep and EDA
 
+
 ```{r load-data}
 
 # ieeg data #
-hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_iti_onset.csv"))
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
 
 # behavioral data #
-all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
-all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_distance_df.csv"))
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
 
 # combine ghost and no ghost #
 all_subs_dist <- all_subs_g_dist %>% 
@@ -132,7 +133,8 @@ avg_hc_theta_data %>%
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
   facet_wrap(~elec_id, ncol = 6) +
-  ylim(-1.5, 1.5)
+  ylim(-1.5, 1.5) +
+  scale_color_manual(values = getPalette(15)) 
 
 ```
 
@@ -149,7 +151,8 @@ avg_hc_theta_data %>%
   geom_point() +
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
-  facet_wrap(~subject)
+  facet_wrap(~subject) +
+  scale_color_manual(values = getPalette(15)) 
 
 avg_hc_theta_data %>%
   group_by(trial_time, subject) %>%
@@ -177,6 +180,10 @@ hc_theta_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(
 
 # validate we get the same ieeg data by comparing with above plots
 avg_hc_theta_behave_df <- hc_theta_behave_df %>%
+  filter(trial_time <= 5.10) %>%
+  select(subject, trial_time, electrode, theta, trial_numeric) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(subject != "BJH026") %>%
   group_by(trial_time, electrode, subject) %>%
   mutate(mean_elec_theta = mean(theta, na.rm = T)) %>%
   ungroup() %>%
@@ -190,13 +197,23 @@ avg_hc_theta_behave_df <- hc_theta_behave_df %>%
   group_by(trial_time) %>%
   mutate(mean_theta = mean(mean_sub_theta, na.rm = T))
 
+avg_hc_theta_behave_df %>%
+  ggplot(., aes(x = trial_time, y = mean_sub_theta, color = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject) +
+  scale_color_manual(values = getPalette(15)) +
+  xlim(-1, 5) 
+
+
 
 avg_hc_theta_behave_df %>%
   ggplot(., aes(x = trial_time, y = mean_theta)) +
   geom_point(color = "black") +
   geom_line(color = "black") +
   theme(panel.background = element_rect(fill = "white")) +
-  xlim(-1, 5) + ylim(-.15, .25)
+  xlim(-1, 5) 
 
 
 ```

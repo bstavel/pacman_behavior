@@ -1,0 +1,254 @@
+---
+title: "Joint Model - Across Subjects"
+output: html_document
+date: "2024-01-26"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(9, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+
+
+```
+
+
+```{r load-data}
+
+## Load Data ##
+pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+
+
+```
+
+```{r prep-group-model}
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- pilot_game_data_distance %>%
+  filter(subject %in% c("Subject_39", "Subject_46", "Subject_63")) %>%
+  filter(Direction != "Still") %>%
+  filter(dots_eaten != 0) %>%
+  group_by(subject, trial_numeric) %>%
+  # prep time variables
+  mutate(trial_time = trial_time - first(trial_time)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time_tmp = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time_tmp)) %>%
+  ungroup() %>%
+  filter(turnaround_time != 0) %>% # exclude trials where they just ran into the ghost
+  filter(trial_time <= turnaround_time) %>%
+  select(subject, trial_numeric, distance_to_ghost, last_away, points_remaining, event, turnaround_time,
+         away_choice, trial_time, TrialType) %>%
+  mutate(EVENT = 1) %>%
+  group_by(subject) %>%
+  mutate(points_remaining = scale(points_remaining)) %>%
+  mutate(distance_to_ghost = scale(distance_to_ghost)) %>%
+  ungroup()
+
+# ## Create Test/Train ##
+# set.seed(123)  # for reproducibility
+# hold_out_subjects <- sample(unique(joint_dist_df$subject), 14)
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df #%>%
+  # filter(!subject %in% hold_out_subjects)
+test_long_data <- joint_dist_df # %>%
+  # filter(subject %in% hold_out_subjects)
+
+# survival dfs
+cox_df <- joint_dist_df %>%
+  group_by(subject, trial_numeric) %>%
+  filter(trial_time == turnaround_time) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(subject, trial_numeric, turnaround_time, event, EVENT) 
+  
+train_cox_df <- cox_df #%>%
+  # filter(!subject %in% hold_out_subjects)
+test_cox_df <- cox_df #%>%
+  # filter(subject %in% hold_out_subjects)
+
+
+```
+
+
+```{r fit-model}
+
+# noncentered parameterization
+n_subjects <- length(unique(train_long_data$subject))
+n_trials <- length(unique(train_long_data$trial))
+
+train_long_data <- train_long_data %>%
+  group_by(subject) %>%
+  mutate(aux_subject = rnorm(1)) %>%
+  mutate(re_subject = 0) %>%
+  ungroup() %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(aux_trial = rnorm(1)) %>%
+  mutate(re_trial = 0) %>%
+  ungroup()
+
+
+# longitudinal model #
+control = lmeControl(maxIter = 100000, niterEM = 100000, msMaxIter = 100000)
+lm_reward <- lme(points_remaining ~ trial_time, data = train_long_data, random = ~trial_time | subject\trial_numeric, control = control)
+lm_threat <- lme(distance_to_ghost ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric | subject, control = control)
+
+summary(lm_reward)
+summary(lm_threat)  
+  
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)
+
+# joint model #
+jm_fit <- jm(cox_fit, list(lm_reward, lm_threat), time_var = "trial_time", data_Surv = train_cox_df, 
+                      n_burnin = 20000, n_iter = 200000, n_chains =8, MALA = T, cores = 8)
+
+jm_fit_2 <- jm(cox_fit, list(lm_reward_2, lm_threat_2), time_var = "trial_time", data_Surv = train_cox_df, 
+                      n_burnin = 20000, n_iter = 200000, n_chains =8, MALA = T, n_thin = 5L, cores = 8)
+
+summary(jm_fit_2)
+traceplot(jm_fit_2)
+ggdensityplot(jm_fit_2)
+  
+summary(jm_fit)
+traceplot(jm_fit)
+
+jm_fit$priors
+
+```
+
+```{r longitudinal-model}
+
+lm_threat_2 <- lme(distance_to_ghost ~ ns(trial_time, 2), data = train_long_data, random = ~trial_time | trial_numeric | subject, control = control)
+lm_reward_2 <- lme(points_remaining ~ ns(trial_time, 2), data = train_long_data, random = ~trial_time | trial_numeric | subject, control = control)
+
+
+library(sjPlot)
+
+plot(lm_reward)
+qqnorm(lm_reward)
+plot_model(lm_reward, type="pred", pred.type = "re", grid=T, terms=c("trial_time [all]"))    #
+plot_model(lm_reward, type="pred", show.data = TRUE, pred.type = "fe", grid=T, terms=c("trial_time [all]"))
+
+
+plot(lm_threat_2)
+qqnorm(lm_threat_2)
+plot_model(lm_threat_2, type="pred", pred.type = "re", grid=T, terms=c("trial_time [all]"))    #
+plot_model(lm_threat_2, type="pred", show.data = TRUE, pred.type = "fe", grid=T, terms=c("trial_time [all]"))
+
+
+plot(lm_threat_2, as.factor(trial_numeric) ~ resid(.), abline = 0 )
+plot(lm_threat_2, as.factor(subject) ~ resid(.), abline = 0 )
+
+
+train_long_data %>%
+  filter(trial_numeric %in% sample(trial_numeric, 3)) %>%
+  ggplot(., aes(y = distance_to_ghost, x = trial_time, color = subject)) +
+  geom_point() +
+  # geom_line() +
+  geom_smooth() +
+  theme(panel.background = element_rect(fill = "white", colour = "black")) +
+  facet_wrap(~trial_numeric, ncol = 3) 
+
+
+
+```
+
+
+
+
+```{r}
+
+jm_fit_39 <- readRDS(path(here(), "data", "joint_models", "subject_39_FALSE.rds"))
+jm_fit_46 <- readRDS(path(here(), "data", "joint_models", "subject_46_FALSE.rds"))
+jm_fit_63 <- readRDS(path(here(), "data", "joint_models", "subject_63_FALSE.rds"))
+
+
+traceplot(jm_fit_39)
+
+summary(jm_fit_39)
+summary(jm_fit_46)
+summary(jm_fit_63)
+
+
+traceplot(jm_fit_39)
+
+
+
+```
+
+
+```{r predict-out-of-sample}
+
+saveRDS(jm_fit, path(here(), "data", "joint_models", "all_sub_model.rds"))
+
+
+jm_fit_all <- readRDS(path(here(), "data", "joint_models", "all_sub_model.rds"))
+summary(jm_fit_all)
+traceplot(jm_fit_all)
+
+prediction_time <- mean(train_cox_df$turnaround_time)
+
+roc <- tvROC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'subject')
+
+auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+
+
+
+
+
+```

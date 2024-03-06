@@ -1,0 +1,288 @@
+---
+title: "JM Model Fitting - Online Sample"
+output: html_document
+date: "2024-02-29"
+params:
+  subject: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+nCores <- 8
+registerDoParallel(nCores)
+
+```
+
+```{r get-subject, results='asis', echo=FALSE, eval = T}
+
+current_subject <- params$subject
+permuted <- FALSE
+cat(paste0("\n\n## ", current_subject, "\n"))
+
+```
+
+
+```{r load-data, results='asis', echo=FALSE, eval = T}
+
+## Load Data ##
+game_data_behavior <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data_2-3-24.csv"))
+pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data_2-3-24.csv"))
+ns_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data_newsample_2-3-24.csv"))
+
+## Bind Rows ##
+game_data_distance <- bind_rows(pilot_game_data_distance, ns_game_data_distance)
+
+```
+
+
+
+
+
+```{r fit-model-over-10-splits, results='asis', echo=FALSE, eval = T}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+seed_list <- c()
+survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+for(current_seed in sample(1:100, 1)){
+
+    cat(paste0("\n\n## ", current_subject, " - ", current_seed, "\n"))
+    seed_list <- c(seed_list, current_seed)
+    
+    ## Prep DF for Joint Model Fitting and select predictor variables ##
+    joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+    
+    ## Create Test/Train ##
+    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups) %>% distinct()
+    split_index <- create_test_train(split_df, current_seed)
+    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+    
+    # Print train/test info
+    print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+    cat(paste0("\n\n"))
+    
+    ## Prep Train/Test DFs ##
+    # longitudinal dfs
+    train_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_long_data <- joint_dist_df %>%
+      filter(trial_numeric %in% test_trials)
+
+    # survival dfs
+    cox_df <- create_survival_df(joint_dist_df)
+    train_cox_df <- cox_df %>%
+      filter(trial_numeric %in% train_trials)
+    test_cox_df <- cox_df %>%
+      filter(trial_numeric %in% test_trials)
+
+    ## Fit Joint Model ##
+    file_name <- paste0(current_subject, "_", permuted, "_", current_seed)
+    jm_fit <- fit_joint_models(train_long_data, train_cox_df, file_name)
+
+    ## Print summary ##
+    kable(summary(jm_fit)$Survival, caption = "Joint Model") %>% kable_styling()
+    cat(paste0("\n\n"))
+
+    dic_list <- c(dic_list, jm_fit$fit_stats$marginal$DIC)
+    survival_df <- rbind(survival_df,
+                                     summary(jm_fit)$Survival %>%
+                                       mutate(predictor = rownames(summary(jm_fit)$Survival)) %>%
+                                       select(predictor, Mean, StDev, `2.5%`, `97.5%`, P, `Rhat`) %>%
+                                       mutate(seed = current_seed) %>%
+                                       mutate(subject = current_subject))
+
+
+    # prediction times
+    prediction_time <- median(split_df$turnaround_time)
+    pred_time_list <- c(pred_time_list, prediction_time)
+
+    ## train/test perdiction times ##
+    min_time <- min(test_cox_df$turnaround_time)
+    max_time <- max(test_cox_df$turnaround_time)
+    print(paste0("Prediction Time: ", prediction_time))
+    print(paste0("Min Test Time: ", min_time))
+    print(paste0("Max Test Time: ", max_time))
+    cat(paste0("\n\n"))
+
+    ### Calibration/Discrimintation ###
+    ## Loop over different prediction times ##
+    auc <- c()
+    ici <- c()
+    e50 <- c()
+    e90 <- c()
+    brier <- c()
+    timepoints <- unique(test_cox_df$turnaround_time)
+    test_times <- quantile(timepoints[timepoints > .5], probs = c(.2, .4, .5, .6, .8))
+    for(pred_time in test_times){
+      # AUC #
+      tmp_auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5,
+                   Thoriz = pred_time, idVar = 'trial_numeric')
+      auc <- c(auc, tmp_auc$auc)
+
+      ## Calibration ##
+      toi <- pred_time - .5
+      # calibration plot
+      calibration_plot(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+      # calibration metrics
+      tmp_cal <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+      ici <- c(ici, tmp_cal[1])
+      e50 <- c(e50, tmp_cal[2])
+      e90 <- c(e90, tmp_cal[3])
+
+      # rbier scores
+      tmp_brier <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+      brier <- c(brier, tmp_brier$Brier)
+
+    }
+
+    ### Print AUC ###
+    auc_list <- c(auc_list, mean(auc))
+    print(paste0("AUC: ", mean(auc)))
+    cat(paste0("\n\n"))
+    print("All AUCs: ")
+    print(sort(auc))
+    cat(paste0("\n\n"))
+
+    ### Print Calibration ###
+    ici_list <- c(ici_list, mean(ici))
+    print(paste0("ICI: ", mean(ici)))
+    e50_list <- c(e50_list, mean(e50))
+    print(paste0("E50: ", mean(e50)))
+    e90_list <- c(e90_list, mean(e90))
+    print(paste0("E90: ", mean(e90)))
+    cat(paste0("\n\n"))
+
+    ### Brier Scores ###
+    brier_list <- c(brier_list, mean(brier))
+    print(paste0("Brier Score: ", mean(brier)))
+    print("All Bier Scores: ")
+    print(sort(brier))
+    cat(paste0("\n\n"))
+
+    ## Custom Checks ##
+
+    # get predictions
+    test_predictions <- predict_on_test_set(jm_fit, test_long_data, test_cox_df)
+
+    # plot prediction plot
+    ggthemr("solarized")
+    plot_survival_predictions(test_predictions, current_subject)
+
+    # plot correlation plot
+    cor <- plot_correlation_plot(test_predictions, current_subject)
+    core_list <- c(core_list, cor)
+
+}
+
+```
+
+
+```{r save-data}
+
+metrics_df <- tibble("subjects" = rep(current_subject, length(seed_list)),
+                     "seed" = seed_list,
+                      "dic"  = dic_list,
+                      "auc" = auc_list,
+                      "ici" = ici_list,
+                      "e50" = e50_list,
+                      "e90" = e90_list,
+                      "brier" = brier_list,
+                      "cor" = core_list)
+
+write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", paste0(current_subject, "fit_metrics_base_dir_model_df.csv")))
+write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", paste0(current_subject, "model_params_base_dir_model_df.csv")))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

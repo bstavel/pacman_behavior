@@ -132,7 +132,8 @@ avg_ofc_theta_data %>%
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
   facet_wrap(~elec_id, ncol = 6) +
-  ylim(-1.5, 1.5)
+  ylim(-1.5, 1.5) +
+  scale_color_manual(values = getPalette(15)) 
 
 ```
 
@@ -149,7 +150,8 @@ avg_ofc_theta_data %>%
   geom_point() +
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
-  facet_wrap(~subject)
+  facet_wrap(~subject) +
+  scale_color_manual(values = getPalette(15)) 
 
 avg_ofc_theta_data %>%
   group_by(trial_time, subject) %>%
@@ -196,7 +198,7 @@ avg_ofc_theta_behave_df %>%
   geom_point(color = "black") +
   geom_line(color = "black") +
   theme(panel.background = element_rect(fill = "white")) +
-  xlim(-1, 5) + ylim(-.15, .25)
+  xlim(-1, 5) + ylim(-.15, .45)
 
 
 ```

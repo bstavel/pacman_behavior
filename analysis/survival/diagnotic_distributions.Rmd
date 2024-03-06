@@ -95,223 +95,19 @@ Compares the `standard_model` (`points_remaining` + `distance_to_ghost`) and the
  If I look at the calibration plots for subjects 14 and 15, I think you can see what is happening. For 14, the calibration metrics are better in the `standard_model` and the red line follows the dotted line pretty well. However, in 15, in the `standard_model` the red line is very off at the edges. However, the `permuted_model` has a red line that is defined on only a short range of the x-axis, so it is not as off, even though I think it is a worse model. 
 
 
-```{r load-data, results='asis', echo=FALSE}
 
-## load distance data
-pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+```{r load-data}
 
-## remove sub who won't converge ##
-pilot_game_data_distance <- pilot_game_data_distance %>%
-  filter(subject != "Subject_57")
-
-```
-
-
-```{r concat-perm-model-diagnostics, results='asis', echo=FALSE}
-
-auc_perm_list <- c()
-ici_perm_list <- c()
-e50_perm_list <- c()
-e90_perm_list <- c()
-brier_perm_list <- c()
-core_perm_list <- c()
-
-for(current_subject in unique(pilot_game_data_distance$subject)){
-    permuted <- TRUE
-    file_name <- paste0(current_subject, "_", as.character(permuted))
-    
-    ## load model ##
-    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
-    
-    ## Prep DF for Joint Model Fitting and select predictor variables ##
-    joint_dist_df <- prep_joint_df(pilot_game_data_distance, current_subject, permuted)
-    
-    ## Create Test/Train ##
-    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
-    split_index <- create_test_train(split_df, 123)
-    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
-    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
-    
-    ## prediction time ##
-    prediction_time <- median(split_df$turnaround_time)
-    
-    ## Prep dfs ##
-    # longitudinal dfs
-    train_long_data <- joint_dist_df %>%
-      filter(trial_numeric %in% train_trials)
-    test_long_data <- joint_dist_df %>%
-      filter(trial_numeric %in% test_trials)
-    
-    # survival dfs
-    cox_df <- create_survival_df(joint_dist_df)
-    train_cox_df <- cox_df %>%
-      filter(trial_numeric %in% train_trials)
-    test_cox_df <- cox_df %>%
-      filter(trial_numeric %in% test_trials)
-    
-    ### Calibration/Discrimintation ###
-    ## AUC ##
-    auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
-    auc_perm_list <- c(auc_perm_list, auc$auc)
-    
-    ### Calibration ###
-    toi <- prediction_time - .5
-    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
-    ici_perm_list <- c(ici_perm_list, cal_mets[1])
-    e50_perm_list <- c(e50_perm_list, cal_mets[2])
-    e90_perm_list <- c(e90_perm_list, cal_mets[3])
-    
-    ### Brier Scores ###
-    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
-    brier_perm_list <- c(brier_perm_list, brier_scores$Brier)
-    
-    ## Custom Checks ##
-    test_three_trials <- test_long_data %>% 
-      filter(trial_time < .5) %>%
-      select(-turnaround_time, -EVENT)
-    
-    test_preds <- predict(jm_fit, 
-              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
-              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
-    
-    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
-    test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
-    
-    test_preds_true <- test_preds_true %>%
-      arrange(turntime_real) %>%
-      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
-    
-    # correaltions between pred and real
-    scatter_pred_df <- test_preds_true %>%
-      mutate(near_50 = abs(pred_CIF - .5)) %>%
-      group_by(trial_numeric) %>%
-      mutate(closest_to_50 = min(near_50)) %>%
-      filter(closest_to_50 == near_50) %>%
-      mutate(turntime_pred = trial_time) %>%
-      ungroup() %>%
-      select(trial_numeric, turntime_real, turntime_pred) %>%
-      distinct() 
-    
-    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
-    core_perm_list <- c(core_perm_list, cor_score)
-
-}
-```
-
-
-```{r concat-true-model-diagnostics,, results='asis', echo=FALSE}
-
-auc_true_list <- c()
-ici_true_list <- c()
-e50_true_list <- c()
-e90_true_list <- c()
-brier_true_list <- c()
-core_true_list <- c()
-
-for(current_subject in unique(pilot_game_data_distance$subject)){
-    permuted <- FALSE
-    file_name <- paste0(current_subject, "_", as.character(permuted))
-    
-    ## load model ##
-    jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
-    
-    ## Prep DF for Joint Model Fitting and select predictor variables ##
-    joint_dist_df <- prep_joint_df(pilot_game_data_distance, current_subject, permuted)
-    
-    ## Create Test/Train ##
-    split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
-    split_index <- create_test_train(split_df, 123)
-    train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
-    test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
-    
-    ## prediction time ##
-    prediction_time <- median(split_df$turnaround_time)
-    
-    ## Prep dfs ##
-    # longitudinal dfs
-    train_long_data <- joint_dist_df %>%
-      filter(trial_numeric %in% train_trials)
-    test_long_data <- joint_dist_df %>%
-      filter(trial_numeric %in% test_trials)
-    
-    # survival dfs
-    cox_df <- create_survival_df(joint_dist_df)
-    train_cox_df <- cox_df %>%
-      filter(trial_numeric %in% train_trials)
-    test_cox_df <- cox_df %>%
-      filter(trial_numeric %in% test_trials)
-    
-    ### Calibration/Discrimintation ###
-    ## AUC ##
-    auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
-    auc_true_list <- c(auc_true_list, auc$auc)
-    
-    ### Calibration ###
-    toi <- prediction_time - .5
-    cal_mets <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
-    ici_true_list <- c(ici_true_list, cal_mets[1])
-    e50_true_list <- c(e50_true_list, cal_mets[2])
-    e90_true_list <- c(e90_true_list, cal_mets[3])
-    
-    ### Brier Scores ###
-    brier_scores <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
-    brier_true_list <- c(brier_true_list, brier_scores$Brier)
-    
-    ## Custom Checks ##
-    test_three_trials <- test_long_data %>% 
-      filter(trial_time < .5) %>%
-      select(-turnaround_time, -EVENT)
-    
-    test_preds <- predict(jm_fit, 
-              newdata = test_three_trials, process = "event", return_newdata = TRUE, 
-              idVar = "trial_numeric", times = seq(.5, 2.5, .05))
-    
-    test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
-    test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
-    
-    test_preds_true <- test_preds_true %>%
-      arrange(turntime_real) %>%
-      mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
-    
-    # correaltions between pred and real
-    scatter_pred_df <- test_preds_true %>%
-      mutate(near_50 = abs(pred_CIF - .5)) %>%
-      group_by(trial_numeric) %>%
-      mutate(closest_to_50 = min(near_50)) %>%
-      filter(closest_to_50 == near_50) %>%
-      mutate(turntime_pred = trial_time) %>%
-      ungroup() %>%
-      select(trial_numeric, turntime_real, turntime_pred) %>%
-      distinct() 
-    
-    cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
-    core_true_list <- c(core_true_list, cor_score)
-
-}
-```
-
-
-```{r combine-lists}
-
-true_df <- tibble("subjects" = unique(pilot_game_data_distance$subject),
-                  "auc" = auc_true_list,
-                  "ici" = ici_true_list,
-                  "e50" = e50_true_list,
-                  "e90" = e90_true_list,
-                  "brier" = brier_true_list,
-                  "cor" = core_true_list)
-
-perm_df <- tibble("subjects" = unique(pilot_game_data_distance$subject),
-                  "auc" = auc_perm_list,
-                  "ici" = ici_perm_list,
-                  "e50" = e50_perm_list,
-                  "e90" = e90_perm_list,
-                  "brier" = brier_perm_list,
-                  "cor" = core_perm_list)
+true_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "true_df.csv"))
+perm_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "perm_df.csv"))
+reward_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "reward_df.csv"))
+threat_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "threat_df.csv"))
 
 
 model_compare_df <- rbind(true_df %>% mutate(case = "true"),
-                          perm_df %>% mutate(case = "permuted"))
+                          perm_df %>% mutate(case = "permuted"),
+                          reward_df %>% mutate(case = "reward") %>% mutate(rhat_threat = NA) %>% mutate(p_threat = NA) %>% mutate(beta_threat = NA),
+                          threat_df %>% mutate(case = "threat") %>% mutate(rhat_reward = NA) %>% mutate(p_reward = NA) %>% mutate(beta_reward = NA))
 
 model_wide_df <- left_join(true_df, perm_df, by = "subjects", suffix = c("_true", "_perm"))
 
@@ -319,10 +115,92 @@ model_wide_df <- left_join(true_df, perm_df, by = "subjects", suffix = c("_true"
 ```
 
 
+```{r load-clinical-data}
+
+## load pilot and new sample#
+behave_data_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior.csv"))
+behave_data_ns <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior_newsample.csv"))
+
+## merge ##
+behave_data_pilot <- behave_data_pilot %>% mutate(case = "pilot")
+behave_data <- bind_rows(behave_data_pilot, behave_data_ns %>% mutate(comp_7 = as.logical(comp_7)))
+
+
+```
+
+
+```{r calculate-summary-scores}
+## calculate oasis score ##
+oasis_data <- behave_data %>%
+  # Clean Oasis Questions #
+  mutate(O1_clean = as.numeric(gsub(" =.*", "", O1))) %>%
+  mutate(O2_clean = as.numeric(gsub(" =.*", "", O2))) %>%
+  mutate(O3_clean = as.numeric(gsub(" =.*", "", O3))) %>%
+  mutate(O4_clean = as.numeric(gsub(" =.*", "", O4))) %>%
+  mutate(O5_clean = as.numeric(gsub(" =.*", "", O5))) %>%
+  mutate(O6_clean = as.numeric(gsub(" =.*", "", O6))) %>%
+  # exclude non pilot subjects who did not pass the attention check
+  filter((case == "pilot") | (O5_clean == 2)) %>%
+  mutate(oasis_total = if_else(case == "pilot", O1_clean + O2_clean + O3_clean + O4_clean + O5_clean, 
+                              O1_clean + O2_clean + O3_clean + O4_clean + O6_clean)) %>%
+  select(subject, case, ID, starts_with("O"), oasis_total)
+
+## calculate masq score -pilot ##
+reverse_score <- c(5, 4, 3, 2, 1)
+masq_data_pilot <- behave_data_pilot %>%
+  select(subject, case, starts_with("MASQ_")) %>%
+  select(-MASQ_24) %>% # remove duplicate question
+  mutate(across(starts_with("MASQ_"), 
+                ~as.numeric(factor(.x, levels = c("None at all", "A little", "A moderate amount", "A great deal", "A lot"))  ))) %>%
+  # ANXIOUS AROUSAL
+  mutate(masq_aa = MASQ_2 + MASQ_6 + MASQ_13 + MASQ_17 + MASQ_19 + MASQ_28 + MASQ_30 + MASQ_37 + MASQ_40 + MASQ_42 + 
+                   MASQ_44 + MASQ_46 + MASQ_51 + MASQ_53) %>% # MASQ_24 (Hands were cold or sweaty) missing in the pilot data
+  # GENERAL DISTRESS ANXIETY
+  mutate(masq_gd_anx = MASQ_4 + MASQ_8 + MASQ_11 + MASQ_14 + MASQ_16 + MASQ_20 + MASQ_26 + MASQ_32 + MASQ_35 + MASQ_54 + MASQ_58) %>%
+  # ANHEDONIA
+  mutate(masq_ad = MASQ_18 + MASQ_25 + MASQ_33 + MASQ_41 + MASQ_49 + MASQ_50 + MASQ_56 +
+                  reverse_score[MASQ_3] + reverse_score[MASQ_7] + reverse_score[MASQ_10] + reverse_score[MASQ_15] + reverse_score[MASQ_22] +
+                  reverse_score[MASQ_27] + reverse_score[MASQ_39] + reverse_score[MASQ_43] + reverse_score[MASQ_47] + reverse_score[MASQ_48] +
+                  reverse_score[MASQ_52] + reverse_score[MASQ_55] + reverse_score[MASQ_57] + reverse_score[MASQ_59] ) %>%
+  # GENERAL DISTRESS DEPRESSION  
+  mutate(masq_gd_dep = MASQ_1 + MASQ_5 + MASQ_9 + MASQ_12 + MASQ_21 + MASQ_23 + MASQ_29 + MASQ_31 + MASQ_34 + MASQ_36 + MASQ_38 + MASQ_45) %>%
+  select(subject, case,  masq_aa, masq_gd_anx, masq_ad, masq_gd_dep, starts_with("MASQ"))
+
+## calculate masq score -new sample ##
+masq_data_ns <- behave_data_ns %>%
+  select(subject, case, starts_with("MASQ_")) %>%
+  mutate(across(starts_with("MASQ_"), 
+                ~as.numeric(factor(.x, levels = c("None at all", "A little", "A moderate amount", "A great deal", "A lot"))  ))) %>%
+  filter(MASQ_28 == 1) %>% # attention check, all passed
+  # ANXIOUS AROUSAL
+  mutate(masq_aa = MASQ_2 + MASQ_6 + MASQ_13 + MASQ_17 + MASQ_19 + MASQ_27 + MASQ_30 + MASQ_37 + MASQ_40 + MASQ_42 + 
+                   MASQ_44 + MASQ_46 + MASQ_51 + MASQ_53) %>% # MASQ_24 (Hands were cold or sweaty) missing in the pilot data
+  # GENERAL DISTRESS ANXIETY
+  mutate(masq_gd_anx = MASQ_4 + MASQ_8 + MASQ_11 + MASQ_14 + MASQ_16 + MASQ_20 + MASQ_25 + MASQ_32 + MASQ_35 + MASQ_54 + MASQ_58) %>%
+  # ANHEDONIA
+  mutate(masq_ad = MASQ_18 + MASQ_24 + MASQ_33 + MASQ_41 + MASQ_49 + MASQ_50 + MASQ_56 +
+                  reverse_score[MASQ_3] + reverse_score[MASQ_7] + reverse_score[MASQ_10] + reverse_score[MASQ_15] + reverse_score[MASQ_22] +
+                  reverse_score[MASQ_26] + reverse_score[MASQ_39] + reverse_score[MASQ_43] + reverse_score[MASQ_47] + reverse_score[MASQ_48] +
+                  reverse_score[MASQ_52] + reverse_score[MASQ_55] + reverse_score[MASQ_57] + reverse_score[MASQ_59] ) %>%
+  # GENERAL DISTRESS DEPRESSION  
+  mutate(masq_gd_dep = MASQ_1 + MASQ_5 + MASQ_9 + MASQ_12 + MASQ_21 + MASQ_23 + MASQ_29 + MASQ_31 + MASQ_34 + MASQ_36 + MASQ_38 + MASQ_45)  %>%
+  select(subject, case,  masq_aa, masq_gd_anx, masq_ad, masq_gd_dep, starts_with("MASQ"))
+
+
+# bind clinical data 
+masq_data <- bind_rows(masq_data_pilot, masq_data_ns)
+clinical_data <- full_join(masq_data, oasis_data, by = c("subject", "case"))
+clinical_data <- clinical_data %>%
+  select(subject, case, oasis_total, masq_aa, masq_gd_anx, masq_ad, masq_gd_dep)
+
+```
+
+
+
 ```{r visualizastions, fig.width = 15, fig.height = 8}
 
 model_compare_df %>%
-  pivot_longer(cols = auc:cor, names_to = "metric", values_to = "value") %>%
+  pivot_longer(cols = c(auc:cor), names_to = "metric", values_to = "value") %>%
   ggplot(aes(x = metric, y = value, fill = case, color = case)) +
   geom_boxplot(notch = TRUE, color = "black") +
   geom_point(position = position_dodge(width = .75), alpha = .5) +
@@ -343,6 +221,142 @@ model_compare_df %>%
 
 
 ```
+
+```{r conf-interval}
+t.test(x = model_wide_df$auc_true)
+t.test(x = model_wide_df$auc_true, y = model_wide_df$auc_perm, paired = TRUE)
+
+```
+
+
+```{r model-summaries, fig.width = 15, fig.height = 8}
+
+
+model_compare_df %>%
+  pivot_longer(cols = rhat_threat:rhat_reward, names_to = "metric", values_to = "value") %>%
+  ggplot(aes(x = metric, y = value, fill = case, color = case)) +
+  geom_violin() +
+  # geom_point(position = position_dodge(width = .75), alpha = .5) +
+  geom_hline(yintercept = 1.1, linetype = "dotted", color = "black") +
+  facet_wrap(~metric, scales = "free") +
+  theme_bw() +
+  theme(legend.position = "top", 
+        strip.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  labs(title = "Model Value Comparison",
+       subtitle = "True vs. Permuted",
+       x = "Metric",
+       y = "Value")
+
+
+model_compare_df %>%
+  pivot_longer(cols = beta_threat:beta_reward, names_to = "metric", values_to = "value") %>%
+  ggplot(aes(x = metric, y = value, fill = case, color = case)) +
+  geom_violin(color = "black") +
+  # geom_point(position = position_dodge(width = .75), alpha = .5) +
+  # geom_hline(yintercept = 1.1, linetype = "dotted", color = "black") +
+  facet_wrap(~metric) +
+  theme_bw() +
+  theme(legend.position = "top", 
+        strip.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  labs(title = "Model Value Comparison",
+       subtitle = "True vs. Permuted",
+       x = "Metric",
+       y = "Value") +
+  ylim(-5, 1)
+
+
+model_compare_df %>%
+  filter(case == "true") %>%
+  pivot_longer(cols = beta_threat:beta_reward, names_to = "metric", values_to = "value") %>%
+  ggplot(., aes(x = value, fill = metric)) +
+  geom_density(color = "black", alpha = .5) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+
+## Compare Betas with clinical data
+
+```{r clinical-data, fig.width = 10, fig.height = 6}
+
+clinical_model_df <- left_join(true_df %>% rename(subject = subjects), clinical_data, by = c("subject"))
+
+
+clinical_model_df %>%
+  ggplot(., aes(x = beta_threat, y = oasis_total)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+
+clinical_model_df %>%
+  ggplot(., aes(x = beta_threat, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+
+clinical_model_df %>%
+  ggplot(., aes(x = beta_threat, y = masq_gd_anx)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+
+
+clinical_model_df %>%
+  ggplot(., aes(x = beta_threat, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+
+
+clinical_model_df %>%
+  ggplot(., aes(x = beta_reward, y = oasis_total)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+
+clinical_model_df %>%
+  ggplot(., aes(x = beta_reward, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+
+clinical_model_df %>%
+  ggplot(., aes(x = beta_reward, y = masq_gd_anx)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+
+
+clinical_model_df %>%
+  ggplot(., aes(x = beta_reward, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+
+summary(lm(oasis_total ~ beta_threat, data = clinical_model_df))
+summary(lm(masq_aa ~ beta_threat, data = clinical_model_df))
+summary(lm(masq_ad ~ beta_threat, data = clinical_model_df))
+summary(lm(masq_gd_anx ~ beta_threat, data = clinical_model_df))
+summary(lm(masq_gd_dep ~ beta_threat, data = clinical_model_df))
+
+
+summary(lm(oasis_total ~ beta_reward, data = clinical_model_df))
+summary(lm(masq_aa ~ beta_reward, data = clinical_model_df))
+summary(lm(masq_ad ~ beta_reward, data = clinical_model_df))
+summary(lm(masq_gd_anx ~ beta_reward, data = clinical_model_df))
+summary(lm(masq_gd_dep ~ beta_reward, data = clinical_model_df))
+
+
+```
+
+
 
 
 ```{r auc-indv-improvement, fig.width = 12, fig.height = 12}
@@ -391,6 +405,67 @@ model_wide_df %>%
 
 ```
 
+```{r}
 
+model_wide_fill_df <- left_join(model_wide_df, reward_df, by = "subjects", suffix = c("", "_reward"))
+model_wide_fill_df <- left_join(model_wide_fill_df, threat_df, by = "subjects", suffix = c("", "_threat"))
+
+
+
+```
+
+
+```{r true-subs}
+
+model_wide_fill_df <- model_wide_fill_df %>%
+  mutate(auc_dif = auc_true - auc_perm) %>%
+  arrange(auc_dif) %>%
+  mutate(subjects = factor(subjects, levels = unique(subjects)))
+
+worset_true_subjs <- levels(model_wide_fill_df$subjects)[1:2x5]
+
+write_csv(tibble("subjects" = worset_true_subjs), path(here(), './munge/poorly_fit_subjects.csv'))
+```
+
+
+```{r reward-subs}
+
+model_wide_fill_df <- model_wide_fill_df %>%
+  mutate(auc_dif = auc - auc_perm) %>%
+  arrange(auc_dif) %>%
+  mutate(subjects = factor(subjects, levels = unique(subjects)))
+
+worset_reward_subjs <- levels(model_wide_fill_df$subjects)[1:25]
+
+
+```
+
+```{r reward-subs}
+
+model_wide_fill_df <- model_wide_fill_df %>%
+  mutate(auc_dif = auc_threat - auc_perm) %>%
+  arrange(auc_dif) %>%
+  mutate(subjects = factor(subjects, levels = unique(subjects)))
+
+worset_threat_subjs <- levels(model_wide_fill_df$subjects)[1:25]
+
+
+```
+
+```{r}
+
+## reard in true 
+table(worset_reward_subjs %in% worset_true_subjs)
+
+
+```
+
+```{r}
+
+## threat in true 
+table(worset_threat_subjs %in% worset_true_subjs)
+
+
+```
 
 

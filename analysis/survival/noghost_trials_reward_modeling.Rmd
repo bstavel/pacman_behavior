@@ -1,0 +1,469 @@
+---
+title: "Reward Modeling"
+output: html_document
+date: "2024-03-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+nCores <- 8
+registerDoParallel(nCores)
+
+```
+
+
+### Including No-Ghost Trials
+
+I had wanted to include the no ghost trials, because my assumption was that it would improve the models by providing more data, especially concerning points_remaining. Since people should turn around as soon as points_remaining hits 0, I thought this would help the model pick up on the importance of that variable. However, after trying many, many things, I think the problem stems from a lack of variation in turn time on these trials. Or at the very least they are very bad for subjects where I had not jittered the reward from the starting location! I suppose it might be different for later subjects! (It wasn't)
+
+
+Printing out the standard deviation in turning times, it is just much much lower for no-ghost trials. This throws off the model and actually deflates the coefficients and makes predictions harder. So for now I think we need to pass on using these trials. 
+
+
+```{r get-subject, results='asis', echo=FALSE, eval = T}
+
+current_subject <- "Subject_66"
+permuted <- FALSE
+current_seed <- 17
+
+```
+
+
+```{r load-data, results='asis', echo=FALSE, eval = T}
+
+## Load Data ##
+game_data_behavior <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data_2-3-24.csv"))
+pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data_2-3-24.csv"))
+ns_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data_newsample_2-3-24.csv"))
+
+## Bind Rows ##
+game_data_distance <- bind_rows(pilot_game_data_distance, ns_game_data_distance)
+
+
+pilot_all_vars_df <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data_2-3-24.csv"))
+
+```
+
+```{r distance-vars-for-no-ghost-trials}
+
+game_noghost_distance_data <- game_data_behavior %>%
+      filter(TrialType > 16) %>% #  ghost trials only
+      mutate(distance_to_ghost = 180) %>%
+      mutate(min_distance = NA) %>%
+      mutate(towards_ghost = NA) %>%
+      group_by(subject, trial_numeric) %>%
+      # user movement and distance measures
+      mutate(towards_ghost = if_else(Direction == "Left" & starting_side == "Right", "Towards",  # Left:2 Right :11
+                                     if_else(Direction == "Right" & starting_side == "Left", "Towards",
+                                             if_else(Direction == "Left" & starting_side == "Left", "Away",  # Left:2 Right :11
+                                                     if_else(Direction == "Right" & starting_side == "Right", "Away",
+                                             if_else(Direction == "Still", "Still", "Unsure")))))) %>%
+      mutate(away_choice_tmp = c(0, diff(factor(towards_ghost)))) %>%
+      mutate(away_choice = if_else( (away_choice_tmp == -2 & towards_ghost == "Away") |
+                                      (away_choice_tmp == -1 & towards_ghost == "Away"), trial_time, 0)) %>%
+      select(-away_choice_tmp) %>%
+      mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
+      mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
+      # distance to rewards
+      mutate(points_remaining = if_else(reward_groups == 1 & Eaten == 0, 70, #  small	large	large	small	small, total 70
+                                        if_else(reward_groups == 1 & Eaten == 1, 70 - 10,
+                                                if_else(reward_groups == 1 & Eaten == 2, 70 - 10 - 20,
+                                                        if_else(reward_groups == 1 & Eaten == 3, 70 - 10 - 20 - 20,
+                                                                if_else(reward_groups == 1 & Eaten == 4, 70 - 10 - 20 -20 - 10,
+                                                                        if_else(reward_groups == 1 & Eaten == 5, 70 - 10 - 20 -20 -10 - 10,
+                                                                                if_else(reward_groups == 2 & Eaten == 0, 70, #  small	large	small	large	small, total 70
+                                                                                        if_else(reward_groups == 2 & Eaten == 1, 70 - 10,
+                                                                                                if_else(reward_groups == 2 & Eaten == 2, 70 - 10 -20,
+                                                                                                        if_else(reward_groups == 2 & Eaten == 3, 70 - 10 -20 -10,
+                                                                                                                if_else(reward_groups == 2 & Eaten == 4, 70 - 10 -20 -10 -20,
+                                                                                                                        if_else(reward_groups == 2 & Eaten == 5, 70 - 10 -20 -10 -20 -10,
+                                                                                                                                if_else(reward_groups == 3 & Eaten == 0, 80, #  large	small	large	small	large, total 80
+                                                                                                                                        if_else(reward_groups == 3 & Eaten == 1, 80 - 20,
+                                                                                                                                                if_else(reward_groups == 3 & Eaten == 2, 80 - 20 - 10,
+                                                                                                                                                        if_else(reward_groups == 3 & Eaten == 3, 80 - 20 - 10 - 20,
+                                                                                                                                                                if_else(reward_groups == 3 & Eaten == 4, 80 - 20 - 10 - 20 - 10,
+                                                                                                                                                                        if_else(reward_groups == 3 & Eaten == 5, 80 - 20 - 10 - 20 - 10 - 20,
+                                                                                                                                                                                if_else(reward_groups == 4 & Eaten == 0, 70, #  small	small	small	large	large, total 70
+                                                                                                                                                                                        if_else(reward_groups == 4 & Eaten == 1, 70 - 10,
+                                                                                                                                                                                                if_else(reward_groups == 4 & Eaten == 2, 70 - 10 - 10,
+                                                                                                                                                                                                        if_else(reward_groups == 4 & Eaten == 3, 70 - 10 - 10 - 10,
+                                                                                                                                                                                                                if_else(reward_groups == 4 & Eaten == 4, 70 - 10 - 10 - 10 - 20,
+                                                                                                                                                                                                                        if_else(reward_groups == 4 & Eaten == 5, 70 - 10 - 10 - 10 - 20 - 20, 999
+                                                                                                                                                                                                                        ))))))))))))))))))))))))) %>%
+      mutate(points_aquired = if_else(reward_groups == 3, 80 - points_remaining, 70 - points_remaining)) %>%
+      mutate(distance_to_next_reward = if_else(Eaten == 0, abs(UserLocation - Biscuit1),
+                                               if_else(Eaten == 1, abs(UserLocation - Biscuit2),
+                                                       if_else(Eaten == 2, abs(UserLocation - Biscuit3),
+                                                               if_else(Eaten == 3, abs(UserLocation - Biscuit4),
+                                                                       if_else(Eaten == 4, abs(UserLocation - Biscuit5), 0)))))) %>%
+      # filter(Direction != "Unsure") %>%
+      mutate(Direction = factor(Direction)) %>%
+      mutate(discounted_reward = if_else(Eaten == 5, 0, points_remaining * 1/distance_to_next_reward)) %>%
+      select(-GhostLocation) %>%
+      ungroup()
+
+
+
+game_comb_data_distance <- bind_rows(game_data_distance, game_noghost_distance_data)
+
+
+
+```
+
+
+```{r fit-model-ghost-only, results='asis', echo=FALSE, eval = T}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+seed_list <- c()
+survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+# seed #
+seed_list <- c(seed_list, current_seed)
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+game_data_distance <- game_data_distance %>% filter(trial_numeric != 186 & trial_numeric != 174)
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups) %>% distinct()
+split_index <- create_test_train(split_df, current_seed)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# Print train/test info
+print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials) 
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials) 
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials) 
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_", permuted, "_", current_seed)
+jm_fit_reward_g <- fit_joint_reward_models(train_long_data, train_cox_df, file_name)
+
+summary(jm_fit_reward_g)
+
+```
+```{r}
+
+traceplot(jm_fit_reward_g)
+
+```
+
+
+
+
+```{r fit-model-ng, results='asis', echo=FALSE, eval = T}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+seed_list <- c()
+survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+# seed #
+seed_list <- c(seed_list, current_seed)
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_noghost_distance_data, current_subject, permuted)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups) %>% distinct()
+split_index <- create_test_train(split_df, current_seed)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# Print train/test info
+print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials) 
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials) 
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials) 
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_", permuted, "_", current_seed)
+jm_fit_reward_ng <- fit_joint_reward_models(train_long_data, train_cox_df, file_name)
+
+summary(jm_fit_reward_ng)
+
+```
+
+```{r}
+
+traceplot(jm_fit_reward_ng)
+
+
+```
+
+
+```{r fit-model-all, results='asis', echo=FALSE, eval = T}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+seed_list <- c()
+survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+# seed #
+seed_list <- c(seed_list, current_seed)
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+game_comb_data_distance <- game_comb_data_distance %>% filter(trial_numeric != 186 & trial_numeric != 174)
+joint_dist_df <- prep_joint_df(game_comb_data_distance, current_subject, permuted)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups) %>% distinct()
+split_index <- create_test_train(split_df, current_seed)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# Print train/test info
+print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials) 
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials) 
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials) 
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_", permuted, "_", current_seed)
+jm_fit_reward_all <- fit_joint_reward_models(train_long_data, train_cox_df, file_name)
+
+summary(jm_fit_reward_all)
+
+```
+
+```{r}
+
+traceplot(jm_fit_reward_all)
+
+
+```
+
+
+```{r fit-model-ng, results='asis', echo=FALSE, eval = T}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+seed_list <- c()
+survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+# seed #
+seed_list <- c(seed_list, current_seed)
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+game_comb_data_distance <- game_comb_data_distance %>% filter(trial_numeric != 186 & trial_numeric != 174)
+joint_dist_df <- prep_joint_df(game_comb_data_distance, current_subject, permuted)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups, ghost_trial) %>% distinct()
+split_index <- create_test_train(split_df, current_seed)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# Print train/test info
+print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials) 
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials) 
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials) 
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_", permuted, "_", current_seed)
+jm_fit_reward_all_gsurv <- fit_joint_reward_models(train_long_data, train_cox_df, file_name)
+
+summary(jm_fit_reward_all_gsurv)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+## EDA
+
+```{r}
+# prep
+joint_dist_df_g <- prep_joint_df(game_data_distance, current_subject, permuted)
+joint_dist_df_ng <- prep_joint_df(game_noghost_distance_data, current_subject, permuted)
+joint_dist_df_all <- prep_joint_df(game_comb_data_distance, current_subject, permuted)
+
+
+joint_df <- rbind(joint_dist_df_g %>% mutate(case = "ghost"), 
+                  joint_dist_df_ng %>% mutate(case = "no ghost"),
+                  joint_dist_df_all %>% mutate(case = "all"))
+
+
+joint_df %>%
+  ggplot(., aes(x = points_remaining, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~case)
+
+
+tmp <- joint_df %>%
+  select(subject, trial_numeric, turnaround_time, case) %>%
+  distinct() %>%
+  ggplot(., aes(x = turnaround_time, fill = case)) +
+  geom_histogram(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~case)
+
+
+sd(tmp %>% filter(case == "ghost") %>% pull(turnaround_time))
+sd(tmp %>% filter(case == "all") %>% pull(turnaround_time))
+sd(tmp %>% filter(case == "no ghost") %>% pull(turnaround_time)) # even in subjects with the jittered dots the variation is very low for no ghost trials
+
+```
+
+
+
+
+
+
+
+

@@ -1,0 +1,270 @@
+---
+title: "iEEG Modeling Results"
+output: html_document
+date: "2024-02-03"
+---
+---
+title: "Distributions of Permuted and True Scores"
+output: html_document
+date: "2024-01-03"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+# Permuted vs True Model Comparison
+
+Compares the `standard_model` (`points_remaining` + `distance_to_ghost`) and the `permtued_model` where the timing information for each trial is preserved but the `points_remaining` and `distance_to_ghost` values are shuffled/shuffled. I look at the distriutions of the following performance metrics
+
+ * AUC
+ * ICI
+ * E50
+ * E90
+ * Brier Score
+ * Predicted vs Observed Correlations
+ 
+ From the initial look, the `standard_model` is significantly outperforming the `permuted_model` in AUC, meaning that it is correctly ranking trials in terms of risk. However, the calibration metrics are all *worse* in the `standard_model` compared to the `permuted_model`, so the model is still pretty far off from correctly predicting the probability of turnaround at any moment. I think the reason the measures are better in the `permuted_model` is that it just uses the average time of turnaround, which is maybe less dramatically off in terms of specific probabilities, but can't differentiate the trials very well. 
+ 
+ If I look at the calibration plots for subjects 14 and 15, I think you can see what is happening. For 14, the calibration metrics are better in the `standard_model` and the red line follows the dotted line pretty well. However, in 15, in the `standard_model` the red line is very off at the edges. However, the `permuted_model` has a red line that is defined on only a short range of the x-axis, so it is not as off, even though I think it is a worse model. 
+
+
+
+```{r load-data}
+
+theta_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "theta_ieeg_df.csv"))
+theta_basic_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "theta_basic_ieeg_df.csv"))
+true_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "true_ieeg_df.csv"))
+perm_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "perm_ieeg_df.csv"))
+# reward_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "reward_df.csv"))
+# threat_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "threat_df.csv"))
+
+theta_subsample_df <- theta_df %>% select(colnames(true_df)) %>% mutate(case = "theta") 
+
+
+model_compare_df <- rbind(true_df %>% mutate(case = "true"),
+                          theta_df %>% select(colnames(true_df)) %>% mutate(case = "theta") ,
+                          theta_basic_df  %>% select(colnames(true_df)) %>% mutate(case = "theta_basic"),
+                          perm_df %>% mutate(case = "permuted") ) #,
+                          # reward_df %>% mutate(case = "reward") %>% mutate(rhat_threat = NA) %>% mutate(p_threat = NA) %>% mutate(beta_threat = NA),
+                          # threat_df %>% mutate(case = "threat") %>% mutate(rhat_reward = NA) %>% mutate(p_reward = NA) %>% mutate(beta_reward = NA))
+
+model_wide_df <- left_join(true_df, perm_df, by = "subjects", suffix = c("_true", "_perm"))
+theta_model_wide_df <- left_join(theta_basic_df, theta_df, by = "subjects", suffix = c("_basic", "_theta"))
+
+
+```
+
+
+
+```{r visualizastions, fig.width = 15, fig.height = 8}
+
+model_compare_df %>%
+  pivot_longer(cols = c(auc:cor), names_to = "metric", values_to = "value") %>%
+  ggplot(aes(x = metric, y = value, fill = case, color = case)) +
+  geom_boxplot(notch = FALSE, color = "black") +
+  geom_point(position = position_dodge(width = .75), alpha = .5) +
+  facet_wrap(~metric, scales = "free") +
+  theme_bw() +
+  theme(legend.position = "top", 
+        strip.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  labs(title = "Model Performance Comparison",
+       subtitle = "True vs. Permuted",
+       x = "Metric",
+       y = "Value")
+
+
+
+
+
+```
+
+```{r conf-interval}
+
+t.test(model_wide_df$auc_true)
+
+t.test(x = model_wide_df$auc_true, y = model_wide_df$auc_perm, paired = TRUE)
+
+```
+
+
+```{r model-summaries, fig.width = 15, fig.height = 8}
+
+
+model_compare_df %>%
+  pivot_longer(cols = rhat_threat:rhat_reward, names_to = "metric", values_to = "value") %>%
+  ggplot(aes(x = metric, y = value, fill = case, color = case)) +
+  geom_violin() +
+  # geom_point(position = position_dodge(width = .75), alpha = .5) +
+  geom_hline(yintercept = 1.1, linetype = "dotted", color = "black") +
+  facet_wrap(~metric, scales = "free") +
+  theme_bw() +
+  theme(legend.position = "top", 
+        strip.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  labs(title = "Model Value Comparison",
+       subtitle = "True vs. Permuted",
+       x = "Metric",
+       y = "Value")
+
+
+
+model_compare_df %>%
+  filter(case == "true") %>%
+  pivot_longer(cols = beta_threat:beta_reward, names_to = "metric", values_to = "value") %>%
+  ggplot(., aes(x = value, fill = metric)) +
+  geom_density(color = "black", alpha = .5) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+
+```{r auc-indv-improvement, fig.width = 12, fig.height = 12}
+
+model_wide_df %>%
+  mutate(auc_dif = auc_true - auc_perm) %>%
+  arrange(auc_dif) %>%
+  mutate(subjects = factor(subjects, levels = unique(subjects))) %>%
+  mutate(auc_true = auc_true - auc_perm) %>%
+  mutate(auc_perm = 0) %>%
+  ggplot(.,) +
+    geom_segment( aes(x=subjects, xend=subjects, y=auc_perm, yend=auc_true), color="black") +
+    geom_point( aes(x=subjects, y=auc_true), color=rgb(0.2,0.7,0.1,0.8), size=3 ) + # green true
+    geom_point( aes(x=subjects, y=auc_perm), color=rgb(0.7,0.2,0.1,0.8), size=3 ) +
+    geom_vline(xintercept  = "Subject_25", color = "grey") +
+    coord_flip()+
+    theme(
+      panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+    ) +
+    labs(x = "Subject", y = "AUC Improvement", title = "AUC Improvement", subtitle = "Green = True, Red = Permuted")
+
+
+```
+
+```{r auc-indv-improvement, fig.width = 12, fig.height = 12}
+
+theta_model_wide_df %>%
+  mutate(auc_dif = auc_theta - auc_basic) %>%
+  arrange(auc_dif) %>%
+  mutate(subjects = factor(subjects, levels = unique(subjects))) %>%
+  mutate(auc_theta = auc_theta - auc_basic) %>%
+  mutate(auc_basic = 0) %>%
+  ggplot(.,) +
+    geom_segment( aes(x=subjects, xend=subjects, y=auc_basic, yend=auc_theta), color="black") +
+    geom_point( aes(x=subjects, y=auc_theta), color=rgb(0.2,0.7,0.1,0.8), size=3 ) + # green true
+    geom_point( aes(x=subjects, y=auc_basic), color=rgb(0.7,0.2,0.1,0.8), size=3 ) +
+    # geom_vline(xintercept  = "Subject_25", color = "grey") +
+    coord_flip()+
+    theme(
+      panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+    ) +
+    labs(x = "Subject", y = "AUC Improvement", title = "AUC Improvement", subtitle = "Green = True, Red = Permuted")
+
+
+```
+
+
+```{r cor-indv-improvement, fig.width = 12, fig.height = 12}
+
+model_wide_df %>%
+  mutate(cor_dif = cor_true - cor_perm) %>%
+  arrange(cor_dif) %>%
+  mutate(subjects = factor(subjects, levels = unique(subjects))) %>%
+  mutate(cor_true = cor_true - cor_perm) %>%
+  mutate(cor_perm = 0) %>%
+  ggplot(.,) +
+    geom_segment( aes(x=subjects, xend=subjects, y=cor_perm, yend=cor_true), color="black") +
+    geom_point( aes(x=subjects, y=cor_true), color=rgb(0.2,0.7,0.1,0.8), size=3 ) + # green true
+    geom_point( aes(x=subjects, y=cor_perm), color=rgb(0.7,0.2,0.1,0.8), size=3 ) +
+    geom_vline(xintercept  = "Subject_45", color = "grey") +
+    coord_flip()+
+    theme(
+      panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+    ) +
+    labs(x = "Subject", y = "Correlation Improvement", title = "Correlation Improvement", subtitle = "Green = True, Red = Permuted")
+
+
+```
+
+
+

@@ -1,0 +1,422 @@
+---
+title: "Joint Models HC Theta"
+output: html_document
+date: "2024-02-08"
+---
+
+```{r setup, include=FALSE}
+### batch files for joint modeling ###
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(9, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+```{r load-data}
+
+## Load Data ##
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+## Only Bob data #
+game_data_distance <- game_data_distance %>%
+  filter(attack_chase_bob == 'Bob') 
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(subject != "BJH026") %>% # no hc data
+  filter(trial_time <= 5.10) 
+
+```
+
+```{r}
+
+hc_avg_behave_theta <- hc_theta_behave_df %>%
+  filter(subject == 'BJH027') %>%
+  select(subject, trial_numeric, trial_time, Direction, dots_eaten, last_away, away_choice, distance_to_ghost, points_remaining, electrode, theta) %>%
+  distinct() %>%
+  group_by(trial_numeric, trial_time) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  select(-electrode, -theta) %>%
+  distinct() %>%
+  ungroup()
+
+
+hc_avg_behave_theta %>%
+  # filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  ggplot(aes(x = trial_time, y = mean_elec_theta, group = trial_numeric)) +
+  geom_line(alpha = .1) +
+  geom_point(alpha = .1) +
+  theme_minimal()
+
+
+hc_avg_behave_theta %>%
+  group_by(trial_numeric) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time_tmp = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time_tmp)) %>%
+  mutate(trial_time = trial_time - turnaround_time) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(mean_elec_theta)) %>%
+  ggplot(aes(x = trial_time, y = mean_theta, group = trial_numeric)) +
+  geom_line(alpha = 1) +
+  geom_point(alpha = 1) +
+  theme_minimal() +
+  xlim(-2, 2) + ylim(-1, 1)
+
+```
+
+
+```{r prep-data}
+
+## Permuted? ##
+permuted <- FALSE
+seed <- 123
+final_sub_list <-  unique(game_data_distance$subject)
+current_subject <- 'SLCH002'
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted, ieeg = FALSE)
+
+hc_sub_trials <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  pull(trial_numeric) %>%
+  unique()
+
+joint_dist_df <- joint_dist_df %>%
+  filter(trial_numeric %in% hc_sub_trials)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+split_index <- create_test_train(split_df, seed)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+## Merge iEEG data with behavioral data ##
+joint_theta_dist_df <- left_join(joint_dist_df %>% mutate(trial_time = round(trial_time, 2)), 
+                                hc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+## Create hc theta average ##
+joint_theta_dist_df <- joint_theta_dist_df %>%
+  filter(!is.na(electrode)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_numeric, trial_time) %>%
+  mutate(mean_elec_theta = mean(theta)) %>%
+  select(-electrode, -theta) %>%
+  distinct() %>%
+  ungroup()  %>%
+  mutate(mean_elec_theta = scale(mean_elec_theta)) %>%
+  mutate(sin_term = sin(2 * pi * trial_time / 5)) %>%
+  mutate(cos_term = cos(2 * pi * trial_time / 5)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  mutate(turnaround_time = round(turnaround_time, 2))
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_theta_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_theta_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_theta_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+lm_threat <- lme(distance_to_ghost ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
+lm_reward <- lme(points_remaining ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)
+
+# joint model #
+jm_fit_should_be_sim_as_orig <- jm(cox_fit, list(lm_threat, lm_reward), time_var = "trial_time", data_Surv = train_cox_df, 
+             n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
+
+## Predict ##
+prediction_time <- median(split_df$turnaround_time)
+auc <- tvAUC(jm_fit_should_be_sim_as_orig, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+auc
+
+
+summary(jm_fit_should_be_sim_as_orig)
+
+## Custom Checks ##
+ggthemr("solarized")
+
+test_three_trials <- test_long_data %>% 
+  filter(trial_time < .5) %>%
+  select(-turnaround_time, -EVENT)
+
+test_preds <- predict(jm_fit_should_be_sim_as_orig, 
+          newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+          idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+
+test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+
+test_preds_true <- test_preds_true %>%
+  arrange(turntime_real) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+
+# Now use 'numeric_for_color' for the color aesthetic in ggplot
+prediction_plot <- ggplot(test_preds_true, aes(x = trial_time, y = pred_CIF, color = trial_numeric)) +
+  geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
+  geom_vline(aes(xintercept = turntime_real, color = trial_numeric, alpha = .7)) +
+  geom_point() +
+  scale_color_viridis_d() +  # Using Viridis color scale
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text = element_text(color = "black", size = 12),
+        axis.title = element_text(color = "black", size = 12),
+        legend.position =  'none',
+        plot.title  = element_text(color = "black", size = 16, face = "plain")) +
+  ylim(0, 1) + xlim(0, 2.5) + labs(color = "Test Trial") +
+  ggtitle(paste0("Prediction on held out trials: ", current_subject)) +
+  labs(x = "Time", y = "Probability of Turning Around")
+
+print(prediction_plot)
+
+# correaltions between pred and real
+scatter_pred_df <- test_preds_true %>%
+  mutate(near_50 = abs(pred_CIF - .5)) %>%
+  group_by(trial_numeric) %>%
+  mutate(closest_to_50 = min(near_50)) %>%
+  filter(closest_to_50 == near_50) %>%
+  mutate(turntime_pred = trial_time) %>%
+  ungroup() %>%
+  select(trial_numeric, turntime_real, turntime_pred) %>%
+  distinct() 
+
+cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+
+```
+```{r prep-data}
+
+## Permuted? ##
+permuted <- FALSE
+seed <- 123
+final_sub_list <-  unique(game_data_distance$subject)
+current_subject <- 'SLCH002'
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted, ieeg = FALSE)
+
+hc_sub_trials <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  pull(trial_numeric) %>%
+  unique()
+
+joint_dist_df <- joint_dist_df %>%
+  filter(trial_numeric %in% hc_sub_trials)
+
+## Create Test/Train ##
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time) %>% distinct()
+split_index <- create_test_train(split_df, seed)
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+lm_threat <- lme(distance_to_ghost ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
+lm_reward <- lme(points_remaining ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)
+
+# joint model #
+jm_fit_should_be_sim_as_orig <- jm(cox_fit, list(lm_threat, lm_reward), time_var = "trial_time", data_Surv = train_cox_df, 
+             n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
+
+## Predict ##
+prediction_time <- median(split_df$turnaround_time)
+auc <- tvAUC(jm_fit_should_be_sim_as_orig, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+auc
+
+
+summary(jm_fit_should_be_sim_as_orig)
+
+## Custom Checks ##
+ggthemr("solarized")
+
+test_three_trials <- test_long_data %>% 
+  filter(trial_time < .5) %>%
+  select(-turnaround_time, -EVENT)
+
+test_preds <- predict(jm_fit_should_be_sim_as_orig, 
+          newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+          idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+
+test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
+test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+
+test_preds_true <- test_preds_true %>%
+  arrange(turntime_real) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+
+# Now use 'numeric_for_color' for the color aesthetic in ggplot
+prediction_plot <- ggplot(test_preds_true, aes(x = trial_time, y = pred_CIF, color = trial_numeric)) +
+  geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
+  geom_vline(aes(xintercept = turntime_real, color = trial_numeric, alpha = .7)) +
+  geom_point() +
+  scale_color_viridis_d() +  # Using Viridis color scale
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text = element_text(color = "black", size = 12),
+        axis.title = element_text(color = "black", size = 12),
+        legend.position =  'none',
+        plot.title  = element_text(color = "black", size = 16, face = "plain")) +
+  ylim(0, 1) + xlim(0, 2.5) + labs(color = "Test Trial") +
+  ggtitle(paste0("Prediction on held out trials: ", current_subject)) +
+  labs(x = "Time", y = "Probability of Turning Around")
+
+print(prediction_plot)
+
+# correaltions between pred and real
+scatter_pred_df <- test_preds_true %>%
+  mutate(near_50 = abs(pred_CIF - .5)) %>%
+  group_by(trial_numeric) %>%
+  mutate(closest_to_50 = min(near_50)) %>%
+  filter(closest_to_50 == near_50) %>%
+  mutate(turntime_pred = trial_time) %>%
+  ungroup() %>%
+  select(trial_numeric, turntime_real, turntime_pred) %>%
+  distinct() 
+
+cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+
+```
+
+```{r with-theta}
+# theta model #
+lm_theta <- lme(mean_elec_theta ~ sin_term + cos_term, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
+
+# joint model #
+jm_fit_with_theta <- jm(cox_fit, list(lm_threat, lm_reward, lm_theta), time_var = "trial_time", data_Surv = train_cox_df, 
+             n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
+
+## Predict ##
+auc <- tvAUC(jm_fit_with_theta, newdata = test_long_data, Tstart = .5, Thoriz = prediction_time, idVar = 'trial_numeric')
+auc
+
+
+summary(jm_fit_with_theta)
+
+## Custom Checks ##
+ggthemr("solarized")
+
+test_three_trials <- test_long_data %>% 
+  filter(trial_time < .5) %>%
+  select(-turnaround_time, -EVENT)
+
+test_preds <- predict(jm_fit_with_theta, 
+          newdata = test_three_trials, process = "event", return_newdata = TRUE, 
+          idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+
+test_preds_true <- left_join(test_preds, test_cox_df, by = "trial_numeric")
+
+test_preds_true <- test_preds_true %>%
+  arrange(turntime_real) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric)))
+
+# Now use 'numeric_for_color' for the color aesthetic in ggplot
+prediction_plot <- ggplot(test_preds_true, aes(x = trial_time, y = pred_CIF, color = trial_numeric)) +
+  geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
+  geom_vline(aes(xintercept = turntime_real, color = trial_numeric, alpha = .7)) +
+  geom_point() +
+  scale_color_viridis_d() +  # Using Viridis color scale
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text = element_text(color = "black", size = 12),
+        axis.title = element_text(color = "black", size = 12),
+        legend.position =  'none',
+        plot.title  = element_text(color = "black", size = 16, face = "plain")) +
+  ylim(0, 1) + xlim(0, 2.5) + labs(color = "Test Trial") +
+  ggtitle(paste0("Prediction on held out trials: ", current_subject)) +
+  labs(x = "Time", y = "Probability of Turning Around")
+
+print(prediction_plot)
+
+# correaltions between pred and real
+scatter_pred_df <- test_preds_true %>%
+  mutate(near_50 = abs(pred_CIF - .5)) %>%
+  group_by(trial_numeric) %>%
+  mutate(closest_to_50 = min(near_50)) %>%
+  filter(closest_to_50 == near_50) %>%
+  mutate(turntime_pred = trial_time) %>%
+  ungroup() %>%
+  select(trial_numeric, turntime_real, turntime_pred) %>%
+  distinct() 
+
+cor_score <- cor(scatter_pred_df$turntime_real, scatter_pred_df$turntime_pred)
+
+
+```

@@ -1,0 +1,814 @@
+---
+title: "Understanding LMEs"
+output: html_document
+date: "2024-02-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+```{r load-data}
+
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_g_dist %>% 
+  select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
+
+
+
+```
+
+
+```{r add-ghost-direction}
+
+all_subs_g_dist <- all_subs_g_dist %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(ghost_objective_direction_tmp = c(FALSE, diff(GhostLocation))) %>%
+  mutate(ghost_objective_direction = if_else(ghost_objective_direction_tmp >= 2, "Right", 
+                                             if_else(ghost_objective_direction_tmp <= -2, "Left", "still"))) %>%
+  # select(-ghost_objective_direction_tmp) %>%
+  mutate(ghost_direction = if_else((base_start_location < 100 & ghost_objective_direction == "Left") |
+                                     (base_start_location > 100 & ghost_objective_direction == "Right") , "Towards",
+                                   if_else(ghost_objective_direction == "still", "still", "Away"))) %>%
+  mutate(new_ghost_direction = ifelse(ghost_direction == "still", NA, ghost_direction)) %>%
+  fill(new_ghost_direction, .direction = "downup") %>%
+  mutate(ghost_direction = ifelse(is.na(new_ghost_direction), ghost_direction, new_ghost_direction)) %>%
+  select(-new_ghost_direction)
+
+
+```
+
+
+
+
+```{r ofc-data-prep}
+
+## prep for general function
+distance_df <- all_subs_g_dist
+brain_df <- ofc_theta_data
+
+# merge behavior data with ieeg data
+brain_behave_df <- left_join(distance_df %>% 
+                               select(-move_step) %>% mutate(trial_time = round(trial_time, 2)) %>% 
+                               filter(!(subject == "SLCH002" & trial_numeric == 220)), 
+                             brain_df %>% mutate(trial_time = round(trial_time, 2)))
+
+
+# prep for linear mixed effects models #
+ofc_behave_lme_df <- brain_behave_df %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # exclude time before they started moving, may be good to look at not doing this as well
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  # filter to max time 3 since after 3s we start losing a lot of trials
+  filter(move_time < 2) %>%
+  # select and scale the necessary variables for the model
+  rowwise() %>%
+  mutate(combined_value = points_remaining * distance_to_ghost) %>%
+  mutate(discounted_value = points_remaining * 1/distance_to_ghost) %>%
+  mutate(discounted_4reward = if_else(Eaten == 5, 0, points_remaining * 1/abs(UserLocation - Biscuit5))) %>%
+  mutate(points_remaining_goal = if_else(dots_eaten == 5, points_remaining,
+                                     if_else(dots_eaten == 4 & reward_groups %in% c(3, 4), points_remaining - 20, # ate 4 dots, big dot remaining
+                                       if_else(dots_eaten == 4 & reward_groups %in% c(1, 2), points_remaining - 10,  # ate 4 dots, small dot remaining
+                                           if_else(dots_eaten == 3 & reward_groups %in% c(1, 2), points_remaining - 20 - 10,  # ate 3 dots, 1 big dot, 1 small dot remaining
+                                             if_else(dots_eaten == 3 & reward_groups == 4, points_remaining - 20 - 20,  # ate 3 dots, 2 big dots remaining
+                                               if_else(dots_eaten == 3 & reward_groups == 3, points_remaining - 10 - 10, # ate 3 dots, 2 small dots remaining
+                                                 if_else(dots_eaten == 2 & reward_groups %in% c(1, 3), points_remaining - 10 - 10 -20, # ate 2 dots, 2 small dots remaining, 1 big
+                                                   if_else(dots_eaten == 2 & reward_groups %in% c(2, 4), points_remaining - 20 - 20 - 10,  # ate 2 dots, 2 small big remaining, 1 small
+                                                     if_else(dots_eaten == 1, points_remaining - 20 - 20 - 10 -10, # always same amount of reward after eating 1 dot
+                                                             0)))))))))) %>%
+  mutate(discounted_goal = if_else(dots_eaten == 5, points_remaining_goal * 1/(abs(UserLocation - Biscuit5)),
+                                   if_else(dots_eaten == 4, points_remaining_goal * 1/(abs(UserLocation - Biscuit4)),
+                                           if_else(dots_eaten == 3, points_remaining_goal * 1/(abs(UserLocation - Biscuit3)),
+                                                   if_else(dots_eaten == 2, points_remaining_goal * 1/(abs(UserLocation - Biscuit2)),
+                                                           if_else(dots_eaten == 1, points_remaining_goal * 1/(abs(UserLocation - Biscuit1)),
+                                                                   0)))))) %>%
+  mutate(discounted_value_goal = points_remaining_goal * 1/distance_to_ghost) %>%                                      
+  ungroup() %>%
+  select(subject, elec_id, theta, trial_numeric, move_time, distance_to_ghost, points_remaining, discounted_value_goal, points_remaining_goal, Eaten,
+         combined_value, discounted_value, GhostLocation, UserLocation, ghost_direction, discounted_reward, discounted_4reward, discounted_goal, dots_eaten) # %>%
+  # mutate(combined_value = scale(combined_value)) %>%
+  # mutate(Eaten = scale(Eaten)) %>%
+  # mutate(discounted_value = scale(discounted_value)) %>%
+  # mutate(UserLocation = scale(UserLocation)) %>%
+  # mutate(GhostLocation = scale(GhostLocation))  %>%
+  # mutate(discounted_reward = scale(discounted_reward)) %>%
+  # mutate(discounted_4reward = scale(discounted_4reward)) %>%
+  # mutate(discounted_goal = scale(discounted_goal)) %>%
+  # mutate(distance_to_ghost = scale(distance_to_ghost)) %>%
+  # mutate(points_remaining = scale(points_remaining))  %>%
+  # mutate(reward_threat_diff = scale(points_remaining - distance_to_ghost)) %>%
+  # mutate(reward_threat_mult = scale(points_remaining * -1 *distance_to_ghost)) %>%
+  # mutate(threat_reward_diff = scale(distance_to_ghost - points_remaining)) %>%
+  # mutate(threat_reward_sum = scale(distance_to_ghost + points_remaining)) %>%
+  # mutate(dots_eaten = scale(dots_eaten)) 
+
+
+```
+
+
+## Understanding Correlations between variables
+
+```{r no-scale, fig.width=20, fig.height=12}
+
+for(sub in unique(ofc_behave_lme_df$subject)){
+  
+  tmp <- ofc_behave_lme_df %>%
+    filter(subject == sub) 
+
+
+  p1 <- tmp %>%
+    group_by(move_time) %>%
+    mutate(cor = round(cor(points_remaining, distance_to_ghost), 2)) %>%
+    mutate(facet = paste0(move_time, " ~ ", cor)) %>%
+    ggplot(aes(x = points_remaining, y = distance_to_ghost)) +
+    geom_point(alpha = .1, color = "darkturquoise") +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~facet, nrow = 2) +
+    ggtitle(paste("Subject:", sub))
+  
+  print(p1)
+  
+  
+}
+
+
+
+```
+
+```{r scaled-only-within-time, fig.width=20, fig.height=12}
+
+# this is the smae as not scaling in terms of correlations
+
+for(sub in unique(ofc_behave_lme_df$subject)){
+  
+  tmp <- ofc_behave_lme_df %>%
+    filter(subject == sub) %>%
+    group_by(move_time) %>%
+    mutate(points_remaining = scale(points_remaining)) %>%
+    mutate(distance_to_ghost = scale(distance_to_ghost))
+
+
+  p1 <- tmp %>%
+    group_by(move_time) %>%
+    mutate(cor = round(cor(points_remaining, distance_to_ghost), 2)) %>%
+    mutate(facet = paste0(move_time, " ~ ", cor)) %>%
+    ggplot(aes(x = points_remaining, y = distance_to_ghost)) +
+    geom_point(alpha = .1, color = "darkturquoise") +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~facet, nrow = 2) +
+    ggtitle(paste("Subject:", sub))
+  
+  print(p1)
+  
+  
+}
+
+
+
+```
+
+```{r scaled-by-subject, fig.width=20, fig.height=12}
+
+for(sub in unique(ofc_behave_lme_df$subject)){
+  
+  tmp <- ofc_behave_lme_df %>%
+    filter(subject == sub) %>%
+    group_by(subject) %>%
+    mutate(points_remaining = scale(points_remaining)) %>%
+    mutate(distance_to_ghost = scale(distance_to_ghost))
+
+
+  p1 <- tmp %>%
+    group_by(move_time) %>%
+    mutate(cor = round(cor(points_remaining, distance_to_ghost), 2)) %>%
+    mutate(facet = paste0(move_time, " ~ ", cor)) %>%
+    ggplot(aes(x = points_remaining, y = distance_to_ghost)) +
+    geom_point(alpha = .1, color = "darkturquoise") +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~facet, nrow = 2) +
+    ggtitle(paste("Subject:", sub))
+  
+  print(p1)
+  
+  
+}
+
+
+
+```
+
+```{r scaled-by-subject-and-time, fig.width=20, fig.height=12}
+
+for(sub in unique(ofc_behave_lme_df$subject)){
+  
+  tmp <- ofc_behave_lme_df %>%
+    filter(subject == sub) %>%
+    group_by(subject, move_time) %>%
+    mutate(points_remaining = scale(points_remaining)) %>%
+    mutate(distance_to_ghost = scale(distance_to_ghost))
+
+
+  p1 <- tmp %>%
+    group_by(move_time) %>%
+    mutate(cor = round(cor(points_remaining, distance_to_ghost), 2)) %>%
+    mutate(facet = paste0(move_time, " ~ ", cor)) %>%
+    ggplot(aes(x = points_remaining, y = distance_to_ghost)) +
+    geom_point(alpha = .1, color = "darkturquoise") +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~facet, nrow = 2) +
+    ggtitle(paste("Subject:", sub))
+  
+  print(p1)
+  
+  
+}
+
+
+
+```
+```{r, fig.width=20, fig.height=12}
+
+
+  
+tmp <- ofc_behave_lme_df %>%
+  group_by(subject, move_time) %>%
+  mutate(points_remaining = scale(points_remaining)) %>%
+  mutate(distance_to_ghost = scale(distance_to_ghost))
+
+
+p1 <- tmp %>%
+  group_by(move_time) %>%
+  mutate(cor = round(cor(points_remaining, distance_to_ghost), 2)) %>%
+  mutate(facet = paste0(move_time, " ~ ", cor)) %>%
+  ggplot(aes(x = points_remaining, y = distance_to_ghost)) +
+  geom_point(alpha = .1, color = "darkturquoise") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~facet, nrow = 2) 
+
+print(p1)
+  
+
+
+```
+
+
+```{r, fig.width=20, fig.height=12}
+
+
+  
+tmp <- ofc_behave_lme_df %>%
+  group_by(subject, move_time) %>%
+  mutate(points_remaining = scale(points_remaining)) %>%
+  mutate(distance_to_ghost = scale(distance_to_ghost))
+
+
+p1 <- tmp %>%
+  group_by(move_time) %>%
+  mutate(cor = round(cor(points_remaining, distance_to_ghost), 2)) %>%
+  mutate(facet = paste0(move_time, " ~ ", cor)) %>%
+  ggplot(aes(x = points_remaining, y = distance_to_ghost)) +
+  geom_point(alpha = .1, color = "darkturquoise") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~facet, nrow = 2) 
+
+print(p1)
+  
+
+
+```
+
+## Understanding the Assocaitions with Theta
+
+```{r, fig.width=20, fig.height=12}
+
+ofc_interaction_df <- ofc_behave_lme_df %>%
+  group_by(subject) %>%
+  mutate(ghost_close = if_else(distance_to_ghost < median(distance_to_ghost), "close", "far")) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(ghost_start_dir = first(ghost_direction)) %>%
+  mutate(max_time = max(move_time)) %>%
+  filter(max_time > 1.2) %>%
+  filter(move_time <= 1.2)
+
+
+ofc_interaction_df %>%
+  filter(ghost_close == "close") %>%
+  ggplot(aes(x = points_remaining, y = theta)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  filter(ghost_close == "far") %>%
+  ggplot(aes(x = points_remaining, y = theta)) +
+  geom_point(alpha = .1, color = "skyblue2") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+
+
+
+
+
+```
+
+```{r by-subject, fig.width=20, fig.height=12}
+
+
+for(sub in unique(ofc_interaction_df$subject)){
+
+
+  p1 <- ofc_interaction_df %>%
+    filter(subject == sub) %>%
+    filter(ghost_close == "close") %>%
+    ggplot(aes(x = points_remaining, y = theta)) +
+    geom_point(alpha = .1) +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~move_time, nrow = 2) +
+    ggtitle(paste("Ghost Close Subject:", sub))
+  
+  
+  p2 <- ofc_interaction_df %>%
+    filter(subject == sub) %>%
+    filter(ghost_close == "far") %>%
+    ggplot(aes(x = points_remaining, y = theta)) +
+    geom_point(alpha = .1, color = "skyblue2") +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~move_time, nrow = 2) +
+    ggtitle(paste("Ghost Far Subject:", sub))
+  
+  print(p1)
+  print(p2)
+  
+  
+}
+
+
+
+```
+
+```{r}
+
+ofc_interaction_df %>%
+    ggplot(aes(x = points_remaining, y = theta, color = ghost_close)) +
+    geom_point(alpha = .01) +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~ghost_close, nrow = 1) 
+
+
+```
+
+
+
+```{r}
+
+for(sub in unique(ofc_interaction_df$subject)){
+
+
+  p1 <- ofc_interaction_df %>%
+    filter(subject == sub) %>%
+    ggplot(aes(x = points_remaining, y = theta, color = ghost_close)) +
+    geom_point(alpha = .1) +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~ghost_close, nrow = 1) +
+    ggtitle(paste("Subject:", sub))
+  
+  
+  print(p1)
+  
+  
+}
+
+
+
+```
+
+
+
+
+```{r, fig.width=20, fig.height=12}
+
+
+ofc_interaction_df <- ofc_interaction_df %>%
+  rowwise() %>%
+  mutate(inter_term = points_remaining + distance_to_ghost + (points_remaining * distance_to_ghost)) %>%
+  mutate(inter_rev_term = points_remaining + distance_to_ghost + (points_remaining / distance_to_ghost)) %>%
+  mutate(inter_rev_term2 = points_remaining + 1/distance_to_ghost + (points_remaining / distance_to_ghost)) %>%
+  mutate(ghost_direction_vec = if_else(ghost_direction == "Away", 1, -1)) %>%
+  mutate(inter_dir = points_remaining + ghost_direction_vec*distance_to_ghost + (points_remaining * ghost_direction_vec*distance_to_ghost)) %>%
+  mutate(inter_discount = if_else(ghost_start_dir == "Towards", inter_term - .3, inter_term))  %>% # .3 translates to about 10 points before scaling
+  ungroup()
+
+
+ofc_interaction_df %>%
+  ggplot(aes(x = inter_term, y = theta)) +
+  geom_point(alpha = .1, color = "lightpink") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  ggplot(aes(x = inter_rev_term, y = theta)) +
+  geom_point(alpha = .1, color = "lightpink") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+ofc_interaction_df %>%
+  ggplot(aes(x = inter_rev_term2, y = theta)) +
+  geom_point(alpha = .1, color = "lightpink") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  ggplot(aes(x = inter_dir, y = theta)) +
+  geom_point(alpha = .1, color = "lightpink") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+ofc_interaction_df %>%
+  ggplot(aes(x = inter_term, y = theta, color = ghost_direction, group = ghost_direction)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+```
+
+
+
+```{r, fig.width=20, fig.height=12}
+
+ofc_interaction_df %>%
+  ggplot(aes(y = inter_term, x = move_time)) +
+  geom_point(alpha = .1, color = "lightpink") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+ofc_interaction_df %>%
+  ggplot(aes(y = inter_rev_term,  x = move_time)) +
+  geom_point(alpha = .1, color = "lightpink") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) 
+
+ofc_interaction_df %>%
+  ggplot(aes(y = inter_rev_term2,  x = move_time)) +
+  geom_point(alpha = .1, color = "lightpink") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+ofc_interaction_df %>%
+  ggplot(aes(y = inter_dir,  x = move_time)) +
+  geom_point(alpha = .1, color = "lightpink") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) 
+
+ofc_interaction_df %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(ghost_start_dir = first(ghost_direction)) %>%
+  ggplot(aes(y = inter_term, x = move_time, color = ghost_start_dir, group = ghost_start_dir)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~ghost_start_dir, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(ghost_start_dir = first(ghost_direction)) %>%
+  ggplot(aes(y = inter_term, x = move_time, color = ghost_start_dir, group = ghost_start_dir)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~ghost_start_dir, nrow = 2) 
+
+```
+
+```{r, fig.width=20, fig.height=12}
+
+ofc_interaction_df %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(ghost_start_dir = first(ghost_direction)) %>%
+  filter(ghost_start_dir == "Towards") %>%
+  ggplot(aes(y = theta, x = inter_term, color = ghost_start_dir, group = ghost_start_dir)) +
+  geom_point(alpha = .1, color = "#CAB2D6") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(ghost_start_dir = first(ghost_direction)) %>%
+  filter(ghost_start_dir == "Away") %>%
+  ggplot(aes(y = theta, x = inter_term, color = ghost_start_dir, group = ghost_start_dir)) +
+  geom_point(alpha = .1, color = "#FB9A99") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  filter(ghost_direction == "Towards") %>%
+  ggplot(aes(x = inter_term, y = theta)) +
+  geom_point(alpha = .1, color = "#CAB2D6") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+ofc_interaction_df %>%
+  filter(ghost_direction == "Away") %>%
+  ggplot(aes(x = inter_term, y = theta)) +
+  geom_point(alpha = .1, color = "#CAB2D6") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+```
+```{r, fig.width=20, fig.height=12}
+
+
+ofc_interaction_df %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(ghost_start_dir = first(ghost_direction)) %>%
+  filter(ghost_start_dir == "Towards") %>%
+  ggplot(aes(y = theta, x = inter_discount, color = ghost_start_dir, group = ghost_start_dir)) +
+  geom_point(alpha = .1, color = "#CAB2D6") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(ghost_start_dir = first(ghost_direction)) %>%
+  filter(ghost_start_dir == "Away") %>%
+  ggplot(aes(y = theta, x = inter_discount, color = ghost_start_dir, group = ghost_start_dir)) +
+  geom_point(alpha = .1, color = "#FB9A99") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  group_by(subject, move_time) %>%
+  mutate(inter_discount_scaled = scale(inter_discount)) %>%
+  ungroup() %>%
+  ggplot(aes(y = theta, x = inter_discount_scaled)) +
+  geom_point(alpha = .1, color = "lightblue") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  group_by(subject, move_time) %>%
+  mutate(points_remaining_scaled = scale(points_remaining)) %>%
+  mutate(distance_to_ghost_scaled = scale(distance_to_ghost)) %>%
+  mutate(inter_term_scaled = points_remaining_scaled + distance_to_ghost_scaled + (points_remaining_scaled * distance_to_ghost_scaled)) %>%
+  mutate(inter_discount_scaled = if_else(ghost_start_dir == "Towards", inter_term_scaled - .3, inter_term_scaled))  %>% # .3 translates to about 10 points before scaling
+  ungroup() %>%
+  ggplot(aes(y = theta, x = inter_term_scaled)) +
+  geom_point(alpha = .1, color = "lightblue") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+
+ofc_interaction_df %>%
+  group_by(subject, move_time) %>%
+  mutate(points_remaining_scaled = scale(points_remaining)) %>%
+  mutate(distance_to_ghost_scaled = scale(distance_to_ghost)) %>%
+  mutate(inter_term_scaled = points_remaining_scaled + distance_to_ghost_scaled + (points_remaining_scaled * distance_to_ghost_scaled)) %>%
+  mutate(inter_discount_scaled = if_else(ghost_start_dir == "Towards", inter_term_scaled - .3, inter_term_scaled))  %>% # .3 translates to about 10 points before scaling
+  ungroup() %>%
+  ggplot(aes(y = theta, x = inter_discount_scaled)) +
+  geom_point(alpha = .1, color = "lightblue") +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~move_time, nrow = 2) 
+
+```
+
+
+```{r, fig.width=20, fig.height=12}
+
+for(sub in unique(ofc_interaction_df$subject)){
+  
+   p1 <-  ofc_interaction_df %>%
+      filter(subject == sub) %>%
+      group_by(subject, move_time) %>%
+      mutate(points_remaining_scaled = scale(points_remaining)) %>%
+      mutate(distance_to_ghost_scaled = scale(distance_to_ghost)) %>%
+      mutate(inter_term_scaled = points_remaining_scaled + distance_to_ghost_scaled + (points_remaining_scaled * distance_to_ghost_scaled)) %>%
+      mutate(inter_discount_scaled = if_else(ghost_start_dir == "Towards", inter_term_scaled - .3, inter_term_scaled))  %>% # .3 translates to about 10 points before scaling
+      ungroup() %>%
+      ggplot(aes(y = theta, x = inter_discount_scaled)) +
+      geom_point(alpha = .1, color = "lightblue") +
+      geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+      theme(panel.background = element_rect(fill = "white")) +
+      facet_wrap(~move_time, nrow = 2) +
+      ggtitle(paste("Subject:", sub))
+
+      print(p1)
+
+  
+  
+}
+
+```
+
+```{r}
+
+
+tmp <- ofc_interaction_df %>%
+      filter(subject == "BJH016") %>%
+      group_by(subject, move_time) %>%
+      mutate(points_remaining_scaled = scale(points_remaining)) %>%
+      mutate(distance_to_ghost_scaled = scale(distance_to_ghost)) %>%
+      mutate(inter_term_scaled = points_remaining_scaled + distance_to_ghost_scaled + (points_remaining_scaled * distance_to_ghost_scaled)) %>%
+      mutate(inter_discount_scaled = if_else(ghost_start_dir == "Towards", inter_term_scaled - .3, inter_term_scaled))  %>% # .3 translates to about 10 points before scaling
+      ungroup()
+
+summary(lm(theta ~ inter_discount_scaled, data = tmp %>% filter(move_time == .8)))
+
+
+
+```
+
+
+
+```{r, fig.width=20, fig.height=12}
+
+for(sub in unique(ofc_interaction_df$subject)){
+
+
+  p1 <- ofc_interaction_df %>%
+    filter(subject == sub) %>%
+    ggplot(aes(x = inter_term, y = theta)) +
+    geom_point(alpha = .1, color = "lightpink") +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~move_time, nrow = 2) +
+    ggtitle(paste("Subject:", sub))
+  
+  print(p1)
+  
+  
+}
+
+
+
+```
+
+
+```{r, fig.width=20, fig.height=12}
+
+for(sub in unique(ofc_interaction_df$subject)){
+  
+  tmp <- ofc_interaction_df %>%
+    filter(subject == sub) 
+
+
+  p1 <- tmp %>%
+    group_by(move_time) %>%
+    mutate(cor = round(cor(points_remaining, distance_to_ghost), 2)) %>%
+    mutate(facet = paste0(move_time, " ~ ", cor)) %>%
+    ggplot(aes(x = points_remaining, y = distance_to_ghost)) +
+    geom_point(alpha = .1, color = "darkturquoise") +
+    geom_smooth(method = "lm", fill = "lightgrey", color = "black") + 
+    theme(panel.background = element_rect(fill = "white")) +
+    facet_wrap(~facet, nrow = 2) +
+    ggtitle(paste("Subject:", sub))
+  
+  print(p1)
+  
+  
+}
+
+
+
+```
+

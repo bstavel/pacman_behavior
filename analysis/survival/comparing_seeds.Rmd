@@ -1,0 +1,216 @@
+---
+title: "Comparing Splits"
+output: html_document
+date: "2024-02-15"
+---
+
+
+```{r setup, include=FALSE}
+### batch files for joint modeling ###
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(9, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+## Comparing Seeds
+
+After finding that the AUC is very dependent on the turn times, we tried to average the AUC across different turning times. However, we found that the AUC was still very dependent on the seed. Here I correlate the different model fitting measures across different seeds to see if there is a better option. I find that DIC is strongly correlated across seeds, and that while there are small differences in DIC between seeds, they are much smaller than when I add/subtract a new variable. Additionally, I found a paper (`https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9675185/`) where they use DIC to compare the different models, and do not ever mention the AUC.  
+
+
+
+
+```{r load-data}
+
+metrics_123 <-read_csv(path(here(), "data", "joint_models", "model_summaries", "fit_metrics_neural_trials_base_preds_seed123_df.csv"))
+metrics_theta_123 <-read_csv(path(here(), "data", "joint_models", "model_summaries", "fit_metrics_neural_trials_theta_preds_seed123_df.csv"))
+metrics_78 <-read_csv(path(here(), "data", "joint_models", "model_summaries", "fit_metrics_neural_trials_base_preds_seed78_df.csv"))
+metrics_theta_78 <- read_csv(path(here(), "data", "joint_models", "model_summaries", "fit_metrics_neural_trials_theta_preds_seed78_df.csv"))
+
+metrics_df <- bind_rows(metrics_123 %>% mutate(seed = "123"),
+                        metrics_theta_123 %>% mutate(seed = "theta_123"),
+                        metrics_theta_78 %>% mutate(seed = "theta_78"),
+                        metrics_78 %>% mutate(seed = "78"))
+
+metrics_wide_df <- left_join(metrics_123, metrics_78, by = "subjects", suffix = c("_123", "_78"))
+metrics_theta_wide_df <- left_join(metrics_123, metrics_theta_123, by = "subjects", suffix = c("_base", "_theta"))
+
+
+```
+
+
+```{r}
+
+metrics_wide_df %>%
+  ggplot(., aes(x = cor_123, y = cor_78)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", formula = 'y ~ x',  fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(-.5, 1) + xlim(-.5, 1) +
+  ggtitle(paste0("Correlation between model fits for different seeds: ", round(cor(metrics_wide_df$cor_123, metrics_wide_df$cor_78), 2)))
+
+metrics_wide_df %>%
+  ggplot(., aes(x = auc_123, y = auc_78)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", formula = 'y ~ x', fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(0.5, 1) + xlim(0.5, 1) +
+  ggtitle(paste0("Correlation between model AUC values for different seeds: ", round(cor(metrics_wide_df$auc_123, metrics_wide_df$auc_78), 2)))
+
+
+metrics_wide_df %>%
+  ggplot(., aes(x = ici_123, y = ici_78)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", formula = 'y ~ x', fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(0, .5) + xlim(0, .5) +
+  ggtitle(paste0("Correlation between model ICI values for different seeds: ", round(cor(metrics_wide_df$ici_123, metrics_wide_df$ici_78), 2)))
+
+metrics_wide_df %>%
+  ggplot(., aes(x = e50_123, y = e50_78)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", formula = 'y ~ x', fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(0, .5) + xlim(0, .5) +
+  ggtitle(paste0("Correlation between model E50 values for different seeds: ", round(cor(metrics_wide_df$e50_123, metrics_wide_df$e50_78), 2)))
+
+metrics_wide_df %>%
+  ggplot(., aes(x = e90_123, y = e90_78)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", formula = 'y ~ x', fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(0, 1) + xlim(0, 1) +
+  ggtitle(paste0("Correlation between model E90 values for different seeds: ", round(cor(metrics_wide_df$e90_123, metrics_wide_df$e90_78), 2)))
+
+metrics_wide_df %>%
+  ggplot(., aes(x = brier_123, y = brier_78)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", formula = 'y ~ x', fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ylim(0, .4) + xlim(0, .4) +
+  ggtitle(paste0("Correlation between model Brier values for different seeds: ", round(cor(metrics_wide_df$brier_123, metrics_wide_df$brier_78), 2)))
+
+metrics_wide_df %>%
+  ggplot(., aes(x = dic_123, y = dic_78)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", formula = 'y ~ x', fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  # ylim(0, .4) + xlim(0, .4) +
+  ggtitle(paste0("Correlation between model DIC values for different seeds: ", round(cor(metrics_wide_df$dic_123, metrics_wide_df$dic_78), 2)))
+
+
+tmp <- metrics_wide_df %>%
+  mutate(dic_123_z = scale(dic_123),
+         dic_78_z = scale(dic_78)) %>%
+  ggplot(., aes(x = dic_123_z, y = dic_78_z)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", formula = 'y ~ x', fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  # ylim(0, .4) + xlim(0, .4) +
+  ggtitle(paste0("Correlation between model zscored DIC values for different seeds: ", round(cor(metrics_wide_df$dic_123, metrics_wide_df$dic_78), 2)))
+
+
+```
+
+
+
+```{r dic, fig.width=10, fig.height=10}
+
+metrics_df %>%
+  ggplot(., aes(x = subjects, y = dic, color = seed)) +
+  geom_point(size = 2) +
+  coord_flip() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+
+```
+Ooof, AUC is useless
+```{r auc, fig.width=10, fig.height=10}
+
+metrics_df %>%
+  ggplot(., aes(x = subjects, y = auc, color = seed)) +
+  geom_point(size = 2) +
+  coord_flip() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+
+```
+```{r cor, fig.width=10, fig.height=10}
+
+metrics_df %>%
+  ggplot(., aes(x = subjects, y = cor, color = seed)) +
+  geom_point(size = 2) +
+  coord_flip() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+
+```
+
+
+```{r brier, fig.width=10, fig.height=10}
+
+metrics_df %>%
+  ggplot(., aes(x = subjects, y = brier, color = seed)) +
+  geom_point(size = 2) +
+  coord_flip() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+
+```
