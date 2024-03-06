@@ -158,8 +158,8 @@ for(current_seed in sample(1:100, 10)){
     jm_fit <- fit_joint_models(train_long_data, train_cox_df, file_name)
 
     ## Print summary ##
-    tmp <- kable(summary(jm_fit)$Survival, caption = "Joint Model",  format = "html") 
-              %>% kable_styling()
+    tmp <- kable(summary(jm_fit)$Survival, caption = "Joint Model",  format = "html")  %>%
+      kable_styling()
     print(tmp)
     cat(paste0("\n\n"))
 
