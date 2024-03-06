@@ -1,4 +1,3 @@
-
 ## libraries ##
 library(tidyverse)
 library(ggplot2)
@@ -11,6 +10,7 @@ library(fs)
 library(lmtest)
 library(scales)
 library(ggthemr)
+library(RColorBrewer)
 
 ## hand written functions ##
 source(path(here(), "R", 'mutate_cond.R'))
@@ -22,6 +22,7 @@ source(path(here(), "R", 'run_and_plot_lme_models.R'))
 ## plotting helpers ##
 ggthemr("light")
 ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
 
 c25 <- c(
   "dodgerblue2", "#E31A1C", # red
@@ -48,8 +49,8 @@ registerDoParallel(nCores)
 dlpfc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
 
 # behavioral data #
-all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
-all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_distance_df.csv"))
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
 
 # combine ghost and no ghost #
 all_subs_dist <- all_subs_g_dist %>% 
@@ -65,60 +66,87 @@ behavior_iti_df <- all_subs_dist %>%
 all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 
 
-# dlpfc and Theta Onset Before Turnaround plot
-individual_and_overall_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", 
+# ## Combined Model ##
+# # Onset
+# individual_and_overall_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", 
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... dlpfc... Trial Onset",
+#                                 rerun_model = TRUE)
+
+# # Turnaround
+# individual_and_overall_robust_lme_turnaround_model_and_plot("dlpfc", "theta", 
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... dlpfc... Turnaround",
+#                                 rerun_model = TRUE)
+
+# ## Indiviudal Predictors ##
+# # Distance to Ghost
+# individual_and_overall_lme_onset_combval_before_turn_model_and_plot("dlpfc", "theta", 
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 predictor = "distance_to_ghost",
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... dlpfc... Turnaround",
+#                                 rerun_model = TRUE)
+
+# # Points Remaining
+# individual_and_overall_lme_onset_combval_before_turn_model_and_plot("dlpfc", "theta", 
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 predictor = "points_remaining",
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... dlpfc... Turnaround",
+#                                 rerun_model = TRUE)
+
+# Distance to Ghost - Turnaround
+individual_and_overall_lme_onset_combval_turnaround_model_and_plot("dlpfc", "theta", 
                                 all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -3, y_high = 3,
-                                plot_title = "Theta encodes some threat values in the dlpfc at trial onset",
+                                predictor = "distance_to_ghost",
+                                y_low = -.5, y_high = .5,
+                                plot_title = "Theta ... dlpfc... Turnaround",
                                 rerun_model = TRUE)
 
-individual_and_overall_robust_lme_onset_turnaround_model_and_plot("dlpfc", "theta", 
+# Points Remaining  - Turnaround
+individual_and_overall_lme_onset_combval_turnaround_model_and_plot("dlpfc", "theta", 
                                 all_subs_g_dist, dlpfc_theta_data, 
-                                y_low = -3, y_high = 3,
-                                plot_title = "Theta encodes threat values adn some reward in the dlpfc after Turnaround",
+                                predictor = "points_remaining",
+                                y_low = -.5, y_high = .5,
+                                plot_title = "Theta ... dlpfc... Turnaround",
                                 rerun_model = TRUE)
+
+# ## Split Ghost Close/Far Model
+# individual_and_overall_robust_split_lme_onset_before_turn_model_and_plot("dlpfc", "theta", 
+#                                 all_subs_g_dist, dlpfc_theta_data, 
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... dlpfc... Trial Onset",
+#                                 rerun_model = TRUE)
 
 # ## subject specific
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "BJH016", "#E48DB7",
-#                                 all_subs_g_dist, dlpfc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, dlPFC, BJH016",
-#                                 rerun_model = TRUE)
+# for (sub in unique(dlpfc_theta_data$subject)) {
 
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "BJH021", "#FCC673",
-#                                 all_subs_g_dist, dlpfc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, dlPFC, BJH021",
-#                                 rerun_model = TRUE)
+#   print(sub)
+#   idx = which(sub == unique(dlpfc_theta_data$subject))
 
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "BJH025", "#55BBC8",
-#                                 all_subs_g_dist, dlpfc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, dlPFC, BJH025",
-#                                 rerun_model = TRUE)
+#   if(sub %in% c("BJH039", "BJH041", "LL13")){
+#     next
+#   }
 
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "LL10", "#palegreen2",
-#                                 all_subs_g_dist, dlpfc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, dlPFC, LL10",
-#                                 rerun_model = TRUE)
 
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL12", "#deeppink1",
+#   individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", sub, c25[idx],
 #                                 all_subs_g_dist, dlpfc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, dlPFC, LL12",
+#                                 y_low = -3, y_high = 3,
+#                                 plot_title = paste0("Theta, dlpfc, ", sub),
 #                                 rerun_model = TRUE)
+# }                                
 
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL13", "#brown",
+
+# ## Interaction Model
+
+# individual_and_overall_robust_interact_lme_onset_before_turn_model_and_plot("dlpfc", "theta", 
 #                                 all_subs_g_dist, dlpfc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, dlPFC, LL13",
+#                                 reward_pred = "points_remaining", 
+#                                 threat_pred = "distance_to_ghost",                                     
+#                                 y_low = -12, y_high = 12,
+#                                 plot_title = "Interaction Model: Points Remaining * Distance",
 #                                 rerun_model = TRUE)
-
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("dlpfc", "theta", "SLCH002", "#6A3D9A",
-#                                 all_subs_g_dist, dlpfc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, dlpfc, SLCH002",
-#                                 rerun_model = TRUE)
-
 

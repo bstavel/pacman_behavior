@@ -1,4 +1,3 @@
-
 ## libraries ##
 library(tidyverse)
 library(ggplot2)
@@ -11,6 +10,7 @@ library(fs)
 library(lmtest)
 library(scales)
 library(ggthemr)
+library(RColorBrewer)
 
 ## hand written functions ##
 source(path(here(), "R", 'mutate_cond.R'))
@@ -22,6 +22,7 @@ source(path(here(), "R", 'run_and_plot_lme_models.R'))
 ## plotting helpers ##
 ggthemr("light")
 ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
 
 c25 <- c(
   "dodgerblue2", "#E31A1C", # red
@@ -48,8 +49,8 @@ registerDoParallel(nCores)
 cing_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_cing_all_subs_logged_iti_onset.csv"))
 
 # behavioral data #
-all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
-all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_distance_df.csv"))
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
 
 # combine ghost and no ghost #
 all_subs_dist <- all_subs_g_dist %>% 
@@ -65,17 +66,74 @@ behavior_iti_df <- all_subs_dist %>%
 all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 
 
-# cing and Theta Onset Before Turnaround plot
-individual_and_overall_robust_lme_onset_before_turn_model_and_plot("cing", "theta", 
+# ## Combined Model ##
+# # Onset
+# individual_and_overall_robust_lme_onset_before_turn_model_and_plot("cing", "theta", 
+#                                 all_subs_g_dist, cing_theta_data, 
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... cing... Trial Onset",
+#                                 rerun_model = TRUE)
+
+# # Turnaround
+# individual_and_overall_robust_lme_turnaround_model_and_plot("cing", "theta", 
+#                                 all_subs_g_dist, cing_theta_data, 
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... cing... Turnaround",
+#                                 rerun_model = TRUE)
+
+# ## Indiviudal Predictors ##
+# # Distance to Ghost
+# individual_and_overall_lme_onset_combval_before_turn_model_and_plot("cing", "theta", 
+#                                 all_subs_g_dist, cing_theta_data, 
+#                                 predictor = "distance_to_ghost",
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... cing... Turnaround",
+#                                 rerun_model = TRUE)
+
+# # Points Remaining
+# individual_and_overall_lme_onset_combval_before_turn_model_and_plot("cing", "theta", 
+#                                 all_subs_g_dist, cing_theta_data, 
+#                                 predictor = "points_remaining",
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... cing... Turnaround",
+#                                 rerun_model = TRUE)
+
+# Distance to Ghost - Turnaround
+individual_and_overall_lme_onset_combval_turnaround_model_and_plot("cing", "theta", 
                                 all_subs_g_dist, cing_theta_data, 
-                                y_low = -3, y_high = 3,
-                                plot_title = "Theta encodes threat values in the Ant. Cingulate at trial onset",
-                                rerun_model = FALSE)
+                                predictor = "distance_to_ghost",
+                                y_low = -.5, y_high = .5,
+                                plot_title = "Theta ... cing... Turnaround",
+                                rerun_model = TRUE)
 
-
-
-individual_and_overall_robust_lme_onset_turnaround_model_and_plot("cing", "theta", 
+# Points Remaining  - Turnaround
+individual_and_overall_lme_onset_combval_turnaround_model_and_plot("cing", "theta", 
                                 all_subs_g_dist, cing_theta_data, 
-                                y_low = -3, y_high = 3,
-                                plot_title = "Theta does not encode threat or reward values in the Ant. Cingulate after Turnaround",
-                                rerun_model = FALSE)
+                                predictor = "points_remaining",
+                                y_low = -.5, y_high = .5,
+                                plot_title = "Theta ... cing... Turnaround",
+                                rerun_model = TRUE)
+
+# ## Split Ghost Close/Far Model
+# individual_and_overall_robust_split_lme_onset_before_turn_model_and_plot("cing", "theta", 
+#                                 all_subs_g_dist, cing_theta_data, 
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... cing... Trial Onset",
+#                                 rerun_model = TRUE)
+
+# for (sub in unique(cing_theta_data$subject)) {
+
+#   print(sub)
+#   idx = which(sub == unique(cing_theta_data$subject))
+
+#   if(sub %in% c("LL17", "LL12")){
+#     next
+#   }
+
+
+#   individual_subject_robust_lme_onset_before_turn_model_and_plot("cing", "theta", sub, c25[idx],
+#                                 all_subs_g_dist, cing_theta_data, 
+#                                 y_low = -3, y_high = 3,
+#                                 plot_title = paste0("Theta, cing, ", sub),
+#                                 rerun_model = TRUE)
+# }   
