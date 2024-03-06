@@ -11,6 +11,7 @@ library(fs)
 library(lmtest)
 library(scales)
 library(ggthemr)
+library(RColorBrewer)
 
 ## hand written functions ##
 source(path(here(), "R", 'mutate_cond.R'))
@@ -22,6 +23,7 @@ source(path(here(), "R", 'run_and_plot_lme_models.R'))
 ## plotting helpers ##
 ggthemr("light")
 ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
 
 c25 <- c(
   "dodgerblue2", "#E31A1C", # red
@@ -48,8 +50,8 @@ registerDoParallel(nCores)
 hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
 
 # behavioral data #
-all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
-all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_distance_df.csv"))
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
 
 # combine ghost and no ghost #
 all_subs_dist <- all_subs_g_dist %>% 
@@ -65,56 +67,88 @@ behavior_iti_df <- all_subs_dist %>%
 all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 
 
-# hc and Theta Onset Before Turnaround plot
+# ## Combined Model ##
+# # Onset
 # individual_and_overall_robust_lme_onset_before_turn_model_and_plot("hc", "theta", 
 #                                 all_subs_g_dist, hc_theta_data, 
-#                                 y_low = -3, y_high = 3,
-#                                 plot_title = "Theta encodes reward and threat values in the hippocampus\n at trial onset",
-#                                 rerun_model = FALSE)
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... hc... Trial Onset",
+#                                 rerun_model = TRUE)
 
-individual_and_overall_robust_lme_onset_turnaround_model_and_plot("hc", "theta", 
+# # Turnaround
+# individual_and_overall_robust_lme_turnaround_model_and_plot("hc", "theta", 
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... hc... Turnaround",
+#                                 rerun_model = TRUE)
+
+# ## Indiviudal Predictors ##
+# # Distance to Ghost
+# individual_and_overall_lme_onset_combval_before_turn_model_and_plot("hc", "theta", 
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 predictor = "distance_to_ghost",
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... hc... Turnaround",
+#                                 rerun_model = TRUE)
+
+# # Points Remaining
+# individual_and_overall_lme_onset_combval_before_turn_model_and_plot("hc", "theta", 
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 predictor = "points_remaining",
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... hc... Turnaround",
+#                                 rerun_model = TRUE)
+
+# Distance to Ghost - Turnaround
+individual_and_overall_lme_onset_combval_turnaround_model_and_plot("hc", "theta", 
                                 all_subs_g_dist, hc_theta_data, 
-                                y_low = -3, y_high = 3,
-                                plot_title = "Theta does not encode threat or reward values in the hippocampus after turnaround",
+                                predictor = "distance_to_ghost",
+                                y_low = -.5, y_high = .5,
+                                plot_title = "Theta ... hc... Turnaround",
                                 rerun_model = TRUE)
+
+# Points Remaining  - Turnaround
+individual_and_overall_lme_onset_combval_turnaround_model_and_plot("hc", "theta", 
+                                all_subs_g_dist, hc_theta_data, 
+                                predictor = "points_remaining",
+                                y_low = -.5, y_high = .5,
+                                plot_title = "Theta ... hc... Turnaround",
+                                rerun_model = TRUE)
+
+# ## Split Ghost Close/Far Model
+# individual_and_overall_robust_split_lme_onset_before_turn_model_and_plot("hc", "theta", 
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... hc... Trial Onset",
+#                                 rerun_model = TRUE)
+
 # ## subject specific
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "BJH016", "#E48DB7",
-#                                 all_subs_g_dist, hc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, HC, BJH016",
-#                                 rerun_model = TRUE)
+# for (sub in unique(hc_theta_data$subject)[12:14]) {
 
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "BJH021", "#FCC673",
-#                                 all_subs_g_dist, hc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, HC, BJH021",
-#                                 rerun_model = TRUE)
+#   print(sub)
+#   idx = which(sub == unique(hc_theta_data$subject))
 
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "BJH025", "#55BBC8",
-#                                 all_subs_g_dist, hc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, HC, BJH025",
-#                                 rerun_model = TRUE)
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "LL10", "#palegreen2",
-#                                 all_subs_g_dist, hc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, HC, LL10",
-#                                 rerun_model = TRUE)
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL12", "#deeppink1",
-#                                 all_subs_g_dist, hc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, OFC, LL12",
-#                                 rerun_model = TRUE)
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("OFC", "theta", "LL13", "#brown",
-#                                 all_subs_g_dist, hc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, OFC, LL13",
-#                                 rerun_model = TRUE)
+#   if(sub == "LL13"){
+#     continue
+#   }
 
-# individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", "SLCH002", "#6A3D9A",
+
+#   individual_subject_robust_lme_onset_before_turn_model_and_plot("hc", "theta", sub, c25[idx],
 #                                 all_subs_g_dist, hc_theta_data, 
-#                                 y_low = -6, y_high = 6,
-#                                 plot_title = "Theta, HC, SLCH002",
+#                                 y_low = -3, y_high = 3,
+#                                 plot_title = paste0("Theta, HC, ", sub),
+#                                 rerun_model = FALSE)
+# }                                
+
+
+# ## Interaction Model
+
+# individual_and_overall_robust_interact_lme_onset_before_turn_model_and_plot("hc", "theta", 
+#                                 all_subs_g_dist, hc_theta_data, 
+#                                 reward_pred = "points_remaining", 
+#                                 threat_pred = "distance_to_ghost",                                     
+#                                 y_low = -12, y_high = 12,
+#                                 plot_title = "Interaction Model: Points Remaining * Distance",
 #                                 rerun_model = TRUE)
 
 
