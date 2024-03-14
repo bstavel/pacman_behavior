@@ -1,0 +1,322 @@
+---
+title: "Basic Predictors"
+output: html_document
+date: "2024-03-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(viridis)
+library(lmtest)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+```
+
+
+```{r load-data, results='asis', echo=FALSE, eval = T}
+
+## Load Data ##
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(subject != "BJH026") %>% # no hc data
+  filter(trial_time <= 5.10) 
+
+```
+
+
+```{r prep-dfs, results='asis', echo=FALSE, eval = T}
+
+current_subject <- "BJH016"
+permuted <- FALSE
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+
+# only ieeg trials
+hc_sub_trials <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  pull(trial_numeric) %>%
+  unique()
+
+sub_theta_df <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  filter(!is.na(theta)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  ungroup()
+
+joint_dist_df <- inner_join(sub_theta_df, joint_dist_df, by = c("subject", "trial_numeric", "trial_time"))
+
+
+```
+
+
+```{r}
+
+threat_long_plot <- joint_dist_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  ggplot(., aes(x = jm_time, y = distance_to_ghost)) +
+  geom_line(aes(group = trial_numeric), alpha = .5) +
+  geom_smooth(method = "lm", formula = "y~x", color = "black", fill = "lightgrey") +
+  theme_bw() +
+  theme(axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +
+  labs(x = "Trial Time", y = "Distance to ghost")
+
+
+reward_long_plot <- joint_dist_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  ggplot(., aes(x = jm_time, y = points_remaining)) +
+  geom_line(aes(group = trial_numeric), alpha = .5, color = "#FB6087") +
+  geom_smooth(method = "lm", formula = "y~x", color = "black", fill = "lightgrey") +
+  theme_bw() +
+  theme(axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  labs(x = "Trial Time", y = "Points remaning in the trial")
+
+
+ggsave(path(here(), "figures", "survival", "threat_long_plot.png"), threat_long_plot, width = 8, height = 5)
+ggsave(path(here(), "figures", "survival", "reward_long_plot.png"), reward_long_plot, width = 8, height = 5)
+
+```
+
+
+```{r, fig.width=6, fig.height=6}
+
+
+current_subject <- "BJH016"
+permuted <- FALSE
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+
+# only ieeg trials
+hc_sub_trials <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  pull(trial_numeric) %>%
+  unique()
+
+joint_dist_df <- joint_dist_df %>%
+  filter(trial_numeric %in% hc_sub_trials)
+
+current_seed <- 53
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups) %>% distinct()
+folds <- create_test_train(split_df, current_seed)
+
+fold <- 1
+cat(paste0("\n\n## ", current_subject, " - ", current_seed, "\n"))
+seed_fold <- paste0(current_seed, "-", fold)
+
+split_index <- folds[[fold]]
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# Print train/test info
+print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+cat(paste0("\n\n"))
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df %>% mutate(trial_numeric = round(trial_numeric, 2)))
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_", permuted, "_", seed_fold)
+jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, ".rds")))
+summary(jm_fit)
+
+timepoints <- unique(test_cox_df$turnaround_time)
+test_times <- quantile(timepoints[timepoints > .5], probs = c(.4, .5, .6))
+
+roc_plot <- tvROC(jm_fit, newdata = test_long_data, Tstart = .5,
+                   Thoriz = test_times[2], idVar = 'trial_numeric')
+
+
+plot(roc_plot)
+
+
+```
+
+
+
+```{r, fig.width=6, fig.height=6}
+
+
+current_subject <- "BJH016"
+permuted <- FALSE
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+
+# only ieeg trials
+hc_sub_trials <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  pull(trial_numeric) %>%
+  unique()
+
+sub_theta_df <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  filter(!is.na(theta)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time = trial_time - sample(seq(.5, .99, .1), 1)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  ungroup()
+
+joint_dist_df <- inner_join(sub_theta_df, joint_dist_df, by = c("subject", "trial_numeric", "trial_time"))
+
+current_seed <- 8
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups) %>% distinct()
+folds <- create_test_train(split_df, current_seed)
+
+fold <- 3
+cat(paste0("\n\n## ", current_subject, " - ", current_seed, "\n"))
+seed_fold <- paste0(current_seed, "-", fold)
+
+split_index <- folds[[fold]]
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# Print train/test info
+print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+cat(paste0("\n\n"))
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df %>% mutate(trial_numeric = round(trial_numeric, 2)))
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_", permuted, "_", seed_fold)
+jm_fit <- readRDS(path(here(), "data", "joint_models", paste0(file_name, "_theta_time.rds")))
+summary(jm_fit)
+
+timepoints <- unique(test_cox_df$turnaround_time)
+test_times <- quantile(timepoints[timepoints > .5], probs = c(.4, .5, .6))
+
+auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5,
+                   Thoriz = test_times[2], idVar = 'trial_numeric')
+
+roc_plot <- tvROC(jm_fit, newdata = test_long_data, Tstart = .5,
+                   Thoriz = test_times[2], idVar = 'trial_numeric')
+
+
+plot(roc_plot)
+
+
+```
+
+```{r, fig.width = 3, fig.height = 4}
+
+behave_fig <- game_data_distance %>%
+  filter(trial_numeric == 42 & subject == "BJH016") %>%
+  select(distance_to_ghost, points_remaining, trial_time) %>%
+  mutate(threat = scale(distance_to_ghost)) %>%
+  mutate(reward = scale(points_remaining)) %>%
+  select(-distance_to_ghost, -points_remaining) %>%
+  pivot_longer(cols = c("threat", "reward"), names_to = "variable", values_to = "value") %>%
+  ggplot(., aes(x = trial_time, y = value, color = variable)) +
+  geom_line(size = 2) +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +
+  scale_color_manual(values = c("#86C8B7", "#FB6087")) +
+  labs(y = "", x = "Time", color = "") +
+  ggtitle("Behavior")
+
+ggsave(path(here(), "figures", "survival", "behave_fig.png"), behave_fig, width = 3, height = 4)
+
+```
+
+
+

@@ -74,10 +74,10 @@ for(current_subject in unique(game_data_distance$subject)){
 
   tryCatch({
     
-    output_file_name <- paste("jm_base_dir_modeling_for_", current_subject, ".html", sep = "")
+    output_file_name <- paste("jm_lagged_theta_time_dir_modeling_for_", current_subject, ".html", sep = "")
     
     # Render the R Markdown document, passing the current subject as a parameter
-    render(input = path(here(), "R", "jm_fit_ieeg_plot_template.Rmd"),
+    render(input = path(here(), "R", "jm_fit_ieeg_theta_plot_template.Rmd"),
            output_file = output_file_name,
            params = list(subject = current_subject),
            output_dir = path(here(), "analysis", "survival")

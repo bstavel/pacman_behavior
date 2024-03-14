@@ -1,0 +1,1005 @@
+---
+title: "Clinical Anxiety EDA"
+output: html_document
+date: "2024-01-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(rcartocolor)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+```{r load-pilot-data}
+# load data #
+behave_data_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior.csv"))
+game_data_clean_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data.csv"))
+game_data_distance_pilot <- read_csv( path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+all_vars_df_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data.csv"))
+
+# add case #
+behave_data_pilot <- behave_data_pilot %>% mutate(case = "pilot")
+game_data_clean_pilot <- game_data_clean_pilot %>% mutate(case = "pilot")
+game_data_distance_pilot <- game_data_distance_pilot %>% mutate(case = "pilot")
+all_vars_df_pilot <- all_vars_df_pilot %>% mutate(case = "pilot")
+
+```
+
+
+```{r load-newsample-data}
+
+# load data #
+behave_data_ns <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior_newsample.csv"))
+game_data_clean_ns <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data_newsample.csv"))
+game_data_distance_ns <- read_csv( path(here(), "munge", "prolific", "cleaned_pilot_distance_data_newsample.csv"))
+all_vars_df_ns <-  read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data_newsample.csv"))
+
+# add case
+clinical_ids <- behave_data_ns %>% filter(case == "clinical") %>% pull(subject)
+all_vars_df_ns <- all_vars_df_ns %>% mutate(case = if_else(subject %in% clinical_ids, "clinical", "nonclinical"))
+
+```
+
+```{r merge}
+
+behave_data <- bind_rows(behave_data_pilot, behave_data_ns %>% mutate(comp_7 = as.logical(comp_7)))
+game_data_clean <- bind_rows(game_data_clean_pilot, game_data_clean_ns)
+game_data_distance <- bind_rows(game_data_distance_pilot, game_data_distance_ns)
+all_vars_df <- bind_rows(all_vars_df_pilot, all_vars_df_ns)
+
+```
+
+## Emotional Experience of the Pacman Game
+
+In the pilot study, a majority of participants reported experiencing stress, anxiety and suspense. This holds in both the clinical and non-clinical samples, but notably, the nonclinical sample reports less anxiety and stress during the task, while the clinical sample reports similar levels as the pilot sample.
+
+```{r viz-phenom-total-data, fig.width = 10, fig.height = 6, fig.align = "center", fig.pos = "H"}
+
+expected_options <- c("Stress", "Hope", "Bordeom", "Anxiety", "Excitement", "Disinterest", "Anger", "Suspense", "Frustration", "Other")
+reported_options <- behave_data %>%
+  select(subject, starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  pull(experienced) %>%
+  unique()
+other_options <- reported_options[(!reported_options %in% expected_options) & !grepl(",", reported_options)]
+
+phenom_df <- behave_data %>%
+  select(subject, starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  group_by(subject) %>%
+  mutate(stress = if_else(any(grepl("Stress", experienced)), 1, 0)) %>%
+  mutate(hope = if_else(any(grepl("Hope", experienced)), 1, 0)) %>%
+  mutate(boredom = if_else(any(grepl("Boredom", experienced)), 1, 0)) %>%
+  mutate(anxiety = if_else(any(grepl("Anxiety", experienced)), 1, 0)) %>%
+  mutate(excited = if_else(any(grepl("Excitement", experienced)), 1, 0)) %>%
+  mutate(disinterest = if_else(any(grepl("Disinterest", experienced)), 1, 0)) %>%
+  mutate(anger = if_else(any(grepl("Anger", experienced)), 1, 0)) %>%
+  mutate(suspense = if_else(any(grepl("Suspense", experienced)), 1, 0)) %>%
+  mutate(frustration = if_else(any(grepl("Frustration", experienced)), 1, 0)) %>%
+  mutate(fear = if_else(any(grepl("fear", experienced, ignore.case = T)), 1, 0)) %>%
+  mutate(nostalgia = if_else(any(grepl("nostalgia", experienced, ignore.case = T)), 1, 0)) %>%
+  select(-emotion, -experienced) %>%
+  distinct() %>%
+  ungroup() 
+
+
+phenom_df %>%
+  pivot_longer(cols = -subject, values_to = "experienced", names_to = "emotion") %>%
+  group_by(emotion) %>%
+  summarize(count = sum(experienced)) %>%
+  mutate(count = 100 * count / length(unique(behave_data$subject))) %>%
+  ggplot(., aes(x = emotion, y = count, fill = emotion)) +
+  geom_col(alpha = .8, color = "black") +
+  xlab("") +
+  ylab("Percent of Prolific Participants") +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "none",
+        plot.margin = margin(t = 1, r = 1, b = 1, l = 1),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16, angle = 45, vjust = 1, hjust = 1),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = "bold")) +
+  ggtitle("Most players report feeling anxiety during the task", subtitle = "Responses to: 'What did you experience when the ghost was close to catching you?'") +
+  scale_fill_carto_d(palette = "Prism")
+
+```
+
+```{r viz-phenom-case-data, fig.width = 10, fig.height = 18, fig.align = "center", fig.pos = "H"}
+
+behave_data %>%
+  mutate(case_count = if_else(case == "clinical", 60, 
+                              if_else(case == "pilot", 69, 62))) %>%
+  select(subject, case, case_count, starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  group_by(subject) %>%
+  mutate(stress = if_else(any(grepl("Stress", experienced)), 1, 0)) %>%
+  mutate(hope = if_else(any(grepl("Hope", experienced)), 1, 0)) %>%
+  mutate(boredom = if_else(any(grepl("Boredom", experienced)), 1, 0)) %>%
+  mutate(anxiety = if_else(any(grepl("Anxiety", experienced)), 1, 0)) %>%
+  mutate(excited = if_else(any(grepl("Excitement", experienced)), 1, 0)) %>%
+  mutate(disinterest = if_else(any(grepl("Disinterest", experienced)), 1, 0)) %>%
+  mutate(anger = if_else(any(grepl("Anger", experienced)), 1, 0)) %>%
+  mutate(suspense = if_else(any(grepl("Suspense", experienced)), 1, 0)) %>%
+  mutate(frustration = if_else(any(grepl("Frustration", experienced)), 1, 0)) %>%
+  mutate(fear = if_else(any(grepl("fear", experienced, ignore.case = T)), 1, 0)) %>%
+  mutate(nostalgia = if_else(any(grepl("nostalgia", experienced, ignore.case = T)), 1, 0)) %>%
+  select(-emotion, -experienced) %>%
+  distinct() %>%
+  ungroup() %>%
+  pivot_longer(cols = -c(subject, case, case_count), values_to = "experienced", names_to = "emotion") %>%
+  group_by(emotion, case, case_count) %>%
+  summarize(count = sum(experienced)) %>%
+  mutate(count = 100 * count / case_count) %>%
+  ggplot(., aes(x = emotion, y = count, fill = emotion)) +
+  geom_col(alpha = .8, color = "black") +
+  xlab("") +
+  ylab("Percent of Prolific Participants") +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "none",
+        plot.margin = margin(t = 1, r = 1, b = 1, l = 1),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16, angle = 45, vjust = 1, hjust = 1),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = "bold")) +
+  ggtitle("Most players report feeling anxiety during the task", subtitle = "Responses to: 'What did you experience when the ghost was close to catching you?'") +
+  scale_fill_carto_d(palette = "Prism") +
+  facet_wrap(~case, ncol = 1)
+
+```
+
+## Oasis Anxiety Measures
+
+
+Looking at the distribution of anxiety scores across the three samples, we see that the pilot sample was anctually similar to the clinical sample in terms of anxiety scores. However, the nonclinical sample reported much lower scores and the clinical sample did have more people with extremely high anxiety scores. 
+
+The resulting distributions of the anxiety scores is fairly uniform but drops off as the anxiety level becomes moderate/extreme. While I had hoped to recruit a more severe sample, the additional clinical/nonclinical samples still increased the range of scores, primarly by increasing the number of folks with low levels of anxiety.
+
+
+```{r oasis-symptoms}
+
+oasis_data <- behave_data %>%
+  # Clean Oasis Questions #
+  mutate(O1_clean = as.numeric(gsub(" =.*", "", O1))) %>%
+  mutate(O2_clean = as.numeric(gsub(" =.*", "", O2))) %>%
+  mutate(O3_clean = as.numeric(gsub(" =.*", "", O3))) %>%
+  mutate(O4_clean = as.numeric(gsub(" =.*", "", O4))) %>%
+  mutate(O5_clean = as.numeric(gsub(" =.*", "", O5))) %>%
+  mutate(O6_clean = as.numeric(gsub(" =.*", "", O6))) %>%
+  # exclude non pilot subjects who did not pass the attention check
+  filter((case == "pilot") | (O5_clean == 2)) %>%
+  mutate(oasis_total = if_else(case == "pilot", O1_clean + O2_clean + O3_clean + O4_clean + O5_clean, 
+                              O1_clean + O2_clean + O3_clean + O4_clean + O6_clean)) %>%
+  select(subject, case, ID, starts_with("O"), oasis_total)
+
+oasis_data %>%
+  ggplot(., aes(x = oasis_total)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+oasis_data %>%
+  ggplot(., aes(x = oasis_total, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+oasis_data %>%
+  ggplot(., aes(x = O1_clean, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+oasis_data %>%
+  ggplot(., aes(x = O2_clean, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+oasis_data %>%
+  ggplot(., aes(x = O3_clean, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+oasis_data %>%
+  ggplot(., aes(x = O4_clean, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+## MASQ Scores
+
+Note that MASQ had to be scored differently across the pilot and clinical/nonclinical sample. The pilot accidentally repeated a question and dropped an item ("Hands were cold or sweaty" was replaced by a doubled item "Blamed myself for a lot of things"). A bummer for sure, but it is a 62 item scale, so there were other items that asked about shaking hands. Also, we had already changed the scale to remove items about thoughts of suicide. 
+
+In the second sample, we also added a catch question ("Died of a cardiac arrest"), which also changed the coding.
+
+To validate that the coding was correct and that people were answering the questions honestly, I show that the `Anxious Arousal` and `General Distress - Anxiety` subscales and  the `Anhedonia` and `General Distress - Depression` subscales are highly correlated. I additionally show that the `Anhednoia` and `Anxious Arousal` subscales are less correlated than the other two sets of subscales.
+
+### Pilot MASQ Validation
+
+
+```{r pilot-masq}
+reverse_score <- c(5, 4, 3, 2, 1)
+
+masq_data_pilot <- behave_data_pilot %>%
+  select(subject, case, starts_with("MASQ_")) %>%
+  select(-MASQ_24) %>% # remove duplicate question
+  mutate(across(starts_with("MASQ_"), 
+                ~as.numeric(factor(.x, levels = c("None at all", "A little", "A moderate amount", "A great deal", "A lot"))  ))) %>%
+  # ANXIOUS AROUSAL
+  mutate(masq_aa = MASQ_2 + MASQ_6 + MASQ_13 + MASQ_17 + MASQ_19 + MASQ_28 + MASQ_30 + MASQ_37 + MASQ_40 + MASQ_42 + 
+                   MASQ_44 + MASQ_46 + MASQ_51 + MASQ_53) %>% # MASQ_24 (Hands were cold or sweaty) missing in the pilot data
+  # GENERAL DISTRESS ANXIETY
+  mutate(masq_gd_anx = MASQ_4 + MASQ_8 + MASQ_11 + MASQ_14 + MASQ_16 + MASQ_20 + MASQ_26 + MASQ_32 + MASQ_35 + MASQ_54 + MASQ_58) %>%
+  # ANHEDONIA
+  mutate(masq_ad = MASQ_18 + MASQ_25 + MASQ_33 + MASQ_41 + MASQ_49 + MASQ_50 + MASQ_56 +
+                  reverse_score[MASQ_3] + reverse_score[MASQ_7] + reverse_score[MASQ_10] + reverse_score[MASQ_15] + reverse_score[MASQ_22] +
+                  reverse_score[MASQ_27] + reverse_score[MASQ_39] + reverse_score[MASQ_43] + reverse_score[MASQ_47] + reverse_score[MASQ_48] +
+                  reverse_score[MASQ_52] + reverse_score[MASQ_55] + reverse_score[MASQ_57] + reverse_score[MASQ_59] ) %>%
+  # GENERAL DISTRESS DEPRESSION  
+  mutate(masq_gd_dep = MASQ_1 + MASQ_5 + MASQ_9 + MASQ_12 + MASQ_21 + MASQ_23 + MASQ_29 + MASQ_31 + MASQ_34 + MASQ_36 + MASQ_38 + MASQ_45) %>%
+  select(subject, case,  masq_aa, masq_gd_anx, masq_ad, masq_gd_dep, starts_with("MASQ"))
+
+# correlations in the depression subscales
+masq_data_pilot %>%
+  ggplot(., aes(x = masq_gd_dep, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white"))
+
+# correlations in the anxiety subscales
+masq_data_pilot %>%
+  ggplot(., aes(x = masq_gd_anx, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white"))
+
+# correlations in the anxiety/anheonida subscales
+masq_data_pilot %>%
+  ggplot(., aes(x = masq_ad, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
+### Clinical/Nonclinical MASQ Validation
+
+
+```{r pilot-newsample}
+
+## MASQ scores between 24-28 are different between the two samples!!
+
+
+reverse_score <- c(5, 4, 3, 2, 1)
+
+masq_data_ns <- behave_data_ns %>%
+  select(subject, case, starts_with("MASQ_")) %>%
+  mutate(across(starts_with("MASQ_"), 
+                ~as.numeric(factor(.x, levels = c("None at all", "A little", "A moderate amount", "A great deal", "A lot"))  ))) %>%
+  filter(MASQ_28 == 1) %>% # attention check, all passed
+  # ANXIOUS AROUSAL
+  mutate(masq_aa = MASQ_2 + MASQ_6 + MASQ_13 + MASQ_17 + MASQ_19 + MASQ_27 + MASQ_30 + MASQ_37 + MASQ_40 + MASQ_42 + 
+                   MASQ_44 + MASQ_46 + MASQ_51 + MASQ_53) %>% # MASQ_24 (Hands were cold or sweaty) missing in the pilot data
+  # GENERAL DISTRESS ANXIETY
+  mutate(masq_gd_anx = MASQ_4 + MASQ_8 + MASQ_11 + MASQ_14 + MASQ_16 + MASQ_20 + MASQ_25 + MASQ_32 + MASQ_35 + MASQ_54 + MASQ_58) %>%
+  # ANHEDONIA
+  mutate(masq_ad = MASQ_18 + MASQ_24 + MASQ_33 + MASQ_41 + MASQ_49 + MASQ_50 + MASQ_56 +
+                  reverse_score[MASQ_3] + reverse_score[MASQ_7] + reverse_score[MASQ_10] + reverse_score[MASQ_15] + reverse_score[MASQ_22] +
+                  reverse_score[MASQ_26] + reverse_score[MASQ_39] + reverse_score[MASQ_43] + reverse_score[MASQ_47] + reverse_score[MASQ_48] +
+                  reverse_score[MASQ_52] + reverse_score[MASQ_55] + reverse_score[MASQ_57] + reverse_score[MASQ_59] ) %>%
+  # GENERAL DISTRESS DEPRESSION  
+  mutate(masq_gd_dep = MASQ_1 + MASQ_5 + MASQ_9 + MASQ_12 + MASQ_21 + MASQ_23 + MASQ_29 + MASQ_31 + MASQ_34 + MASQ_36 + MASQ_38 + MASQ_45)  %>%
+  select(subject, case,  masq_aa, masq_gd_anx, masq_ad, masq_gd_dep, starts_with("MASQ"))
+
+# correlations in the depression subscales
+masq_data_ns %>%
+  ggplot(., aes(x = masq_gd_dep, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white"))
+
+# correlations in the anxiety subscales
+masq_data_ns %>%
+  ggplot(., aes(x = masq_gd_anx, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white"))
+
+# correlations in the anxiety/anheonida subscales
+masq_data_pilot %>%
+  ggplot(., aes(x = masq_ad, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
+### MASQ Distributions
+
+Looking at the MASQ distributions across the samples we see a similar picture to the OASIS scores. The clinical sample was more likely to be anhedonic than the pilot sample, but the pilot sample was similar (more moderate values but less extreme values). However, as with the oasis scores the nonclinical sample was much less anxious and depressed. This is likely because prolific would not let us select participants based on an anxiety disorder, but whether or not they had a mental health condition or did *not* have a mental health condition. Thus, many of the participants in the clinical sample are depressed and not necesarily anxious. All the same, the range of scores was certainly increased by adding the two samples, as was intended. 
+
+
+
+```{r masq-distributions}
+
+masq_data <- bind_rows(masq_data_pilot, masq_data_ns)
+
+masq_data %>%
+  select(subject, case, masq_aa, masq_gd_anx, masq_ad, masq_gd_dep) %>%
+  pivot_longer(cols = c(masq_aa, masq_gd_anx, masq_ad, masq_gd_dep), names_to = "subscale", values_to = "score") %>%
+  ggplot(., aes(x = score)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subscale, scales = "free")
+
+masq_data %>%
+  select(subject, case, masq_aa, masq_gd_anx, masq_ad, masq_gd_dep) %>%
+  pivot_longer(cols = c(masq_aa, masq_gd_anx, masq_ad, masq_gd_dep), names_to = "subscale", values_to = "score") %>%
+  ggplot(., aes(x = score, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subscale, scales = "free")
+
+```
+
+```{r distance-to-ghost-eda}
+
+# get subject level distance data
+distance_summary_df <- game_data_distance %>%
+  # remove chase/attack
+  filter(attack_chase_bob == "Bob") %>%
+  group_by(trial_ids) %>%
+  mutate(points_over_trial = max(points_aquired)) %>%
+  mutate(average_dist_trial = mean(distance_to_ghost)) %>%
+  ungroup() %>%
+  select(subject, case, trial_ids, average_dist_trial, points_over_trial, last_away, dots_eaten, died) %>%
+  distinct() %>%
+  group_by(subject) %>%
+  mutate(average_eaten = mean(dots_eaten)) %>%
+  mutate(average_last_away = mean(last_away)) %>%
+  mutate(average_points = mean(points_over_trial)) %>%
+  mutate(average_deaths = mean(died)) %>%
+  mutate(average_dist = mean(average_dist_trial)) %>%
+  select(subject, case, average_dist, average_last_away, average_eaten, average_points, average_deaths) %>%
+  distinct()
+
+
+game_data_distance %>%
+  ggplot(., aes(x = distance_to_ghost, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+distance_summary_df %>%
+  ggplot(., aes(x = average_dist, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+distance_summary_df %>%
+  ggplot(., aes(x = average_last_away, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+distance_summary_df %>%
+  ggplot(., aes(x = average_eaten, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+
+```
+
+
+
+```{r bind-clinical-distance}
+
+
+# bind clinical data 
+clinical_data <- full_join(masq_data, oasis_data, by = c("subject", "case"))
+clinical_data <- clinical_data %>%
+  select(subject, case, oasis_total, masq_aa, masq_gd_anx, masq_ad, masq_gd_dep)
+
+# bind clinical data with distance data
+clinical_distance_data <- left_join(distance_summary_df, clinical_data, by = c("subject", "case"))
+
+```
+
+
+```{r last_away-clinical-symptoms}
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_last_away, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anxious Arousal")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_last_away, y = masq_gd_anx)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Anxiety")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_last_away, y = masq_gd_dep)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Depression")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_last_away, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anhedonia")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_last_away, y = oasis_total)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Oasis Anxiety")
+
+summary(lm(masq_gd_anx ~ average_last_away, data = clinical_distance_data))
+summary(lm(masq_aa ~ average_last_away, data = clinical_distance_data))
+summary(lm(masq_gd_dep ~ average_last_away, data = clinical_distance_data))
+summary(lm(masq_ad ~ average_last_away, data = clinical_distance_data))
+summary(lm(oasis_total ~ average_last_away, data = clinical_distance_data))
+
+
+## Effect sizes ##
+effectsize(lm(masq_gd_anx ~ average_last_away, data = clinical_distance_data))
+effectsize(lm(masq_aa ~ average_last_away, data = clinical_distance_data))
+effectsize(lm(masq_gd_dep ~ average_last_away, data = clinical_distance_data))
+effectsize(lm(masq_ad ~ average_last_away, data = clinical_distance_data))
+effectsize(lm(oasis_total ~ average_last_away, data = clinical_distance_data))
+
+```
+
+
+```{r distance-to-ghost-clinical-symptoms}
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anxious Arousal")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = masq_gd_anx)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Anxiety")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = masq_gd_dep)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Depression")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anhedonia")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = oasis_total)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Oasis Anxiety")
+
+summary(lm(masq_gd_anx ~ average_dist, data = clinical_distance_data))
+summary(lm(masq_aa ~ average_dist, data = clinical_distance_data))
+summary(lm(masq_gd_dep ~ average_dist, data = clinical_distance_data))
+summary(lm(masq_ad ~ average_dist, data = clinical_distance_data))
+summary(lm(oasis_total ~ average_dist, data = clinical_distance_data))
+
+
+## Effect sizes ##
+effectsize(lm(masq_gd_anx ~ average_dist, data = clinical_distance_data))
+effectsize(lm(masq_aa ~ average_dist, data = clinical_distance_data))
+effectsize(lm(masq_gd_dep ~ average_dist, data = clinical_distance_data))
+effectsize(lm(masq_ad ~ average_dist, data = clinical_distance_data))
+effectsize(lm(oasis_total ~ average_dist, data = clinical_distance_data))
+
+```
+
+
+```{r clinical-effects-by-sample}
+
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = masq_aa)) +
+  geom_point(aes(color = case), size = 3) +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anxious Arousal")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = masq_gd_anx)) +
+  geom_point(aes(color = case), size = 3) +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Anxiety")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = masq_gd_dep)) +
+  geom_point(aes(color = case), size = 3) +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Depression")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = masq_ad)) +
+  geom_point(aes(color = case), size = 3) +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anhedonia")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_dist, y = oasis_total)) +
+  geom_point(aes(color = case), size = 3) +
+  geom_smooth(method = "lm", fill = "lightgrey", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Oasis Anxiety")
+
+
+```
+
+```{r effects-eithout-clinical-sample}
+
+clinical_only_distance_data <- clinical_distance_data %>%
+  filter(case != "nonclinical")
+
+summary(lm(masq_gd_anx ~ average_dist, data = clinical_only_distance_data))
+summary(lm(masq_aa ~ average_dist, data = clinical_only_distance_data))
+summary(lm(masq_gd_dep ~ average_dist, data = clinical_only_distance_data))
+summary(lm(masq_ad ~ average_dist, data = clinical_only_distance_data))
+summary(lm(oasis_total ~ average_dist, data = clinical_only_distance_data))
+
+
+## Effect sizes ##
+effectsize(lm(masq_gd_anx ~ average_dist, data = clinical_only_distance_data))
+effectsize(lm(masq_aa ~ average_dist, data = clinical_only_distance_data))
+effectsize(lm(masq_gd_dep ~ average_dist, data = clinical_only_distance_data))
+effectsize(lm(masq_ad ~ average_dist, data = clinical_only_distance_data))
+effectsize(lm(oasis_total ~ average_dist, data = clinical_only_distance_data))
+
+```
+
+
+
+
+```{r eaten-clinical-symptoms}
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_eaten, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anxious Arousal")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_eaten, y = masq_gd_anx)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Anxiety")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_eaten, y = masq_gd_dep)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Depression")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_eaten, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anhedonia")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_eaten, y = oasis_total)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Oasis Anxiety")
+
+summary(lm(masq_gd_anx ~ average_eaten, data = clinical_distance_data))
+summary(lm(masq_aa ~ average_eaten, data = clinical_distance_data))
+summary(lm(masq_gd_dep ~ average_eaten, data = clinical_distance_data))
+summary(lm(masq_ad ~ average_eaten, data = clinical_distance_data))
+summary(lm(oasis_total ~ average_eaten, data = clinical_distance_data))
+
+
+```
+```{r eaten-clinical-symptoms}
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_points, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anxious Arousal")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_points, y = masq_gd_anx)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Anxiety")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_points, y = masq_gd_dep)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Depression")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_points, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anhedonia")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_points, y = oasis_total)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Oasis Anxiety")
+
+summary(lm(masq_gd_anx ~ average_points, data = clinical_distance_data))
+summary(lm(masq_aa ~ average_points, data = clinical_distance_data))
+summary(lm(masq_gd_dep ~ average_points, data = clinical_distance_data))
+summary(lm(masq_ad ~ average_points, data = clinical_distance_data))
+summary(lm(oasis_total ~ average_points, data = clinical_distance_data))
+
+
+```
+
+```{r death-eda, fig.width = 18, fig.height = 8, warning = FALSE}
+
+all_vars_df %>%
+  ggplot(., aes(x = factor(block), y = block_deaths, fill = case)) +
+  geom_point(aes(color = case), position=position_jitterdodge(jitter.height = .6, dodge.width = 1), alpha = .5) +
+  geom_boxplot(notch = T, position = position_dodge(width= 1)) +
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text = element_text(color = "black", size = 12),
+        axis.title = element_text(color = "black", size = 12),
+        plot.title  = element_text(color = "black", size = 16),
+        plot.subtitle = element_text(color = "black", size = 14)) +
+    labs(subtitle = "Players were eaten ~3x per block, and tended to do better over time", x = "Block", y = "Deaths") +
+  ggtitle("Number of Deaths per Block")
+
+
+
+```
+
+
+```{r ifrst-block-deaths, fig.height=12, fig.width=15}
+
+# first block only
+first_block_df <- all_vars_df %>%
+  filter(block == 1)
+
+# bind clinical data with distance data
+clinical_block_data <- left_join(first_block_df, clinical_data, by = c("subject", "case"))
+
+clinical_avg_block_df <- clinical_block_data %>%
+  group_by(subject) %>%
+  mutate(average_first_block_deaths = mean(block_deaths)) %>%
+  ungroup() %>%
+  select(average_first_block_deaths, subject, colnames(clinical_data)) %>%
+  distinct()
+
+# is case predictive of block deaths? #
+summary(lm(block_deaths ~ case, data = first_block_df))
+
+summary(lm(average_first_block_deaths ~ case, data = clinical_avg_block_df))
+
+# is anxiety #
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = oasis_total, y = average_first_block_deaths)) +
+  geom_point(aes(color = case), size = 3) + 
+  geom_smooth(method = "lm") + 
+  theme(panel.background = element_rect(fill = "white"))
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = oasis_total, y = average_first_block_deaths, color = case)) +
+  geom_point(aes(color = case), size = 3) + 
+  geom_smooth(method = "lm", fill = "lightgrey") + 
+  theme(panel.background = element_rect(fill = "white"))
+
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = case, y = average_first_block_deaths)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = oasis_total, y = average_first_block_deaths)) +
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~case, ncol = 1)
+```
+
+
+```{r}
+
+
+summary(lm(masq_gd_anx ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "nonclinical")))
+summary(lm(masq_aa ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "nonclinical")))
+summary(lm(masq_gd_dep ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "nonclinical")))
+summary(lm(masq_ad ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "nonclinical")))
+summary(lm(average_first_block_deaths ~ oasis_total, data = clinical_avg_block_df %>% filter(case == "nonclinical")))
+
+
+summary(lm(masq_gd_anx ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "pilot")))
+summary(lm(masq_aa ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "pilot")))
+summary(lm(masq_gd_dep ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "pilot")))
+summary(lm(masq_ad ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "pilot")))
+summary(lm(oasis_total ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "pilot")))
+
+summary(lm(masq_gd_anx ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "clinical")))
+summary(lm(masq_aa ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "clinical")))
+summary(lm(masq_gd_dep ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "clinical")))
+summary(lm(masq_ad ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "clinical")))
+summary(lm(oasis_total ~ average_first_block_deaths, data = clinical_avg_block_df %>% filter(case == "clinical")))
+
+
+
+```
+
+
+```{r}
+clinical_avg_block_df %>%
+  ggplot(., aes(x = masq_aa, y = average_first_block_deaths)) +
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  theme(panel.background = element_rect(fill = "white"))
+
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = masq_gd_anx, y = average_first_block_deaths)) +
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  theme(panel.background = element_rect(fill = "white"))
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = masq_gd_dep, y = average_first_block_deaths)) +
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  theme(panel.background = element_rect(fill = "white"))
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = masq_ad, y = average_first_block_deaths)) +
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  theme(panel.background = element_rect(fill = "white"))
+
+
+summary(lm(masq_gd_anx ~ average_first_block_deaths, data = clinical_avg_block_df))
+summary(lm(masq_aa ~ average_first_block_deaths, data = clinical_avg_block_df))
+summary(lm(masq_gd_dep ~ average_first_block_deaths, data = clinical_avg_block_df))
+summary(lm(masq_ad ~ average_first_block_deaths, data = clinical_avg_block_df))
+summary(lm(oasis_total ~ average_first_block_deaths, data = clinical_avg_block_df))
+
+
+high_anx_ids <- clinical_avg_block_df %>%
+  filter(oasis_total > 12) %>%
+  pull(subject) %>%
+  unique()
+
+low_anx_ids <- clinical_avg_block_df %>%
+  filter(oasis_total < 5) %>%
+  pull(subject) %>%
+  unique()
+
+
+game_data_clean %>%
+  filter((subject %in% high_anx_ids) | (subject %in% low_anx_ids)) %>%
+  mutate(anx_status = if_else(subject %in% high_anx_ids, "anx", "non-anx")) %>%
+  filter(trial_numeric < 20) %>%
+  ggplot(., aes(x = trial_numeric, y = Lives, color = anx_status, group = subject)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
+
+```{r}
+
+clinical_avg_block_df <- clinical_avg_block_df %>%
+  mutate(high_low_oasis = if_else(oasis_total > median(oasis_total, na.rm = T), "high", "low")) %>%
+  mutate(high_low_aa = if_else(masq_aa > median(masq_aa, na.rm = T), "high", "low")) %>%
+  mutate(high_low_ad = if_else(masq_ad > median(masq_ad, na.rm = T), "high", "low")) %>%
+  mutate(high_low_gd_anx = if_else(masq_gd_anx > median(masq_gd_anx, na.rm = T), "high", "low")) %>%
+  mutate(high_low_gd_dep = if_else(masq_gd_dep > median(masq_gd_dep, na.rm = T), "high", "low")) 
+
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = high_low_oasis, y = average_first_block_deaths)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = high_low_aa, y = average_first_block_deaths)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = high_low_ad, y = average_first_block_deaths)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+clinical_avg_block_df %>%
+  ggplot(., aes(x = high_low_gd_anx, y = average_first_block_deaths)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+clinical_avg_block_df %>%bd
+  ggplot(., aes(x = high_low_gd_dep, y = average_first_block_deaths)) +
+  geom_boxplot(notch = T) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+
+t.test(average_first_block_deaths ~ high_low_oasis, data = clinical_avg_block_df)
+t.test(average_first_block_deaths ~ high_low_aa, data = clinical_avg_block_df)
+t.test(average_first_block_deaths ~ high_low_ad, data = clinical_avg_block_df)
+t.test(average_first_block_deaths ~ high_low_gd_anx, data = clinical_avg_block_df)
+t.test(average_first_block_deaths ~ high_low_gd_dep, data = clinical_avg_block_df)
+```
+
+
+
+
+
+```{r eaten-clinical-symptoms}
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_deaths, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anxious Arousal")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_deaths, y = masq_gd_anx)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Anxiety")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_deaths, y = masq_gd_dep)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Depression")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_deaths, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anhedonia")
+
+clinical_distance_data %>%
+  ggplot(., aes(x = average_deaths, y = oasis_total)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Oasis Anxiety")
+
+summary(lm(masq_gd_anx ~ average_deaths, data = clinical_distance_data))
+summary(lm(masq_aa ~ average_deaths, data = clinical_distance_data))
+summary(lm(masq_gd_dep ~ average_deaths, data = clinical_distance_data))
+summary(lm(masq_ad ~ average_deaths, data = clinical_distance_data))
+summary(lm(oasis_total ~ average_deaths, data = clinical_distance_data))
+
+
+```
+
+## Phenom ~ Anxiety
+
+
+```{r}
+
+
+
+phenom_clinical_df <- left_join(phenom_df, clinical_data, by = c("subject"))
+
+
+summary(glm(anxiety ~ case, phenom_clinical_df, family = "binomial"))
+summary(glm(anxiety ~ oasis_total, phenom_clinical_df, family = "binomial"))
+summary(glm(anxiety ~ masq_aa, phenom_clinical_df, family = "binomial"))
+summary(glm(anxiety ~ masq_gd_anx, phenom_clinical_df, family = "binomial"))
+summary(glm(anxiety ~ masq_gd_dep, phenom_clinical_df, family = "binomial"))
+summary(glm(anxiety ~ masq_ad, phenom_clinical_df, family = "binomial"))
+
+
+```
+
+
+
+

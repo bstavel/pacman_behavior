@@ -28,7 +28,7 @@ predict_on_test_set <- function(jm_fit, test_long_data, test_cox_df){
   
   test_pred_df <- test_long_data %>% 
     filter(turnaround_time > 0.5) %>%
-    filter(trial_time < .5) %>%
+    filter(jm_time < .5) %>%
     select(-turnaround_time, -EVENT)
   
   test_predictions <- predict(jm_fit, 
@@ -81,7 +81,7 @@ plot_survival_predictions <- function(test_predictions, current_subject){
 # longitudinal and survival data analysis.
   
   
-  prediction_plot <- ggplot(test_predictions, aes(x = trial_time, y = pred_CIF, color = trial_numeric)) +
+  prediction_plot <- ggplot(test_predictions, aes(x = jm_time, y = pred_CIF, color = trial_numeric)) +
     # representing the 500ms window the model was given in order to make its predictions
     geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
     # true turnaround time
@@ -140,7 +140,7 @@ plot_correlation_plot <- function(test_predictions, current_subject){
     group_by(trial_numeric) %>%
     mutate(closest_to_50 = min(near_50)) %>%
     filter(closest_to_50 == near_50) %>%
-    mutate(turntime_pred = trial_time) %>%
+    mutate(turntime_pred = jm_time) %>%
     ungroup() %>%
     select(trial_numeric, turntime_real, turntime_pred) %>%
     distinct()
