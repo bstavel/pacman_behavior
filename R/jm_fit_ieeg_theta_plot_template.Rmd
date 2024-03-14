@@ -4,6 +4,7 @@ output: html_document
 date: "2024-02-29"
 params:
   subject: NULL
+  permuted: NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -117,29 +118,30 @@ survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = 
 joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
 
 # only ieeg trials
-hc_sub_trials <- hc_theta_data %>%
-  filter(subject == current_subject) %>%
-  pull(trial_numeric) %>%
-  unique()
-
-joint_dist_df <- joint_dist_df %>%
-  filter(trial_numeric %in% hc_sub_trials)
+# hc_sub_trials <- hc_theta_data %>%
+#   filter(subject == current_subject) %>%
+#   pull(trial_numeric) %>%
+#   unique()
+# 
+# joint_dist_df <- joint_dist_df %>%
+#   filter(trial_numeric %in% hc_sub_trials)
 
 # theta modeling
-# sub_theta_df <- hc_theta_data %>%
-#   filter(subject == current_subject) %>%
-#   filter(!is.na(theta)) %>%
-#   mutate(trial_time = round(trial_time, 2)) %>%
-#   group_by(trial_time, trial_numeric) %>%
-#   mutate(mean_theta = mean(theta)) %>%
-#   select(-theta, -electrode) %>%
-#   distinct() %>%
-#   group_by(trial_numeric) %>%
-#   mutate(trial_time = trial_time - sample(seq(.5, .99, .1), 1)) %>%
-#   mutate(trial_time = round(trial_time, 2)) %>%
-#   ungroup()
-# 
-# joint_dist_df <- inner_join(sub_theta_df, joint_dist_df, by = c("subject", "trial_numeric", "trial_time"))
+sub_theta_df <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  filter(!is.na(theta)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_numeric) %>%
+  # mutate(trial_time = trial_time - sample(seq(.5, .99, .1), 1)) %>% # permuted
+  mutate(trial_time = trial_time - .4) %>% #lagged
+  mutate(trial_time = round(trial_time, 2)) %>%
+  ungroup()
+
+joint_dist_df <- inner_join(sub_theta_df, joint_dist_df, by = c("subject", "trial_numeric", "trial_time"))
 
 ## Create Test/Train ##
 current_seed <- sample(1:100, 1)
@@ -176,7 +178,7 @@ for(fold in c(1:5)){
 
     ## Fit Joint Model ##
     file_name <- paste0(current_subject, "_", permuted, "_", seed_fold)
-    jm_fit <- fit_joint_models(train_long_data, train_cox_df, file_name)
+    jm_fit <- fit_joint_time_theta_models(train_long_data, train_cox_df, file_name)
 
     ## Print summary ##
     tmp <- kable(summary(jm_fit)$Survival, caption = "Joint Model",  format = "html")  %>%
@@ -291,9 +293,9 @@ metrics_df <- tibble("subjects" = rep(current_subject, length(seed_list)),
                       "cor" = core_list)
 
 write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", 
-                           paste0(current_subject, "_fit_metrics_base_model_df.csv")))
+                           paste0(current_subject, "_lagged_fit_metrics_theta_time_model_df.csv")))
 write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", 
-                            paste0(current_subject, "_model_params_base_model_df.csv")))
+                            paste0(current_subject, "_lagged_model_params_theta_time_model_df.csv")))
 
 ```
 

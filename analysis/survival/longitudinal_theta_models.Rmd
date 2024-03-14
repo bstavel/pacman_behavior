@@ -1,0 +1,1067 @@
+---
+title: "iEEG Longitudinal Models"
+output: html_document
+date: "2024-03-07"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(viridis)
+library(lmtest)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+```{r load-data}
+
+## Load Data ##
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(subject != "BJH026") %>% # no hc data
+  filter(trial_time <= 5.10) 
+
+permuted <- FALSE
+
+```
+## EDA
+
+## Average Theta
+
+## Single Electrode 
+
+```{r prep-for-eda}
+
+example_elec_df <- hc_theta_data %>%
+  filter(subject == "BJH016") %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  ungroup()
+
+
+example_behave_df <- game_data_distance %>%
+  filter(subject == "BJH016") %>%
+  filter(Direction != "Still") %>%
+  filter(dots_eaten != 0) %>%  
+  group_by(trial_numeric) %>%
+  # prep time variables
+  mutate(jm_time = trial_time - first(trial_time)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time_tmp = if_else(event == 1, jm_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time_tmp)) %>%
+  ungroup() %>%
+  filter(turnaround_time != 0) %>% # exclude trials where they just ran into the ghost
+  select(subject, trial_numeric, trial_time, jm_time, distance_to_ghost, event, turnaround_time, last_away, points_remaining, 
+         away_choice, TrialType, reward_groups) %>%
+  mutate(EVENT = 1) %>%
+  mutate(points_remaining = scale(points_remaining)) %>%
+  mutate(distance_to_ghost = scale(distance_to_ghost)) %>%
+  mutate(trial_time = round(trial_time, 2))
+
+
+
+ex_df <- full_join(example_elec_df, example_behave_df, by = c("subject", "trial_numeric", "trial_time"))
+
+
+
+```
+
+
+```{r turning-time-eda}
+
+example_behave_df %>%
+  select(trial_numeric, turnaround_time) %>%
+  distinct() %>%
+  ggplot(., aes(x = turnaround_time)) +
+  geom_histogram(binwidth = .1) +
+  geom_vline(xintercept = 1.1, color = "black") +
+  theme_bw()
+
+
+example_behave_df %>%
+  group_by(trial_numeric) %>%
+  mutate(true_turn_time = turnaround_time + first(trial_time)) %>%
+  select(trial_numeric, true_turn_time) %>%
+  distinct() %>%
+  ggplot(., aes(x = true_turn_time)) +
+  geom_histogram(binwidth = .1) +
+  geom_vline(xintercept = 5.1, color = "black") +
+  theme_bw()
+
+
+
+```
+
+
+
+
+```{r theta-eda, fig.width=10, fig.height=5}
+
+ex_df <- ex_df %>%
+  mutate(long_short_trial = if_else(is.na(turnaround_time), "discard", if_else(turnaround_time <= 1.1, "short", "long"))) %>%
+  filter(trial_time >= 0)
+
+ggthemr("solarized")
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  group_by(trial_time, long_short_trial) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  select(-mean_theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_ls_theta, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() 
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  select(-mean_theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_theta, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() 
+
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  select(-mean_theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_theta, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() 
+
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 1)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(jm_time <= 1.5) %>% # any longer and too few trials to interpret
+  ggplot(., aes(x = factor(jm_time), y = mean_theta, fill = long_short_trial)) +
+  geom_point(color = "grey", position = position_dodge2(.5)) +
+  geom_boxplot(notch = T, color = "black") +
+  theme_bw()
+
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, group = trial_numeric, color = long_short_trial)) +
+  geom_line(alpha = .5) +
+  theme_bw()
+
+```
+
+## Longitudinal Models
+
+```{r model-prep}
+
+long_data_df <- ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(mean_theta)) %>%
+  mutate(sin_term = sin(2 * pi * jm_time )) %>%
+  mutate(cos_term = cos(2 * pi * jm_time )) %>%
+  ungroup()
+
+```
+
+```{r model-basic}
+
+# fit model #
+time_model <- lme(mean_theta ~ jm_time, 
+                  data = long_data_df, 
+                  random = ~jm_time | trial_numeric)
+summary(time_model)
+
+# save predictions #
+long_data_df$prediction <- predict(time_model, long_data_df, type = "response")
+
+# plot predictions #
+simple_long_model_plot <- long_data_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  rename("Predicted Theta" = prediction, "True Theta" = mean_theta) %>%
+  pivot_longer(cols = c(`True Theta`, `Predicted Theta`), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_line() +
+  facet_wrap(~trial_numeric, nrow = 2, scales = "free_x") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        legend.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_color_manual(values = c("#E4635C", "#5BA6D6")) +
+  labs(x = "Trial Time", y = "", color = "") +
+  ggtitle("Linear Model Predicting Trial Theta")
+
+
+ggsave(path(here(), "figures", "survival", "simple_long_model_plot.png"), simple_long_model_plot, width = 15, height = 5)
+
+```
+
+```{r model-sin-cos}
+
+```
+
+```{r}
+
+time_model <- lme(mean_theta ~ jm_time, 
+                  data = joint_dist_df  %>% filter(trial_numeric %in% train_trials) %>% distinct(), 
+                  random = ~jm_time | trial_numeric)
+summary(time_model)
+
+
+long_explor_df <- long_data_df %>% filter(trial_numeric %in% train_trials) %>% distinct()
+
+train_long_data <- train_long_data %>% arrange(trial_numeric)
+long_explor_df <- long_explor_df %>% arrange(trial_numeric)
+
+glimpse(train_long_data)
+```
+
+
+```{r model-single_spline}
+
+# fit model #
+control = lmeControl(maxIter = 400000, niterEM = 400000, msMaxIter = 400000)
+single_split_model <- lme(mean_theta ~  ns(jm_time, knots = c(.5)), 
+                          data = long_data_df, 
+                          random = ~jm_time | trial_numeric, control = control)
+summary(single_split_model)
+
+# save predictions #
+long_data_df$prediction <- predict(single_split_model, long_data_df, type = "response")
+
+# plot predictions #
+long_data_df %>%
+  filter(long_short_trial == "long") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_theta, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+long_data_df %>%
+  filter(long_short_trial == "short") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_theta, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+```
+
+
+
+
+
+
+```{r model-cin-cos}
+
+long_data_df <- ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(mean_theta)) %>%
+  mutate(sin_term = sin(2 * pi * jm_time)) %>%
+  mutate(cos_term = cos(2 * pi * jm_time)) 
+
+
+# fit model #
+sin_cos_model <- lme(mean_theta ~ sin_term + cos_term, data = long_data_df, random = ~ sin_term + cos_term | trial_numeric)
+summary(sin_cos_model)
+
+# save predictions #
+long_data_df$prediction <- predict(sin_cos_model, long_data_df, type = "response")
+
+# plot predictions #
+long_data_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_theta, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+
+```
+
+
+
+
+
+```{r, fig.width=10, fig.height=5}
+
+long_data_df <- ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(theta)) %>%
+  mutate(sin_term = sin(2 * pi * jm_time)) %>%
+  mutate(cos_term = cos(2 * pi * jm_time )) 
+
+test_trials <- sample(unique(long_data_df$trial_numeric), 8)
+
+long_data_df %>% 
+  filter(trial_numeric %in% test_trials) %>%
+  ggplot(., aes(x =jm_time, y = theta )) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric, nrow = 2)
+
+long_data_df %>% 
+  filter(trial_numeric %in% test_trials) %>%
+  group_by(trial_numeric) %>%
+  mutate(theta_change = c(0, diff(theta))) %>%
+  ggplot(., aes(x =jm_time, y = theta_change)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric, nrow = 2)
+
+
+```
+
+
+
+```{r jm-fits-prep}
+
+cox_df <- long_data_df %>%
+  filter(long_short_trial != "discard") %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+```
+
+```{r jm-fits-basic}
+
+# joint model #
+jm_basic_fit <- jm(cox_fit, list(single_split_model), functional_forms = ~value(mean_theta) + slope(mean_theta),
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_basic_fit)
+
+
+traceplot(jm_basic_fit)
+```
+
+
+```{r jm-fits-split}
+
+# joint model #
+jm_spline_fit <- jm(cox_fit, list(single_split_model), #functional_forms = ~value(theta) + slope(theta),
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_spline_fit)
+
+
+traceplot(jm_spline_fit)
+```
+
+
+```{r jm-fits-split}
+
+# joint model #
+jm_spline_fit <- jm(cox_fit, list(sin_cos_model), #functional_forms = ~value(theta) + slope(theta),
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_spline_fit)
+
+
+traceplot(jm_spline_fit)
+```
+
+
+## Single Electrode 
+
+```{r prep-for-eda}
+
+example_elec_df <- hc_theta_data %>%
+  filter(subject == "SLCH002") %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode == "J6-J7") %>%
+  mutate(trial_time = round(trial_time - .4, 2)) %>%
+  distinct()
+
+
+example_behave_df <- game_data_distance %>%
+  filter(subject == "SLCH002") %>%
+  filter(Direction != "Still") %>%
+  filter(dots_eaten != 0) %>%  
+  group_by(trial_numeric) %>%
+  # prep time variables
+  mutate(jm_time = trial_time - first(trial_time)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time_tmp = if_else(event == 1, jm_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time_tmp)) %>%
+  ungroup() %>%
+  filter(turnaround_time != 0) %>% # exclude trials where they just ran into the ghost
+  select(subject, trial_numeric, trial_time, jm_time, distance_to_ghost, event, turnaround_time, last_away, points_remaining, 
+         away_choice, TrialType, reward_groups) %>%
+  mutate(EVENT = 1) %>%
+  mutate(points_remaining = scale(points_remaining)) %>%
+  mutate(distance_to_ghost = scale(distance_to_ghost)) %>%
+  mutate(trial_time = round(trial_time, 2))
+
+
+
+ex_df <- full_join(example_elec_df, example_behave_df, by = c("subject", "trial_numeric", "trial_time"))
+
+
+
+```
+
+
+```{r turning-time-eda}
+
+example_behave_df %>%
+  select(trial_numeric, turnaround_time) %>%
+  distinct() %>%
+  ggplot(., aes(x = turnaround_time)) +
+  geom_histogram(binwidth = .1) +
+  geom_vline(xintercept = 1.1, color = "black") +
+  theme_bw()
+
+
+example_behave_df %>%
+  group_by(trial_numeric) %>%
+  mutate(true_turn_time = turnaround_time + first(trial_time)) %>%
+  select(trial_numeric, true_turn_time) %>%
+  distinct() %>%
+  ggplot(., aes(x = true_turn_time)) +
+  geom_histogram(binwidth = .1) +
+  geom_vline(xintercept = 5.1, color = "black") +
+  theme_bw()
+
+
+
+```
+```{r theta-eda, fig.width=10, fig.height=5}
+
+ex_df <- ex_df %>%
+  mutate(long_short_trial = if_else(is.na(turnaround_time), "discard", if_else(turnaround_time <= 1.1, "short", "long"))) %>%
+  filter(trial_time >= 0)
+
+ggthemr("solarized")
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  group_by(trial_time, long_short_trial) %>%
+  mutate(mean_theta = mean(theta, na.rm = T)) %>%
+  select(-theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() 
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_theta = mean(theta, na.rm = T)) %>%
+  select(-theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_theta, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() 
+
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_theta = mean(theta, na.rm = T)) %>%
+  select(-theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_theta, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() 
+
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 1)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(jm_time <= 1.5) %>% # any longer and too few trials to interpret
+  ggplot(., aes(x = factor(jm_time), y = theta, fill = long_short_trial)) +
+  geom_point(color = "grey", position = position_dodge2(.5)) +
+  geom_boxplot(notch = T, color = "black") +
+  theme_bw()
+
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  ggplot(., aes(x = trial_time, y = theta, group = trial_numeric, color = long_short_trial)) +
+  geom_line(alpha = .5) +
+  theme_bw()
+
+```
+
+## Longitudinal Models
+
+```{r model-prep}
+
+long_data_df <- ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(theta)) %>%
+  mutate(sin_term = sin(2 * pi * jm_time )) %>%
+  mutate(cos_term = cos(2 * pi * jm_time )) 
+
+```
+
+```{r model-basic}
+
+# fit model #
+time_model <- lme(theta ~ jm_time, data = long_data_df, random = ~jm_time | trial_numeric)
+summary(time_model)
+
+# save predictions #
+long_data_df$prediction <- predict(time_model, long_data_df, type = "response")
+
+# plot predictions #
+long_data_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(theta, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
+
+
+```{r model-single_spline}
+
+# fit model #
+control = lmeControl(maxIter = 400000, niterEM = 400000, msMaxIter = 400000)
+single_split_model <- lme(theta ~  ns(jm_time, knots = c(.5)), data = long_data_df, random = ~jm_time | trial_numeric, control = control)
+summary(single_split_model)
+
+# save predictions #
+long_data_df$prediction <- predict(single_split_model, long_data_df, type = "response")
+
+# plot predictions #
+long_data_df %>%
+  filter(long_short_trial == "long") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(theta, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+long_data_df %>%
+  filter(long_short_trial == "short") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(theta, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+```
+
+
+
+
+
+
+```{r model-cin-cos}
+
+long_data_df <- ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(theta)) %>%
+  mutate(sin_term = sin(2 * pi * jm_time)) %>%
+  mutate(cos_term = cos(2 * pi * jm_time)) 
+
+
+# fit model #
+sin_cos_model <- lme(theta ~cos_term, data = long_data_df, random = ~  cos_term | trial_numeric)
+summary(sin_cos_model)
+
+# save predictions #
+long_data_df$prediction <- predict(sin_cos_model, long_data_df, type = "response")
+
+# plot predictions #
+long_data_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(theta, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+
+```
+
+
+
+
+
+```{r, fig.width=10, fig.height=5}
+
+long_data_df <- ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(theta)) %>%
+  mutate(sin_term = sin(2 * pi * jm_time)) %>%
+  mutate(cos_term = cos(2 * pi * jm_time )) 
+
+test_trials <- sample(unique(long_data_df$trial_numeric), 8)
+
+long_data_df %>% 
+  filter(trial_numeric %in% test_trials) %>%
+  ggplot(., aes(x =jm_time, y = theta )) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric, nrow = 2)
+
+long_data_df %>% 
+  filter(trial_numeric %in% test_trials) %>%
+  group_by(trial_numeric) %>%
+  mutate(theta_change = c(0, diff(theta))) %>%
+  ggplot(., aes(x =jm_time, y = theta_change)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric, nrow = 2)
+
+
+```
+
+
+
+```{r jm-fits}
+
+cox_df <- long_data_df %>%
+  filter(long_short_trial != "discard") %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+# joint model #
+jm_fit <- jm(cox_fit, list(sin_cos_model), #functional_forms = ~value(theta) + slope(theta),
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_fit)
+
+
+traceplot(jm_fit)
+```
+
+
+## Scracth
+
+```{r SLCH002-prep}
+
+current_subject <- "SLCH002"
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+
+# only ieeg trials
+hc_sub_trials <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  pull(trial_numeric) %>%
+  unique()
+
+joint_dist_df <- joint_dist_df %>%
+  filter(trial_numeric %in% hc_sub_trials)
+
+## Create Test/Train ##
+current_seed <- sample(1:100, 1)
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups) %>% distinct()
+folds <- create_test_train(split_df, current_seed)
+
+split_index <- folds[[1]]
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df)
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+```
+
+
+```{r, fig.width=10, fig.height=10}
+
+hc_lag_data <- hc_theta_data %>%
+  filter(subject == "SLCH002") %>%
+  mutate(trial_time = trial_time - .35)
+
+train_theta_long_data <- left_join(train_long_data %>% mutate(trial_time = round(trial_time, 2)), 
+                                 hc_lag_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+train_theta_long_data <- train_theta_long_data %>%
+    filter(!is.na(electrode)) %>%
+    mutate(electrode = gsub("_.*", "", electrode)) %>%
+    mutate(trial_time = round(trial_time, 2)) %>%
+    mutate(sin_term = sin(2 * pi * trial_time /5)) %>%
+    mutate(cos_term = cos(2 * pi * trial_time /5)) %>%
+    mutate(trial_time = round(trial_time, 2)) %>%
+    mutate(turnaround_time = round(turnaround_time, 2))
+
+
+test_theta_long_data <- left_join(test_long_data %>% mutate(trial_time = round(trial_time, 2)), 
+                                 hc_theta_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+test_theta_long_data <- test_theta_long_data %>%
+    filter(!is.na(electrode)) %>%
+    mutate(electrode = gsub("_.*", "", electrode)) %>%
+    mutate(trial_time = round(trial_time, 2)) %>%
+    mutate(sin_term = sin(2 * pi * trial_time / 5)) %>%
+    mutate(cos_term = cos(2 * pi * trial_time / 5)) %>%
+    mutate(trial_time = round(trial_time, 2)) %>%
+    mutate(turnaround_time = round(turnaround_time, 2))
+
+
+train_theta_long_data %>%
+  filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  ggplot(., aes(x= trial_time, y = theta, group = trial_numeric)) +
+  geom_point(alpha = .5) + 
+  geom_line(alpha = .5) +
+  theme_bw() +
+  facet_wrap(~electrode, scales = "free") 
+
+
+train_theta_long_data %>%
+  filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  ggplot(., aes(x= sin_term, y = theta, group = trial_numeric)) +
+  geom_point(alpha = .5) + 
+  geom_line(alpha = .5) +
+  theme_bw() +
+  facet_wrap(~electrode, scales = "free") 
+
+
+train_theta_long_data %>%
+  filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  ggplot(., aes(x= cos_term, y = theta, group = trial_numeric)) +
+  geom_point(alpha = .5) + 
+  geom_line(alpha = .5) +
+  theme_bw() +
+  facet_wrap(~electrode, scales = "free") 
+
+
+train_theta_long_data %>%
+  filter(electrode == "J6-J7") %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = median(theta)) %>%
+  select(-trial_numeric, theta) %>%
+  distinct() %>%
+  ggplot(., aes(x= trial_time, y = mean_theta)) +
+  geom_point() + 
+  geom_line() +
+  theme_bw() +
+  xlim(0, 1.2)
+
+
+train_theta_long_data %>%
+  filter(electrode == "J6-J7") %>%
+  distinct() %>%
+   filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  ggplot(., aes(x= trial_time, y = theta)) +
+  geom_point() + 
+  geom_line() +
+  theme_bw() +
+  xlim(0, 1.2) +
+  facet_wrap(~trial_numeric, scales = "free")
+
+
+
+
+
+
+```
+
+```{r, fig.width=10, fig.height=10}
+
+for(elec in unique(train_theta_long_data$electrode)) {
+
+  print(summary(lme(theta ~ sin_term + cos_term, data = train_theta_long_data %>% filter(electrode == elec), random = ~trial_time | trial_numeric)))
+  
+}
+
+control = lmeControl(maxIter = 100000, niterEM = 100000, msMaxIter = 100000)
+elec <- "J6-J7"
+print(summary(lme(theta ~ sin_term + cos_term , data = train_theta_long_data %>% filter(electrode == elec), random = ~trial_time | trial_numeric)))
+print(summary(lme(theta ~ sin_term + cos_term + trial_time, data = train_theta_long_data %>% filter(electrode == elec), random = ~trial_time | trial_numeric)))
+print(summary(lme(theta ~ trial_time, data = train_theta_long_data %>% filter(electrode == elec), random = ~trial_time | trial_numeric)))
+print(summary(lme(theta ~ cos_term, data = train_theta_long_data %>% filter(electrode == elec), random = ~trial_time | trial_numeric)))
+print(summary(lme(theta ~ sin_term, data = train_theta_long_data %>% filter(electrode == elec), random = ~ trial_time | trial_numeric)))
+
+
+elec_df <- train_theta_long_data %>% filter(electrode == elec)
+
+model <- lme(theta ~ sin_term + cos_term, data = elec_df, random = ~trial_time | trial_numeric)
+
+elec_df$preds <- predict(model, elec_df, type = "response")
+
+elec_df %>%
+  ggplot(., aes(x = theta, y = preds)) +
+  geom_point() 
+
+
+elec_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(theta, preds), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = trial_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+elec_test_df <- test_theta_long_data %>% filter(electrode == elec)
+
+
+elec_test_df$preds <- predict(model, elec_test_df)
+
+elec_test_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  pivot_longer(cols = c(theta, preds), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = trial_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+
+```{r, fig.width=10, fig.height=5}
+
+hc_lag_data %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode == "J6-J7") %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  ungroup() %>%
+  select(-trial_numeric, -theta) %>%
+  distinct() %>%
+  ggplot(., aes( x= trial_time, y = mean_theta)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+train_theta_long_data %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode == "J6-J7") %>%
+  distinct() %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  ungroup() %>%
+  ggplot(., aes( x= trial_time, y = mean_theta)) +
+  geom_line(aes(y = theta, group = trial_numeric), color = "grey", alpha = .5) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.2) + ylim(-.75, 1.2)
+
+
+train_theta_long_data %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode == "J6-J7") %>%
+  distinct() %>%
+  filter(trial_time < 1.2) %>%
+  ggplot(., aes( x= factor(trial_time), y = theta)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_boxplot(notch = T) +
+  geom_point(position = position_dodge2(width =.5), color = "grey") + 
+  theme(panel.background = element_rect(fill = "white")) 
+
+
+```
+
+
+
+```{r, fig.width=5, fig.height=100}
+
+elec_df %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  ggplot(., aes( x= trial_time, y = theta)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric, ncol = 1)
+
+train_theta_long_data %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode == "J6-J7") %>%
+  distinct() %>%
+  filter(trial_time < 1.2) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  ggplot(., aes( x= trial_time, y = theta)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric, ncol = 1)
+
+
+```
+
+
+
+```{r}
+
+train_elecs_long_data <- train_theta_long_data %>%
+  filter(electrode %in% c("J4-J5", "J6-J7", "K7-K8")) %>%
+  distinct() %>%
+  pivot_wider(names_from = electrode, values_from = theta) %>%
+  rename(J4 = `J4-J5`, J6 = `J6-J7`, K7 = `K7-K8`)
+
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)
+
+# longitudinal model #
+lm_theta1 <- lme(J4 ~ sin_term + cos_term, data = train_elecs_long_data, random = ~trial_time | trial_numeric)
+lm_theta2 <- lme(J6 ~ sin_term, data = train_elecs_long_data, random = ~trial_time | trial_numeric)
+lm_theta3 <- lme(K7 ~ sin_term + cos_term, data = train_elecs_long_data, random = ~trial_time | trial_numeric)
+
+# joint model #
+jm_fit <- jm(cox_fit, list(lm_theta1, lm_theta2, lm_theta3), time_var = "trial_time", data_Surv = train_cox_df, 
+             n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
+
+# joint model #
+jm_fit <- jm(cox_fit, list(lm_theta2), time_var = "trial_time", data_Surv = train_cox_df, 
+             n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
+
+summary(jm_fit)
+  
+
+
+```
+
+
+
+
+
