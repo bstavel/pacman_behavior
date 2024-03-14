@@ -11,6 +11,7 @@ library(fs)
 library(lmtest)
 library(scales)
 library(ggthemr)
+library(RColorBrewer)
 
 ## hand written functions ##
 source(path(here(), "R", 'mutate_cond.R'))
@@ -22,6 +23,7 @@ source(path(here(), "R", 'run_and_plot_lme_models.R'))
 ## plotting helpers ##
 ggthemr("light")
 ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
 
 c25 <- c(
   "dodgerblue2", "#E31A1C", # red
@@ -53,6 +55,20 @@ all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_di
 all_subs_dist <- all_subs_g_dist %>% 
   select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
 all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+all_subs_g_dist <- all_subs_g_dist %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(ghost_objective_direction_tmp = c(FALSE, diff(GhostLocation))) %>%
+  mutate(ghost_objective_direction = if_else(ghost_objective_direction_tmp >= 2, "Right", 
+                                             if_else(ghost_objective_direction_tmp <= -2, "Left", "still"))) %>%
+  # select(-ghost_objective_direction_tmp) %>%
+  mutate(ghost_direction = if_else((base_start_location < 100 & ghost_objective_direction == "Left") |
+                                     (base_start_location > 100 & ghost_objective_direction == "Right") , "Towards",
+                                   if_else(ghost_objective_direction == "still", "still", "Away"))) %>%
+  mutate(new_ghost_direction = ifelse(ghost_direction == "still", NA, ghost_direction)) %>%
+  fill(new_ghost_direction, .direction = "downup") %>%
+  mutate(ghost_direction = ifelse(is.na(new_ghost_direction), ghost_direction, new_ghost_direction)) %>%
+  select(-new_ghost_direction)
 
 # add ITI to behavioral df
 behavior_iti_df <- all_subs_dist %>% 
@@ -105,13 +121,38 @@ all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
 #                                 plot_title = "Theta ... ofc... Turnaround",
 #                                 rerun_model = TRUE)
 
-# Points Remaining  - Turnaround
-individual_and_overall_lme_onset_combval_turnaround_model_and_plot("ofc", "theta", 
-                                all_subs_g_dist, ofc_theta_data, 
-                                predictor = "points_remaining",
-                                y_low = -.5, y_high = .5,
-                                plot_title = "Theta ... ofc... Turnaround",
-                                rerun_model = TRUE)
+# # Points Remaining  - Turnaround
+# individual_and_overall_lme_onset_combval_turnaround_model_and_plot("ofc", "theta", 
+#                                 all_subs_g_dist, ofc_theta_data, 
+#                                 predictor = "points_remaining",
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... ofc... Turnaround",
+#                                 rerun_model = FALSE)
+
+# individual_and_overall_lme_onset_combval_turnaround_model_and_plot("ofc", "theta", 
+#                                 all_subs_g_dist, ofc_theta_data, 
+#                                 predictor = "UserLocation",
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... ofc... Turnaround",
+#                                 rerun_model = TRUE)
+
+# individual_and_overall_lme_onset_combval_turnaround_model_and_plot("ofc", "theta", 
+#                                 all_subs_g_dist, ofc_theta_data, 
+#                                 predictor = "GhostLocation",
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Theta ... ofc... Turnaround",
+#                                 rerun_model = TRUE)   
+   
+
+
+# individual_and_overall_robust_interact_lme_turnaround_model_and_plot("OFC", "theta", 
+#                                 all_subs_g_dist, ofc_theta_data, 
+#                                 reward_pred = "UserLocation", 
+#                                 threat_pred = "GhostLocation",                                     
+#                                 y_low = -.5, y_high = .5,
+#                                 plot_title = "Interaction Model: ghost_direction Remaining * Distance",
+#                                 rerun_model = TRUE)
+                        
 
 # ## Split Ghost Close/Far Model
 # individual_and_overall_robust_split_lme_onset_before_turn_model_and_plot("ofc", "theta", 
@@ -126,24 +167,31 @@ individual_and_overall_lme_onset_combval_turnaround_model_and_plot("ofc", "theta
 
 
 
-# ## subject specific
-# for (sub in unique(ofc_theta_data$subject)) {
+## subject specific
+for (sub in unique(ofc_theta_data$subject)) {
 
-#   print(sub)
-#   idx = which(sub == unique(ofc_theta_data$subject))
+  print(sub)
+  idx = which(sub == unique(ofc_theta_data$subject))
 
-#   if(sub %in% c("LL10", "LL12", "LL13", "LL17")){
-#     next
-#   }
+  if(sub %in% c("LL10", "LL12", "LL13", "LL17")){
+    next
+  }
 
-#   # individual_subject_robust_lme_onset_before_turn_model_and_plot("ofc", "theta", sub, c25[idx],
-#   #                               all_subs_g_dist, ofc_theta_data, 
-#   #                               y_low = -.5, y_high = .5,
-#   #                               plot_title = paste0("Theta, ofc, ", sub),
-#   #                               rerun_model = FALSE)
+  individual_and_overall_lme_onset_combval_turnaround_model_and_plot("ofc", "theta", sub, c25[idx],
+                                all_subs_g_dist, ofc_theta_data,  
+                                predictor = "UserLocation",
+                                y_low = -.5, y_high = .5,
+                                plot_title = "Theta ... ofc... Turnaround",
+                                rerun_model = TRUE) 
+
+  # individual_subject_robust_lme_onset_before_turn_model_and_plot("ofc", "theta", sub, c25[idx],
+  #                               all_subs_g_dist, ofc_theta_data, 
+  #                               y_low = -.5, y_high = .5,
+  #                               plot_title = paste0("Theta, ofc, ", sub),
+  #                               rerun_model = FALSE)
 
 
-# }                                
+}                                
 
 
 
