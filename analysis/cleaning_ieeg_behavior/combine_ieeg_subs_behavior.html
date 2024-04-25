@@ -349,7 +349,7 @@ display: none;
 
 
 <h1 class="title toc-ignore">Approach/Avoid Behavior Prep</h1>
-<h4 class="date">01 March, 2024</h4>
+<h4 class="date">25 April, 2024</h4>
 
 </div>
 
@@ -696,22 +696,31 @@ trial type (ghost vs no ghost), as well as combined.</p>
 <h2>Prep Behavioral Data</h2>
 <pre class="r"><code># clean df #
 sl02_data_clean &lt;- clean_bci_data(sl02_data, 2000)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 sl02_data_distance &lt;- create_distance_df_bci(sl02_data_clean)
 sl02_data_distance_no_ghost &lt;- create_distance_df_bci(sl02_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 bjh16_data_clean &lt;- clean_bci_data(bjh16_data, 2000)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 bjh16_data_distance &lt;- create_distance_df_bci(bjh16_data_clean)
 bjh16_data_distance_no_ghost &lt;- create_distance_df_bci(bjh16_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 bjh21_data_clean &lt;- clean_bci_data(bjh21_data, 2000)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 bjh21_data_distance &lt;- create_distance_df_bci(bjh21_data_clean)
-bjh21_data_distance_no_ghost &lt;- create_distance_df_bci(bjh21_data_clean, ghost = F)</code></pre>
+bjh21_data_distance_no_ghost &lt;- create_distance_df_bci(bjh21_data_clean, ghost = F)
+
+# summary df
+bjh21_data_summary &lt;- get_across_task_variables_bci(bjh21_data_clean)</code></pre>
 <pre class="r"><code>## Prep #
 # Subject paused to get out of dying and that resulted in an incorrect trial count
 bjh25_data &lt;- bjh25_data %&gt;%
@@ -722,55 +731,73 @@ bjh25_data &lt;- bjh25_data %&gt;%
 
 # clean df #
 bjh25_data_clean &lt;- clean_bci_data(bjh25_data, 2000)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 bjh25_data_distance &lt;- create_distance_df_bci(bjh25_data_clean)
 bjh25_data_distance_no_ghost &lt;- create_distance_df_bci(bjh25_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 bjh26_data_clean &lt;- clean_bci_data(bjh26_data, 2000)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 bjh26_data_distance &lt;- create_distance_df_bci(bjh26_data_clean)
 bjh26_data_distance_no_ghost &lt;- create_distance_df_bci(bjh26_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 bjh27_data_clean &lt;- clean_bci_data(bjh27_data, 2000)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 bjh27_data_distance &lt;- create_distance_df_bci(bjh27_data_clean)
 bjh27_data_distance_no_ghost &lt;- create_distance_df_bci(bjh27_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 bjh29_data_clean &lt;- clean_bci_data(bjh29_data, 2000)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 bjh29_data_distance &lt;- create_distance_df_bci(bjh29_data_clean)
 bjh29_data_distance_no_ghost &lt;- create_distance_df_bci(bjh29_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 bjh39_data_clean &lt;- clean_bci_data(bjh39_data, 2000)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 bjh39_data_distance &lt;- create_distance_df_bci(bjh39_data_clean)
 bjh39_data_distance_no_ghost &lt;- create_distance_df_bci(bjh39_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 bjh41_data_clean &lt;- clean_bci_data(bjh41_data, 2000)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 bjh41_data_distance &lt;- create_distance_df_bci(bjh41_data_clean)
 bjh41_data_distance_no_ghost &lt;- create_distance_df_bci(bjh41_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 ll10_data_clean &lt;- clean_bci_data(ll10_data, 512)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 ll10_data_distance &lt;- create_distance_df_bci(ll10_data_clean)
 ll10_data_distance_no_ghost &lt;- create_distance_df_bci(ll10_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 ll12_data_clean &lt;- clean_bci_data(ll12_data, 512)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 ll12_data_distance &lt;- create_distance_df_bci(ll12_data_clean)
 ll12_data_distance_no_ghost &lt;- create_distance_df_bci(ll12_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 ll13_data_clean &lt;- clean_bci_data(ll13_data, 512)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 ll13_data_distance &lt;- create_distance_df_bci(ll13_data_clean)
 ll13_data_distance_no_ghost &lt;- create_distance_df_bci(ll13_data_clean, ghost = F)</code></pre>
@@ -790,7 +817,9 @@ ll14_data &lt;- ll14_data %&gt;%
 
 # clean Biscuits #
 ll14_data_clean &lt;- clean_bci_data(ll14_data, 512)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 ll14_data_distance &lt;- create_distance_df_bci(ll14_data_clean)
 ll14_data_distance_no_ghost &lt;- create_distance_df_bci(ll14_data_clean, ghost = F)</code></pre>
@@ -807,13 +836,17 @@ ll17_data &lt;- ll17_data %&gt;%
 
 # clean Biscuits #
 ll17_data_clean &lt;- clean_bci_data(ll17_data, 512)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 ll17_data_distance &lt;- create_distance_df_bci(ll17_data_clean)
 ll17_data_distance_no_ghost &lt;- create_distance_df_bci(ll17_data_clean, ghost = F)</code></pre>
 <pre class="r"><code># clean df #
 ll19_data_clean &lt;- clean_bci_data(ll19_data, 512)</code></pre>
-<pre><code>## Joining with `by = join_by(trial_numeric)`</code></pre>
+<pre><code>## Joining with `by = join_by(subject, trial_numeric)`
+## Adding missing grouping variables: `block`
+## Joining with `by = join_by(trial_numeric)`</code></pre>
 <pre class="r"><code># create distance df # 
 ll19_data_distance &lt;- create_distance_df_bci(ll19_data_clean)
 ll19_data_distance_no_ghost &lt;- create_distance_df_bci(ll19_data_clean, ghost = F)</code></pre>

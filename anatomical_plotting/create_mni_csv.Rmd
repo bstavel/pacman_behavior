@@ -89,7 +89,7 @@ washu_mni_data_clean <- washu_mni_data %>%
 
 ```{r load-loma-linda-data}
 
-sub_list <- c("LL10", "LL12", "LL13")
+sub_list <- c("LL10", "LL12", "LL13", "LL14", "LL17", "LL19")
 
 for(sub in sub_list){
   

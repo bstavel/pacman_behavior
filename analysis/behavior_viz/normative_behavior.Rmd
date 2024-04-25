@@ -216,19 +216,19 @@ pilot_all_vars_df %>%
     labs(subtitle = "Players were eaten ~3x per block, and tended to do better over time", x = "Block", y = "Deaths") +
   ggtitle("Number of Deaths per Block")
 
-pilot_all_vars_df %>%
+dots_plot <- pilot_all_vars_df %>%
   ggplot(., aes(x = factor(block), y = average_dots_per_block, fill = 'f')) +
-  geom_violin(alpha = .7) +
-  geom_boxplot(notch = T, width =.2) +
+  geom_violin(alpha = .7, fill = "#FB6087") +
+  geom_boxplot(notch = T, width =.2, fill = "#FB6087") +
   labs(y = "Dots") +
- theme(panel.background = element_rect(fill = "white"), legend.position = "none",
-        axis.text = element_text(color = "black", size = 12),
-        axis.title = element_text(color = "black", size = 12),
-        plot.title  = element_text(color = "black", size = 16),
-        plot.subtitle = element_text(color = "black", size = 14))  +
-  labs(subtitle = "People most often collected 4 dots and then turned around", x = "Block") +
+ theme(panel.background = element_rect(fill = "white"), 
+       legend.position = "none",
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold")) +
+  labs(subtitle = "Participants most often collected 4 dots and then turned around", x = "Block") +
   ggtitle("Average Dots Eaten per Block")
-
 
 
 ```
@@ -241,14 +241,20 @@ pilot_all_vars_df %>%
 
 
 # number of turns #
-pilot_game_data_distance %>%
+turning_plot <- pilot_game_data_distance %>%
   select(subject, trial_numeric, number_of_runs) %>%
   distinct() %>%
   ggplot(., aes(x = subject, fill = factor(number_of_runs))) +
-  theme(panel.background = element_rect(fill = "white"),
+    theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
         axis.text.x = element_blank(), 
-        legend.position = "top") +
-  labs(fill = "Number of turns from ghost", title = "Number of turns per trial by subject", subtitle = "Most subjects had a single turn from the ghost") +
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(fill = "Number of turns", title = "Number of turns per trial by subject") +
   geom_bar() +
   scale_fill_viridis(discrete = T, direction = -1) +
   guides(fill=guide_legend(nrow=1,byrow=TRUE))
@@ -262,7 +268,6 @@ pilot_game_data_distance %>%
   geom_histogram(binwidth = 10, alpha = .7) +
   labs(title = "Histogram of distance to ghost within and across trials")
 
-
 ```
 
 #### Operationalizing the choice to avoid
@@ -273,7 +278,7 @@ There are two reasonable choices for characterizing risk or avoidance during the
 
 
 # last away #
-pilot_game_data_distance %>%
+last_away_plot <- pilot_game_data_distance %>%
   # filters #
   filter(number_of_runs > 0) %>%
   # distinct #
@@ -286,8 +291,15 @@ pilot_game_data_distance %>%
   geom_jitter(alpha = .5, color = "grey") +
   geom_boxplot(notch = T) +
   ylab("Distance to Ghost at Turnaround") + xlab("Subjects") +
-  theme(panel.background = element_rect(fill = "white"), axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
-  ggtitle("Subject Variability in Turning Distance", subtitle = "Random sample of 20 subjects shows that the within subject variability \nin turn around time is usually less than across subject variability")
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold"),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank()) +
+  ggtitle("Participant Variability in Turning Distance", subtitle = "Random sample of 20 participants shows that the within subject variability \nin turnaround time is usually less than across subject variability")
 
 
 # min distance #
@@ -299,14 +311,16 @@ pilot_game_data_distance %>%
   distinct() %>%
   filter(subject %in% sample(subject, 20)) %>%
   ggplot(., aes(x = subject, y = min_distance)) +
-  # geom_point(alpha = .3) +
-  # geom_violin() +
   geom_jitter(alpha = .5, color = "grey") +
   geom_boxplot(notch = T) +
   ylab("Minimum Distance from Ghost") + xlab("Subjects") +
-  theme(panel.background = element_rect(fill = "white"), axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18), 
+        axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
   ggtitle("Subject Variability in Minimum Distance", subtitle = "Random sample of 20 subjects shows that the within subject variability \nin min distance to ghost each trial is usually less than across subject variability")
-
 
 ```
 

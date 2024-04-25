@@ -749,13 +749,6 @@ create_first_move_events(LL14_data_clean, 'LL14_first_move_events.csv')
 create_died_events(LL14_data_clean, 'LL14_died_events.csv')
 create_attack_events(LL14_data_clean, 'LL14_attack_events.csv')
 
-
-
-# on 239 they didn't really die
-died_events <- read_csv(path(here(), './data/ieeg_behave/LL14_died_events.csv'))
-died_events <- died_events %>%
-  mutate(died = if_else(neural_trial_numeric == 239, 0, died))
-write_csv(died_events, path(here(), './data/ieeg_behave/LL14_died_events.csv'))
 ```
 
 

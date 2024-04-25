@@ -200,20 +200,20 @@ tmp <- LL17_data_clean %>%
   filter(neural_trial_numeric %in% long_trials) 
 
   
-LL17_data_clean %>%
-  filter(Trial != "ITI") %>%
-  filter(trial_numeric != 0) %>%
-  mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(neural_trial_numeric %in% long_trials) %>%
-  pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
-  ggplot(., aes(x = trial_flip, y = location, color = unit)) +
-  geom_hline(yintercept = 170, color = "black") +
-  geom_hline(yintercept = 10, color = "black") +
-  geom_point() +
-  geom_line() +
-  ylim(0, 200) +
-  theme(panel.background = element_rect(fill = "white")) +
-  facet_wrap(~trial_numeric)
+# LL17_data_clean %>%
+#   filter(Trial != "ITI") %>%
+#   filter(trial_numeric != 0) %>%
+#   mutate(neural_trial_numeric = trial_numeric - 1) %>%
+#   filter(neural_trial_numeric %in% long_trials) %>%
+#   pivot_longer(cols = c(GhostLocation, UserLocation), values_to = "location", names_to = "unit") %>%
+#   ggplot(., aes(x = trial_flip, y = location, color = unit)) +
+#   geom_hline(yintercept = 170, color = "black") +
+#   geom_hline(yintercept = 10, color = "black") +
+#   geom_point() +
+#   geom_line() +
+#   ylim(0, 200) +
+#   theme(panel.background = element_rect(fill = "white")) +
+#   facet_wrap(~trial_numeric)
 
 
 ## no long trials

@@ -199,11 +199,14 @@ no_biscuits_trials <- sl02_data_clean %>%
 
 ```{r compile-bad-trials}
 
-# bad_trials <- rbind(pasued_trials, no_biscuits_trials)
+# paused trials found later in data exploration
+pasued_trials <- c(125, 126, 186)
 
-bad_trials <- no_biscuits_trials
+bad_trials <- c(pasued_trials, no_biscuits_trials$neural_trial_numeric)
 
-write_csv(bad_trials, path(here(), './data/ieeg_behave/SLCH002_bad_trials.csv'))
+bad_df <- data_frame("neural_trial_numeric" = bad_trials)
+
+write_csv(bad_df, path(here(), './data/ieeg_behave/SLCH002_bad_trials.csv'))
 
 ```
 

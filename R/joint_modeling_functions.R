@@ -18,6 +18,25 @@ random_time_series <- function(n, low_val, high_val) {
   
 }
 
+random_reward_time_series <- function(n, low_val, high_val) {
+  timeseries = numeric(n)
+  timeseries[1] = sample(low_val:high_val, 1)
+  
+  for (i in 2:n) {
+    change = sample(c(-20, -10, 0, 10, 20), 1)
+    
+    # Check boundaries and adjust if necessary
+    if (timeseries[i-1] + change < 0) {
+      change = 2
+    } else if (timeseries[i-1] + change > 100) {
+      change = -2
+    }
+    
+    timeseries[i] = timeseries[i-1] + change
+  }
+  return(timeseries)
+  
+}
 
 prep_joint_orig_df <- function(distance_df, sub, permute = FALSE, ieeg = FALSE) {
   
@@ -35,7 +54,7 @@ prep_joint_orig_df <- function(distance_df, sub, permute = FALSE, ieeg = FALSE) 
         mutate(turnaround_time = max(turnaround_time_tmp)) %>%
         ungroup() %>%
         filter(turnaround_time != 0) %>% # exclude trials where they just ran into the ghost
-        filter(trial_time <= turnaround_time) %>%
+        # filter(trial_time <= turnaround_time) %>%
         group_by(trial_numeric) %>%
         # prep permuted predictors 
         mutate(distance_to_ghost = random_time_series(length(distance_to_ghost), 0, 100)) %>%
@@ -55,6 +74,7 @@ prep_joint_orig_df <- function(distance_df, sub, permute = FALSE, ieeg = FALSE) 
         filter(subject == sub) %>%
         filter(Direction != "Still") %>%
         filter(dots_eaten != 0) %>%
+        filter(died == 0) %>%
         group_by(trial_numeric) %>%
         # prep time variables
         mutate(trial_time = trial_time - first(trial_time)) %>%
@@ -98,7 +118,7 @@ prep_joint_df <- function(distance_df, sub, permute = FALSE, ieeg = FALSE) {
       group_by(trial_numeric) %>%
       # prep permuted predictors 
       mutate(distance_to_ghost = random_time_series(length(distance_to_ghost), 0, 100)) %>%
-      mutate(points_remaining = sample(points_remaining, length(points_remaining))) %>%
+      mutate(points_remaining = random_reward_time_series(length(points_remaining), 0, 90)) %>%
       ungroup() %>%
       select(subject, trial_numeric, distance_to_ghost, last_away, event, turnaround_time,
              away_choice, trial_time, jm_time, TrialType, points_remaining, reward_groups) %>%
@@ -337,6 +357,53 @@ fit_joint_time_theta_models <- function(train_long_data, train_cox_df, name){
                n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
   
   # print summary #
+  print(kable(summary(lm_theta)$tTable, caption = "Theta Model") %>% kable_styling())
+  
+  # save joint model #
+  saveRDS(jm_fit, path(here(), "data", "joint_models", paste0(name, "_theta_time.rds")))
+  
+  return(jm_fit)
+}
+
+fit_joint_slope_theta_models <- function(train_long_data, train_cox_df, name){
+  
+  # longitudinal model #
+  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  lm_theta <- lme(mean_theta ~ jm_time, data = train_long_data, random = ~jm_time | trial_numeric)
+  
+  # survival model #
+  cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)
+  
+  # joint model #
+  jm_fit <- jm(cox_fit, list(lm_theta), time_var = "jm_time", data_Surv = train_cox_df,
+               functional_forms = list('mean_theta' = ~value(mean_theta) + slope(mean_theta)),
+               n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
+  
+  # print summary #
+  print(kable(summary(lm_theta)$tTable, caption = "Threat Model") %>% kable_styling())
+  
+  # save joint model #
+  saveRDS(jm_fit, path(here(), "data", "joint_models", paste0(name, "_theta_time.rds")))
+  
+  return(jm_fit)
+}
+
+fit_joint_sin_cos_theta_models <- function(train_long_data, train_cox_df, name){
+  
+  # longitudinal model #
+  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  lm_theta <- lme(mean_theta ~ sin_term + cos_term, data = train_long_data, 
+                  random = ~sin_term + cos_term| trial_numeric, control = control)
+  
+  # survival model #
+  cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)
+  
+  # joint model #
+  jm_fit <- jm(cox_fit, list(lm_theta), time_var = "jm_time", data_Surv = train_cox_df,
+               # functional_forms = list('mean_theta' = ~value(mean_theta) + slope(mean_theta)),
+               n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
+  
+  # print summary #
   print(kable(summary(lm_theta)$tTable, caption = "Threat Model") %>% kable_styling())
   
   # save joint model #
@@ -346,11 +413,38 @@ fit_joint_time_theta_models <- function(train_long_data, train_cox_df, name){
 }
 
 
-fit_joint_time_theta_models <- function(train_long_data, train_cox_df, name){
+fit_joint_correl_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
   control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
-  lm_theta <- lme(mean_theta ~ jm_time, data = train_long_data, random = ~jm_time | trial_numeric)
+  insula_ofc_model <- lme(insula_minus_ofc ~ jm_time, data = train_long_data, 
+                          random = ~ jm_time | trial_numeric, control = control)
+  amyg_ofc_model <- lme(amyg_minus_ofc ~ jm_time, data = train_long_data, 
+                        random = ~ jm_time | trial_numeric)
+  
+  # survival model #
+  cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)
+  
+  # joint model #
+  jm_fit <- jm(cox_fit, list(amyg_ofc_model, insula_ofc_model), time_var = "jm_time", data_Surv = train_cox_df, 
+               n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
+  
+  # print summary #
+  print(kable(summary(insula_ofc_model)$tTable, caption = "Insula OFC Model") %>% kable_styling())
+  print(kable(summary(amyg_ofc_model)$tTable, caption = "Amyg. OFC Model") %>% kable_styling())
+  
+  # save joint model #
+  saveRDS(jm_fit, path(here(), "data", "joint_models", paste0(name, "_theta_correl.rds")))
+  
+  return(jm_fit)
+}
+
+
+fit_joint_spline_theta_models <- function(train_long_data, train_cox_df, name){
+  
+  # longitudinal model #
+  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  lm_theta <- lme(mean_theta ~ ns(jm_time, df = 2), data = train_long_data, random = ~ns(jm_time, df = 2)| trial_numeric, control = control)
   
   # survival model #
   cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)

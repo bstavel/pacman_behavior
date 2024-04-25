@@ -89,7 +89,7 @@ conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity
 
 
 ## set colors ##
-roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA","dlPFC" =  "#876194", "Insula" = "#FB6087")
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194",  "dlPFC" = "#FB6087")
 
 ```
 
@@ -140,6 +140,100 @@ conn_sub_sig_df %>%
 
 
 ```
+## BJH021
+
+```{r BJH021, fig.width=24, fig.height=8}
+
+# prep df #
+sub <- "BJH021"
+conn_sub_sig_df <- prep_conn_plot_df(conn_df, sub) 
+
+# plot #
+ conn_sub_sig_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  ggplot(., aes(x = time, y = percent_sig, color = second_region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  +
+  facet_wrap(~first_region, nrow = 1) +
+  scale_color_manual(values = roi_colors) + 
+  ggtitle(paste0(sub, " - Imaginary Coherence")) +
+  ylim(0, 100)
+
+conn_sub_sig_df %>%
+  filter(metric == "Pairwise Phase Consistency") %>%
+  ggplot(., aes(x = time, y = percent_sig, color = second_region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  +
+  facet_wrap(~first_region, nrow = 1) +
+  scale_color_manual(values = roi_colors) + 
+  ggtitle(paste0(sub, " - Pairwise Phase Consistency")) +
+  ylim(0, 100)
+
+conn_sub_sig_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  ggplot(., aes(x = time, y = percent_sig, color = second_region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  +
+  facet_wrap(~first_region, nrow = 1) +
+  scale_color_manual(values = roi_colors) + 
+  ggtitle(paste0(sub, " - Phase Lag Index")) +
+  ylim(0, 100)
+    
+
+
+```
+
+
+## BJH025
+
+```{r BJH025, fig.width=24, fig.height=8}
+
+# prep df #
+sub <- "BJH025"
+conn_sub_sig_df <- prep_conn_plot_df(conn_df, sub) 
+
+# plot #
+ conn_sub_sig_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  ggplot(., aes(x = time, y = percent_sig, color = second_region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  +
+  facet_wrap(~first_region, nrow = 1) +
+  scale_color_manual(values = roi_colors) + 
+  ggtitle(paste0(sub, " - Imaginary Coherence")) +
+  ylim(0, 100)
+
+conn_sub_sig_df %>%
+  filter(metric == "Pairwise Phase Consistency") %>%
+  ggplot(., aes(x = time, y = percent_sig, color = second_region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  +
+  facet_wrap(~first_region, nrow = 1) +
+  scale_color_manual(values = roi_colors) + 
+  ggtitle(paste0(sub, " - Pairwise Phase Consistency")) +
+  ylim(0, 100)
+
+conn_sub_sig_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  ggplot(., aes(x = time, y = percent_sig, color = second_region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  +
+  facet_wrap(~first_region, nrow = 1) +
+  scale_color_manual(values = roi_colors) + 
+  ggtitle(paste0(sub, " - Phase Lag Index")) +
+  ylim(0, 100)
+    
+
+
+```
+
+
 ## BJH026
 
 ```{r BJH026, fig.width=24, fig.height=8}
@@ -230,25 +324,6 @@ conn_sub_sig_df %>%
 
 
 ```
-
-
-```{r}
-
- conn_sub_sig_df %>%
-  filter(first_region == "OFC") %>%
-  filter(second_region == "Hippocampus") %>%
-  filter(metric == "Imaginary Coherence") %>%
-  group_by(pairs) %>%
-  mutate(any_sig = sum(sig) >=10) %>%
-  filter(any_sig == TRUE) %>%
-  ggplot(., aes(x = time, y = connectivity, group=pairs)) +
-  geom_point(alpha = .1) +
-  geom_line(alpha = .1) +
-  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  
-
-
-```
-
 
 
 
@@ -484,7 +559,51 @@ conn_sub_sig_df %>%
 ```
 
 
+## LL14
 
+```{r LL14, fig.width=24, fig.height=8}
+
+# prep df #
+sub <- "LL14"
+conn_sub_sig_df <- prep_conn_plot_df(conn_df, sub) 
+
+# plot #
+ conn_sub_sig_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  ggplot(., aes(x = time, y = percent_sig, color = second_region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  +
+  facet_wrap(~first_region, nrow = 1) +
+  scale_color_manual(values = roi_colors) + 
+  ggtitle(paste0(sub, " - Imaginary Coherence")) +
+  ylim(0, 100)
+
+conn_sub_sig_df %>%
+  filter(metric == "Pairwise Phase Consistency") %>%
+  ggplot(., aes(x = time, y = percent_sig, color = second_region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  +
+  facet_wrap(~first_region, nrow = 1) +
+  scale_color_manual(values = roi_colors) + 
+  ggtitle(paste0(sub, " - Pairwise Phase Consistency")) +
+  ylim(0, 100)
+
+conn_sub_sig_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  ggplot(., aes(x = time, y = percent_sig, color = second_region)) +
+  geom_point() +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top")  +
+  facet_wrap(~first_region, nrow = 1) +
+  scale_color_manual(values = roi_colors) + 
+  ggtitle(paste0(sub, " - Phase Lag Index")) +
+  ylim(0, 100)
+    
+
+
+```
 
 ## LL17
 

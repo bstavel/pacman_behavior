@@ -241,16 +241,16 @@ create_attack_events <- function(df, fname) {
     filter(TrialType <= 16) %>%
     mutate(neural_trial_numeric = trial_numeric - 1) %>%
     group_by(neural_trial_numeric) %>%
-    # mutate(towards_ghost = if_else(Direction == "Left" & starting_side == "Right", "Towards",  # Left:2 Right :11
-    #                                if_else(Direction == "Right" & starting_side == "Left", "Towards",
-    #                                        if_else(Direction == "Left" & starting_side == "Left", "Away",  # Left:2 Right :11
-    #                                                if_else(Direction == "Right" & starting_side == "Right", "Away",
-    #                                                        if_else(Direction == "Still", "Still", "Unsure")))))) %>%
     mutate(dist_to_exit = if_else(starting_side == "Left", UserLocation - 10, 170 - UserLocation)) %>%
     mutate(distance_to_ghost = abs(UserLocation - GhostLocation)) %>%
+    mutate(towards_ghost = case_when(Direction == "Left" & starting_side == "Right" ~ "Towards",  # Left:2 Right :11
+                                     Direction == "Right" & starting_side == "Left" ~ "Towards",
+                                     Direction == "Left" & starting_side == "Left" ~ "Away",  # Left:2 Right :11
+                                     Direction == "Right" & starting_side == "Right" ~ "Away",
+                                     Direction == "Still" ~ "Still")) %>%
     filter(Chase == TRUE | Attack == TRUE) %>%
     filter(sample == first(sample)) %>%
-    filter(distance_to_ghost <= dist_to_exit) %>%
+    filter((distance_to_ghost <= dist_to_exit) | towards_ghost == "Towards") %>%
     ungroup()
   
   print(anyDuplicated(attack_df$neural_trial_numeric))

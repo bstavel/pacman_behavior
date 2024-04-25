@@ -75,9 +75,281 @@ permuted <- FALSE
 ```
 ## EDA
 
-## Average Theta
 
-## Single Electrode 
+## Average Theta - SLCH002
+
+```{r prep-for-eda}
+
+example_elec_df <- hc_theta_data %>%
+  filter(subject == "SLCH002") %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  ungroup() %>%
+  mutate(trial_time = round(trial_time - .5, 2))
+
+
+example_behave_df <- game_data_distance %>%
+  filter(subject == "SLCH002") %>%
+  # filter(Direction != "Still") %>%
+  filter(dots_eaten != 0) %>%  
+  group_by(trial_numeric) %>%
+  # prep time variables
+  mutate(jm_time = trial_time - first(trial_time)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time_tmp = if_else(event == 1, jm_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time_tmp)) %>%
+  ungroup() %>%
+  filter(turnaround_time != 0) %>% # exclude trials where they just ran into the ghost
+  select(subject, trial_numeric, trial_time, jm_time, event, turnaround_time, last_away,
+         UserLocation, GhostLocation, points_remaining, distance_to_ghost,
+         away_choice, TrialType, reward_groups) %>%
+  mutate(EVENT = 1) %>%
+  mutate(points_remaining = scale(points_remaining)) %>%
+  mutate(distance_to_ghost = scale(distance_to_ghost)) %>%
+  mutate(trial_time = round(trial_time, 2))
+
+
+
+ex_df <- inner_join(example_elec_df, example_behave_df, by = c("subject", "trial_numeric", "trial_time"))
+
+
+
+```
+
+
+```{r turning-time-eda}
+
+example_behave_df %>%
+  select(trial_numeric, turnaround_time) %>%
+  distinct() %>%
+  ggplot(., aes(x = turnaround_time)) +
+  geom_histogram(binwidth = .1) +
+  geom_vline(xintercept = 1.1, color = "black") +
+  theme_bw()
+
+
+example_behave_df %>%
+  group_by(trial_numeric) %>%
+  mutate(true_turn_time = turnaround_time + first(trial_time)) %>%
+  select(trial_numeric, true_turn_time) %>%
+  distinct() %>%
+  ggplot(., aes(x = true_turn_time)) +
+  geom_histogram(binwidth = .1) +
+  geom_vline(xintercept = 5.1, color = "black") +
+  theme_bw()
+
+
+
+```
+
+```{r theta-eda, fig.width=10, fig.height=5}
+
+ex_df <- ex_df %>%
+  mutate(long_short_trial = if_else(is.na(turnaround_time), "discard", if_else(turnaround_time <= 2, "short", "long"))) %>%
+  filter(trial_time >= 0)
+
+ggthemr("solarized")
+
+ex_df %>%
+  group_by(trial_time) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  select(-mean_theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_ls_theta)) +
+  geom_line() +
+  theme_bw() 
+
+ex_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  select(-mean_theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_ls_theta)) +
+  geom_line() +
+  theme_bw()  +
+  xlim(-2, 2) + ylim(-1, 1)
+
+ex_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_theta, group = trial_numeric)) +
+  geom_line(alpha = .3) +
+  geom_line(aes(y = mean_ls_theta), color = "black") +
+  theme_bw() +
+  xlim(-2, 2) + ylim(-1, 1)
+
+ex_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_theta, group = trial_numeric)) +
+  geom_line(alpha = .3) +
+  geom_line(aes(y = mean_ls_theta), color = "black") +
+  theme_bw() +
+  xlim(-2, 2) 
+
+ex_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp, long_short_trial) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_theta, 
+                color = long_short_trial, group = trial_numeric)) +
+  geom_line(alpha = .3) +
+  geom_line(aes(y = mean_ls_theta), color = "black") +
+  theme_bw() +
+  xlim(-2, 2) 
+
+
+ex_df %>%
+  # filter(long_short_trial != "discard") %>%
+  group_by(trial_time, long_short_trial) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  select(-mean_theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_ls_theta, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() 
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  select(-mean_theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_theta, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() 
+
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_theta = mean(mean_theta, na.rm = T)) %>%
+  select(-mean_theta, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_theta, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() 
+
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 1)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(jm_time <= 1.5) %>% # any longer and too few trials to interpret
+  ggplot(., aes(x = factor(jm_time), y = mean_theta, fill = long_short_trial)) +
+  geom_point(color = "grey", position = position_dodge2(.5)) +
+  geom_boxplot(notch = T, color = "black") +
+  theme_bw()
+
+
+ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  ggplot(., aes(x = trial_time, y = mean_theta, group = trial_numeric, color = long_short_trial)) +
+  geom_line(alpha = .5) +
+  theme_bw()
+
+```
+
+## Longitudinal Models
+
+```{r model-prep}
+
+long_data_df <- ex_df %>%
+  filter(long_short_trial != "discard") %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(mean_theta)) %>%
+  mutate(sin_term = sin(2 * pi * jm_time )) %>%
+  mutate(cos_term = cos(2 * pi * jm_time )) %>%
+  ungroup()
+
+```
+
+```{r model-basic}
+
+# fit model #
+time_model <- lme(mean_theta ~ jm_time, 
+                  data = long_data_df, 
+                  random = ~jm_time | trial_numeric)
+summary(time_model)
+
+# save predictions #
+long_data_df$prediction <- predict(time_model, long_data_df, type = "response")
+
+# plot predictions #
+simple_long_model_plot <- long_data_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  rename("Predicted Theta" = prediction, "True Theta" = mean_theta) %>%
+  pivot_longer(cols = c(`True Theta`, `Predicted Theta`), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_line() +
+  facet_wrap(~trial_numeric, nrow = 2, scales = "free_x") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        legend.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_color_manual(values = c("#E4635C", "#5BA6D6")) +
+  labs(x = "Trial Time", y = "", color = "") +
+  ggtitle("Linear Model Predicting Trial Theta")
+
+
+ggsave(path(here(), "figures", "survival", "simple_long_model_plot.png"), simple_long_model_plot, width = 15, height = 5)
+
+```
+
+```{r jm-fits-prep}
+
+cox_df <- long_data_df %>%
+  # filter(long_short_trial != "discard") %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+```
+
+```{r jm-fits-basic}
+
+# joint model #
+jm_basic_fit <- jm(cox_fit, list(time_model), 
+             time_var = "jm_time", data_Surv = cox_df, 
+             functional_forms = ~value(mean_theta), #+ slope(mean_theta),
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_basic_fit)
+
+
+traceplot(jm_basic_fit)
+```
+
+
+
+## Average Theta - BJH016
 
 ```{r prep-for-eda}
 
@@ -143,9 +415,6 @@ example_behave_df %>%
 
 
 ```
-
-
-
 
 ```{r theta-eda, fig.width=10, fig.height=5}
 

@@ -1,19 +1,4 @@
----
-title: "Control Script"
-output: html_document
-date: "2024-03-01"
----
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-  echo = FALSE,  # don't print the code chunk
-  warning = FALSE,  # don't print warnings
-  message = FALSE,  # don't print messages
-  fig.width = 8,  # set default width of figures
-  fig.height = 5,  # set default height of figures
-  fig.align = "center",  # always align figure in center
-  fig.pos = "H",  # always plot figure at the exact location of the code chunk
-  cache = FALSE)  # cache results
 
 ## libraries ##
 library(tidyverse)
@@ -55,7 +40,6 @@ source(path(here(), "R", "jm_visualization_functions.R"))
 
 ## plotting helpers ##
 ggthemr("light")
-getPalette = colorRampPalette(brewer.pal(17, "Set1"))
 
 c25 <- c(
   "dodgerblue2", "#E31A1C", # red
@@ -77,9 +61,7 @@ c25 <- c(
 nCores <- 8
 registerDoParallel(nCores)
 
-```
 
-```{r load-data}
 
 ## Load Data ##
 pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
@@ -87,28 +69,25 @@ ns_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pil
 
 ## Bind Rows ##
 # game_data_distance <- bind_rows(pilot_game_data_distance, ns_game_data_distance)
+game_data_distance <- pilot_game_data_distance
 
-```
 
-### Base Model, Online Sample
-
-```{r run-scripts}
 
 failed_subjects <- c()
-for(current_subject in unique(game_data_distance$subject)[1]){
+for(current_subject in unique(game_data_distance$subject)[40:69]){
   
-    tryCatch({
-
-      output_file_name <- paste("jm_base_dir_modeling_for_", current_subject, ".html", sep = "")
-        
-      # Render the R Markdown document, passing the current subject as a parameter
-      render(input = path(here(), "R", "jm_fit_plot_template.Rmd"),
-                        output_file = output_file_name,
-                        params = list(subject = current_subject),
-                        output_dir = path(here(), "analysis", "survival")
-                        )
-      
-    }, error = function(e) {
+  tryCatch({
+    
+    output_file_name <- paste("jm_base_true_modeling_for_", current_subject, ".html", sep = "")
+    
+    # Render the R Markdown document, passing the current subject as a parameter
+    render(input = path(here(), "R", "jm_fit_plot_template.Rmd"),
+           output_file = output_file_name,
+           params = list(subject = current_subject),
+           output_dir = path(here(), "analysis", "survival")
+    )
+    
+  }, error = function(e) {
     # If an error occurs, print the error message and add the subject to the failed list
     message("Failed to render report for ", current_subject, ": ", e$message)
     failed_subjects <- c(failed_subjects, current_subject)
@@ -118,7 +97,7 @@ for(current_subject in unique(game_data_distance$subject)[1]){
 
 print("failed subjects:")  
 print(failed_subjects)
-```
+
 
 
 

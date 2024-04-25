@@ -164,7 +164,7 @@ tmp <- bj16_data %>%
 
 
 pasued_trials <- bj16_data %>%
-  filter(Trial %in% c("34", "35", "36", "71", "72", "432", "433")) %>%
+  filter(Trial %in% c("34", "35", "36", "71", "72", "432", "433", "333")) %>%
   mutate(neural_trial_numeric = as.numeric(Trial) - 1) %>%
   # exclude fake trial 0 
   filter(neural_trial_numeric >= 0) %>%
@@ -249,7 +249,7 @@ bad_long_trials <- c(7, 15, 31)
 ```{r compile-bad-trials}
 
 # added more bad trials from when the patient just ran into the wall
-wall_trials <- c(23, 65, 80, 101, 111, 391)
+wall_trials <- c(23, 65, 80, 90, 101, 111, 369, 391)
 bad_trials <- unique(c(pasued_trials$neural_trial_numeric, no_biscuits_trials$neural_trial_numeric, bad_long_trials, wall_trials))
 
 bad_df <- data_frame("neural_trial_numeric" = bad_trials)

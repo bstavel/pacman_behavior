@@ -105,23 +105,22 @@ experienced_plot <- pilot_behave_data_clean %>%
   theme(panel.background = element_rect(fill = "white"), 
         legend.position = "none",
         plot.margin = margin(t = 1, r = 1, b = 1, l = 1),
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16, angle = 45, vjust = 1, hjust = 1),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = "bold")) +
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18, angle = 45, vjust = 1, hjust = 1),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold")) +
   ggtitle("Most players report feeling anxiety during the task", subtitle = "Responses to: 'What did you experience when the ghost was close to catching you?'") +
   scale_fill_carto_d(palette = "Prism")
 
 
 ggsave(path(here(), "figures", "behavior", "experienced_emotions_pilot_plot.png"),
          plot = experienced_plot,
-         width = 9,
-         height = 5.4,
+         width = 9.5,
+         height = 8,
          units = "in",
          dpi = 300)
 
 ```
-
 
 
 

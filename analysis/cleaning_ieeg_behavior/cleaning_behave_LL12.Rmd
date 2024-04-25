@@ -137,12 +137,6 @@ ll12_all_vars_df %>%
 
 ```{r trials-no-biscuits}
 
-tmp <- ll12_data_clean %>%
-  filter(trial_length != 999) %>%
-  select(trial_numeric, trial_length) %>%
-  mutate(trial_numeric = trial_numeric - 1) %>%
-  filter(trial_numeric %in% bad_trials) %>%
-  distinct()
 
 
 ll12_data_clean %>%

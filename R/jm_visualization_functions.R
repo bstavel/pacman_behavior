@@ -8,7 +8,7 @@ predict_on_test_set <- function(jm_fit, test_long_data, test_cox_df){
 # - test_cox_df: A dataframe containing the test survival data.
 #
 # The function performs the following operations:
-# 1. Filters the test_long_data to include only observations where 'trial_time' is less than 0.5. The model uses these 500ms 
+# 1. Filters the test_long_data to include only observations where 'jm_time' is less than 0.5. The model uses these 500ms 
 #    to predict the turning time in a given heald out trial
 # 2. Selects relevant columns from test_long_data, excluding 'turnaround_time' and 'EVENT', so there is no way it could use 
 #    that info to make its predictions
@@ -51,13 +51,13 @@ plot_survival_predictions <- function(test_predictions, current_subject){
 #
 # Arguments:
 # - test_predictions: A dataframe containing survival predictions. This dataframe should include columns for
-#   'trial_time' (time points of the prediction), 'pred_CIF' (predicted cumulative incidence function values),
+#   'jm_time' (time points of the prediction), 'pred_CIF' (predicted cumulative incidence function values),
 #   'trial_numeric' (identifier for the trial), and 'turntime_real' (actual time to event).
 # - current_subject: A character string or numeric value representing the subject for whom the plot is generated.
 #   This is used to customize the plot title to indicate the subject's predictions being displayed.
 #
 # The function performs the following steps to create the plot:
-# 1. Initializes a ggplot object using the 'test_predictions' dataframe. It sets 'trial_time' as the x-axis,
+# 1. Initializes a ggplot object using the 'test_predictions' dataframe. It sets 'jm_time' as the x-axis,
 #    'pred_CIF' as the y-axis, and uses 'trial_numeric' to color-code the points, providing a visual distinction
 #    between trials.
 # 2. Adds a shaded rectangle from 0 to 0.5 on the x-axis and 0 to 1 on the y-axis using 'geom_rect'. This rectangle
@@ -81,24 +81,27 @@ plot_survival_predictions <- function(test_predictions, current_subject){
 # longitudinal and survival data analysis.
   
   
-  prediction_plot <- ggplot(test_predictions, aes(x = jm_time, y = pred_CIF, color = trial_numeric)) +
+  prediction_plot <- ggplot(test_predictions, aes(x = jm_time, y = pred_CIF, color = as.numeric(trial_numeric))) +
     # representing the 500ms window the model was given in order to make its predictions
     geom_rect(aes(xmin=0, xmax=.5, ymin=0, ymax=1), fill = "lightgrey", alpha = .5, color = 'lightgrey') +
     # true turnaround time
-    geom_vline(aes(xintercept = turntime_real, color = trial_numeric, alpha = .7)) +
+    geom_vline(aes(xintercept = turntime_real, color = as.numeric(trial_numeric), alpha = .7)) +
     # predicted probabilities on turnaround time
     geom_point() +
-    scale_color_viridis_d() +  # Using Viridis color scale
+    scale_color_viridis() +  # Using Viridis color scale
     theme(panel.background = element_rect(fill = "white"),
-          axis.text = element_text(color = "black", size = 12),
-          axis.title = element_text(color = "black", size = 12),
-          legend.position =  'none',
-          plot.title  = element_text(color = "black", size = 16, face = "plain")) +
-    ylim(0, 1) + xlim(0, 2.5) + labs(color = "Test Trial") +
+          legend.position = "none",
+          axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+          plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+          plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+          axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +
+    ylim(0, 1) + xlim(0, 3) + labs(color = "Test Trial") +
     ggtitle(paste0("Prediction on held out trials: ", current_subject)) +
-    labs(x = "Time", y = "Probability of Turning Around")
+    labs(x = "Time (s)", y = "Probability of Turning Around")
   
   print(prediction_plot)
+  
+  return(prediction_plot)
   
   
 }
@@ -110,7 +113,7 @@ plot_correlation_plot <- function(test_predictions, current_subject){
 # Arguments:
 # - test_predictions: A dataframe containing the test predictions. It must include at least 'trial_numeric'
 #   as a trial identifier, 'turntime_real' as the actual turnaround time, 'pred_CIF' as the predicted cumulative
-#   incidence function values, and 'trial_time' as the predicted time points.
+#   incidence function values, and 'jm_time' as the predicted time points.
 # - current_subject: A character string or numeric value representing the subject for whom the plot is generated,
 #   only used in the plot title.
 #
@@ -151,9 +154,14 @@ plot_correlation_plot <- function(test_predictions, current_subject){
     ggplot(., aes(x = turntime_real, y = turntime_pred)) +
     geom_point(size = 4) +
     geom_smooth(method = "lm", formula = "y ~x", color = "black", se = F) +
-    theme(panel.background = element_rect(fill = "white")) +
-    labs(x = "True Turnaround Time", y = "Predicted Turnaround Time") +
-    ylim(.5, 5) + xlim(.5, 5) +
+    theme(panel.background = element_rect(fill = "white"),
+          legend.position = "none",
+          axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+          plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+          plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+          axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +
+    labs(x = "True Turnaround Time (s)", y = "Predicted Turnaround Time (s)") +
+    ylim(.5, 2.5) + xlim(.5, 2.5) +
     ggtitle(paste0("Prediction Scatterplot: ", current_subject, "; Correlation: ", round(cor_score, 2)))
   
   print(scatter_pred_plot)

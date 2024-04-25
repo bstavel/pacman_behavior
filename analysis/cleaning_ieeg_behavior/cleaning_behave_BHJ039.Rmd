@@ -222,7 +222,7 @@ BJH039_data_clean %>%
 ```{r compile-bad-trials}
 
 
-bad_trials <- c(no_biscuits_trials, long_trials)
+bad_trials <- c(no_biscuits_trials, long_trials, 4) # manually added later because it looks like it was paused at the end
 
 
 ```
@@ -232,7 +232,7 @@ bad_trials <- c(no_biscuits_trials, long_trials)
 
 It looks like movement get a little "wobbly" towards the end. I haven't seen this before in the data. Is there something happening with dirft in the time window? Could it be a BCI block size thing? Not sure yet will need to watch out for it in the future. Not sure how much it could affect or bias the analysis though, give it would be off by 2 units in position at most with 50ms variability at worst. Not great for the brain but I am not doing an fast temporal precision things as of now. Pulled out a good example of the issue and print it below.
 
-```{r all-other-trials}
+```{r all-other-trials, fig.width = 20, fig.height = 30}
 
 # no ghost trials
 BJH039_data_clean %>%
@@ -322,7 +322,7 @@ length(unique(BJH039_data_clean$trial_numeric))
 ```{r save-bad-trials}
 
 
-bad_trials <- c(no_biscuits_trials, long_trials)
+bad_trials <- c(no_biscuits_trials, long_trials, 4) # manually added later because it looks like it was paused at the end
 
 bad_df <- data_frame("neural_trial_numeric" = bad_trials)
 
@@ -340,11 +340,6 @@ create_first_move_events(BJH039_data_clean, 'BJH039_first_move_events.csv')
 create_died_events(BJH039_data_clean, 'BJH039_died_events.csv')
 create_attack_events(BJH039_data_clean, 'BJH039_attack_events.csv')
 
-# on trial 19 they didn't really die
-died_events <- read_csv(path(here(), './data/ieeg_behave/BJH039_died_events.csv'))
-died_events <- died_events %>%
-  mutate(died = if_else(neural_trial_numeric == 19, 0, died))
-write_csv(died_events, path(here(), './data/ieeg_behave/BJH039_died_events.csv'))
 ```
 
 

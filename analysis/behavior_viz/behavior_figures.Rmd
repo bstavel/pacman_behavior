@@ -80,88 +80,152 @@ c25 <- c(
 
 pilot_game_data_clean <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data.csv"))
 pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+pilot_all_vars_df <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data_2-3-24.csv"))
 
 ```
 
 ```{r plot-reward-turning-distance}
 
-turn_reward_plot <- pilot_game_data_distance %>%
+turn_reward_df <- pilot_game_data_distance %>%
   select(reward_groups, last_away, trial_numeric, subject) %>%
   filter(last_away != 0) %>%
   mutate(large_reward = if_else(reward_groups %in% c(3, 4), "Large", "Small")) %>%
-  mutate(last_away = scale(last_away)) %>%
   select(-reward_groups) %>%
   distinct() %>%
-  ggplot(., aes(x = large_reward, y = last_away, fill = large_reward)) +
-  geom_hline(yintercept = 0, color = "#2D2327", linetype = "dashed") +
-  geom_jitter(alpha = .2, color = "grey") +
+  group_by(large_reward, subject) %>%
+  mutate(avg_last_away = mean(last_away)) %>%
+  ungroup() %>%
+  mutate(last_away = scale(last_away)) %>%
+  mutate(avg_last_away = scale(avg_last_away))
+
+summary(lmer(last_away ~ large_reward + (1|subject), data = turn_reward_df))
+summary(lmer(avg_last_away ~ large_reward + (1|subject), 
+             data = turn_reward_df %>% select(avg_last_away, subject, large_reward) %>% distinct()))
+
+turn_reward_plot <- turn_reward_df %>%
+  select(avg_last_away, subject, large_reward) %>%
+  distinct() %>% 
+  ggplot(., aes(x = large_reward, y = avg_last_away, fill = large_reward)) +
+  geom_hline(yintercept = 0, color = "#2D2327", linetype = "dashed", size = 1) +
   geom_boxplot(notch = T) +
+  geom_jitter(color = "darkgrey") +
+  ylim(-1.25, 1.25) +
   coord_flip() +
   theme(panel.background = element_rect(fill = "white"), 
         legend.position = "none",
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = "bold")) +
-  scale_fill_manual(values = c("#2ec4b6", "#cbf3f0")) +
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold")) +
+  scale_fill_manual(values = c("#31ABED", "#A1D9F7")) +
   labs(x = "Last Reward", y = "Distance to Ghost at Turnaround", fill = "Reward Groups", title = "Turnaround Distance by Reward Groups", subtitle = 
-         "Players were willing to get closer to the ghost when the last reward was large")
+         "Participants were willing to get closer to the ghost when the last reward\nwas large")
 
 
 
 
+ 
 ggsave(path(here(), "figures", "behavior", "turnaround_reward_plot.png"),
          plot = turn_reward_plot,
-         width = 9,
-         height = 5,
+         width = 9.5,
+         height = 7.5,
          units = "in",
          dpi = 300)
 
 ```
 
 
-```{r}
 
-tmp <- pilot_game_data_distance %>%
-  filter(ghost_start_dir == "towards") %>%
-  filter(trial_flip == 2) %>%
-  select(subject, Trial, TrialType, GhostLocation, ghost_direction) %>%
-  distinct() 
+```{r game-level-time, echo = F, fig.width=9, fig.height=4.5}
 
 
-```
+pilot_all_vars_df %>%
+  ggplot(., aes(x = factor(block), y = block_deaths)) +
+  geom_boxplot() +
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text = element_text(color = "black", size = 12),
+        axis.title = element_text(color = "black", size = 12),
+        plot.title  = element_text(color = "black", size = 16),
+        plot.subtitle = element_text(color = "black", size = 14)) +
+    labs(subtitle = "Players were eaten ~3x per block, and tended to do better over time", x = "Block", y = "Deaths") +
+  ggtitle("Number of Deaths per Block")
 
+dots_plot <- pilot_all_vars_df %>%
+  ggplot(., aes(x = factor(block), y = average_dots_per_block, fill = 'f')) +
+  geom_violin(alpha = .7, fill = "#FB6087") +
+  geom_boxplot(notch = T, width =.2, fill = "#FB6087") +
+  labs(y = "Dots") +
+ theme(panel.background = element_rect(fill = "white"), 
+       legend.position = "none",
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold")) +
+  labs(subtitle = "Participants most often collected 4 dots and then turned around", x = "Block") +
+  ggtitle("Average Dots Eaten per Block")
 
-```{r}
-
-pilot_game_data <- read_csv(path(here(), '../behavioral_parsing/prolific_data_clean/cleaned_pacman_200_trial_n69.csv'), 
-                            col_types = cols(X1 = col_double(),
-                                                                                              subject = col_character(),
-                                                                                              Trial = col_character(),
-                                                                                              Lives = col_double(),
-                                                                                              TrialType = col_double(),
-                                                                                              Time = col_double(),
-                                                                                              GhostLocation = col_double(),
-                                                                                              UserLocation = col_double(),
-                                                                                              Direction = col_double(),
-                                                                                              Biscuit1 = col_logical(),
-                                                                                              Biscuit2 = col_logical(),
-                                                                                              Biscuit3 = col_logical(),
-                                                                                              Biscuit4 = col_logical(),
-                                                                                              Biscuit5 = col_logical(),
-                                                                                              Attack = col_logical(),
-                                                                                              Chase = col_logical(),
-                                                                                              Eaten = col_double(),
-                                                                                              Score = col_double(),
-                                                                                              final_score = col_double()))
-
-tmp3 <- pilot_game_data %>% filter(subject == "Subject_1" & Trial == "Trial_8")
-
-test <- pilot_game_data_clean %>%
-  select(subject, trial_numeric, trial_flip, ghost_start_dir, ghost_direction) %>%
-  filter(trial_flip == 2) %>%
-  
+ggsave(path(here(), "figures", "behavior", "dots_plot.png"), 
+       plot = dots_plot, width = 9.5, height = 7.5)
 
 ```
 
 
+```{r distance, warning=F, fig.width=9, fig.height=4.5, echo = F}
+
+# number of turns #
+turning_plot <- pilot_game_data_distance %>%
+  select(subject, trial_numeric, number_of_runs) %>%
+  distinct() %>%
+  ggplot(., aes(x = subject, fill = factor(number_of_runs))) +
+    theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        axis.text.x = element_blank(), 
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(fill = "Number of turns", title = "Number of turns per trial by subject") +
+  geom_bar() +
+  scale_fill_viridis(discrete = T, direction = -1) +
+  guides(fill=guide_legend(nrow=1,byrow=TRUE))
+
+ggsave(path(here(), "figures", "behavior", "number_of_turns_per_trial.png"), 
+       plot = turning_plot, width = 15, height = 6)
+
+```
+
+
+
+```{r last_away_min_dist, warning=F, fig.width=9, fig.height=4.5, echo = F}
+
+
+# last away #
+last_away_plot <- pilot_game_data_distance %>%
+  # filters #
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, last_away) %>%
+  distinct() %>%
+  filter(subject %in% sample(subject, 20)) %>%
+  ggplot(., aes(x = subject, y = last_away)) +
+  # geom_point(alpha = .3) +
+  # geom_violin() +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(notch = T) +
+  ylab("Distance to Ghost at Turnaround") + xlab("Subjects") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold"),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank()) +
+  ggtitle("Participant Variability in Turning Distance", subtitle = "Random sample of 20 participants shows that the within subject variability \nin turnaround time is usually less than across subject variability")
+
+ggsave(path(here(), "figures", "behavior", "last_away_plot.png"), 
+       plot = last_away_plot, width = 9.5, height = 7.25)
+
+```

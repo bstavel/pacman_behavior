@@ -117,14 +117,14 @@ survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = 
 ## Prep DF for Joint Model Fitting and select predictor variables ##
 joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
 
-# only ieeg trials
-# hc_sub_trials <- hc_theta_data %>%
-#   filter(subject == current_subject) %>%
-#   pull(trial_numeric) %>%
-#   unique()
-# 
-# joint_dist_df <- joint_dist_df %>%
-#   filter(trial_numeric %in% hc_sub_trials)
+#only ieeg trials
+hc_sub_trials <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  pull(trial_numeric) %>%
+  unique()
+
+joint_dist_df <- joint_dist_df %>%
+  filter(trial_numeric %in% hc_sub_trials)
 
 # theta modeling
 sub_theta_df <- hc_theta_data %>%
@@ -136,8 +136,19 @@ sub_theta_df <- hc_theta_data %>%
   select(-theta, -electrode) %>%
   distinct() %>%
   group_by(trial_numeric) %>%
-  # mutate(trial_time = trial_time - sample(seq(.5, .99, .1), 1)) %>% # permuted
-  mutate(trial_time = trial_time - .4) %>% #lagged
+  ### permuted theta 
+  mutate(
+    shift_amount = sample(1:n(), size = 1), # Ensure one shift value per group
+    theta_shifted = map2_dbl(.x = shift_amount, .y = row_number(), ~ {
+      shifted_index <- (.y + .x) %% n()
+      if (shifted_index == 0) shifted_index <- n()
+      mean_theta[shifted_index]
+    })
+  ) %>%
+  ungroup() %>%
+  select(-mean_theta) %>%
+  rename(mean_theta = theta_shifted) %>%
+  # mutate(trial_time = trial_time - .4) %>% #lagged
   mutate(trial_time = round(trial_time, 2)) %>%
   ungroup()
 
@@ -170,7 +181,7 @@ for(fold in c(1:5)){
       filter(trial_numeric %in% test_trials)
 
     # survival dfs
-    cox_df <- create_survival_df(joint_dist_df %>% mutate(trial_numeric = round(trial_numeric, 2)))
+    cox_df <- create_survival_df(joint_dist_df)
     train_cox_df <- cox_df %>%
       filter(trial_numeric %in% train_trials)
     test_cox_df <- cox_df %>%
@@ -279,6 +290,61 @@ for(fold in c(1:5)){
 
 ```
 
+```{r tmp}
+
+train_long_data$points_remaining <- as.numeric(train_long_data$points_remaining)
+
+train_long_data$distance_to_ghost <- as.numeric(train_long_data$distance_to_ghost)
+
+write_csv(train_long_data, path(here(), "data/jm_example_train_long_data.csv"))
+write_csv(train_cox_df, path(here(), "data/jm_example_train_cox_data.csv"))
+
+train_long_data <- train_long_data %>%
+  mutate(trial_numeric = factor(trial_numeric)) %>%
+  mutate(trial_ids = paste0("BJH016_", trial_numeric))
+
+train_cox_df <- train_cox_df %>%
+  mutate(trial_numeric = factor(trial_numeric)) %>%
+  mutate(trial_ids = paste0("BJH016_", trial_numeric))
+
+# longitudinal model #
+lm_threat_fc <- lme(distance_to_ghost ~ jm_time, data = train_long_data, 
+                 random = ~jm_time | trial_ids, control = lmeControl(opt = 'optim'))
+lm_threat_nm <- lme(distance_to_ghost ~ jm_time, data = train_long_data, 
+                 random = ~jm_time | trial_numeric, control = lmeControl(opt = 'optim'))
+
+
+lm_reward_fc <- lme(points_remaining ~ jm_time, data = train_long_data, 
+                 random = ~jm_time | trial_ids, control = lmeControl(opt = 'optim'))
+lm_reward_nm <- lme(points_remaining ~ jm_time, data = train_long_data, 
+                 random = ~jm_time | trial_numeric, control = lmeControl(opt = 'optim'))
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)
+
+# joint model #
+jm_fit_fc <- jm(cox_fit, list(lm_threat_fc, lm_reward_fc), 
+             time_var = "jm_time",  id_var = "trial_ids",
+             data_Surv = train_cox_df, 
+             n_burnin = 2000, n_iter = 40000, n_chains =8, cores = 6)
+
+jm_fit_nm <- jm(cox_fit, list(lm_threat_nm, lm_reward_nm), 
+             time_var = "jm_time",  id_var = "trial_numeric",
+             data_Surv = train_cox_df, 
+             n_burnin = 2000, n_iter = 40000, n_chains =8, cores = 6)
+
+## print lme results
+summary(lm_threat_fc)
+summary(lm_threat_nm)
+
+
+## priint different jm fits
+summary(jm_fit_fc)
+summary(jm_fit_nm)
+
+```
+
+
 
 ```{r save-data}
 
@@ -293,9 +359,9 @@ metrics_df <- tibble("subjects" = rep(current_subject, length(seed_list)),
                       "cor" = core_list)
 
 write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", 
-                           paste0(current_subject, "_lagged_fit_metrics_theta_time_model_df.csv")))
+                           paste0(current_subject, "_permuted_fit_metrics_theta_time_model_df.csv")))
 write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", 
-                            paste0(current_subject, "_lagged_model_params_theta_time_model_df.csv")))
+                            paste0(current_subject, "_permuted_model_params_theta_time_model_df.csv")))
 
 ```
 

@@ -4,6 +4,7 @@ output: html_document
 date: "2024-02-29"
 params:
   subject: NULL
+  permuted: NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -50,6 +51,7 @@ source(path(here(), "R", "jm_visualization_functions.R"))
 
 ## plotting helpers ##
 ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
 
 c25 <- c(
   "dodgerblue2", "#E31A1C", # red
@@ -85,19 +87,48 @@ cat(paste0("\n\n## ", current_subject, "\n"))
 ```{r load-data, results='asis', echo=FALSE, eval = T}
 
 ## Load Data ##
-# game_data_behavior <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data_2-3-24.csv"))
-pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data_2-3-24.csv"))
-# ns_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data_newsample_2-3-24.csv"))
+insula_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_insula_all_subs_logged_iti_onset.csv"))
+amyg_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
 
-## Bind Rows ##
-# game_data_distance <- bind_rows(pilot_game_data_distance, ns_game_data_distance)
-game_data_distance <- pilot_game_data_distance
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(trial_time <= 5.10) 
+
+## load sig pairs data ##
+sg_df <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+sg_sub_df <- sg_df %>% 
+  filter(subject == current_subject) %>%
+  filter(roi_pair %in% c("insula_ofc", "amyg_ofc", "ofc_amyg", "ofc_insula")) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  mutate(elec1 = gsub("_to_.*", "", pairs)) %>%
+  mutate(elec2 = gsub(".*_to_", "", pairs))
+
+insula_elecs <- sg_sub_df %>% 
+  filter(roi_pair %in% c("insula_ofc")) %>%
+  select(elec2) %>%
+  distinct() %>%
+  pull()
+
+ofc_elecs <- sg_sub_df %>% 
+  filter(roi_pair == c("ofc_amyg", "ofc_insula")) %>%
+  mutate(elec1 = if_else(roi_pair == "ofc_amyg", elec2, elec1)) %>%
+  select(elec1) %>%
+  distinct() %>%
+  pull()
+
+
+amyg_elecs <- sg_sub_df %>% 
+  filter(roi_pair == "amyg_ofc") %>%
+  select(elec1) %>%
+  distinct() %>%
+  pull()
 
 ```
 
 
-
-```{r fit-model-over-5-splits, results='asis', echo=FALSE, eval = T}
+```{r fit-model-over-10-splits, results='asis', echo=FALSE, eval = T}
 
 auc_list <- c()
 ici_list <- c()
@@ -115,6 +146,67 @@ survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = 
 
 ## Prep DF for Joint Model Fitting and select predictor variables ##
 joint_dist_df <- prep_joint_df(game_data_distance, current_subject, permuted)
+
+# theta modeling
+sub_ofc_theta_df <- ofc_theta_data %>%
+  filter(subject == current_subject) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode %in% ofc_elecs) %>%  
+  filter(!is.na(theta)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(ofc_theta = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_numeric) %>%
+  # mutate(trial_time = trial_time - sample(seq(.5, .99, .1), 1)) %>% # permuted
+  # mutate(trial_time = trial_time - .4) %>% #lagged
+  mutate(trial_time = round(trial_time, 2)) %>%
+  ungroup()
+
+
+sub_amyg_theta_df <- amyg_theta_data %>%
+  filter(subject == current_subject) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode %in% amyg_elecs) %>%  
+  filter(!is.na(theta)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(amyg_theta = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_numeric) %>%
+  # mutate(trial_time = trial_time - sample(seq(.5, .99, .1), 1)) %>% # permuted
+  # mutate(trial_time = trial_time - .4) %>% #lagged
+  mutate(trial_time = round(trial_time, 2)) %>%
+  ungroup()
+
+
+sub_insula_theta_df <- insula_theta_data %>%
+  filter(subject == current_subject) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode %in% insula_elecs) %>%
+  filter(!is.na(theta)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(insula_theta = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  group_by(trial_numeric) %>%
+  # mutate(trial_time = trial_time - sample(seq(.5, .99, .1), 1)) %>% # permuted
+  # mutate(trial_time = trial_time - .4) %>% #lagged
+  mutate(trial_time = round(trial_time, 2)) %>%
+  ungroup()
+
+sub_theta_df <- left_join(sub_ofc_theta_df, sub_amyg_theta_df, by = c("subject", "trial_numeric", "trial_time"))
+sub_theta_df <- left_join(sub_theta_df, sub_insula_theta_df, by = c("subject", "trial_numeric", "trial_time"))
+
+joint_dist_df <- inner_join(sub_theta_df, joint_dist_df, by = c("subject", "trial_numeric", "trial_time"))
+joint_dist_df <- joint_dist_df %>%
+  rowwise() %>%
+  mutate(amyg_minus_ofc = amyg_theta - ofc_theta) %>%
+  mutate(insula_minus_ofc = insula_theta - ofc_theta) %>%
+  ungroup() 
 
 ## Create Test/Train ##
 current_seed <- sample(1:100, 1)
@@ -151,7 +243,7 @@ for(fold in c(1:5)){
 
     ## Fit Joint Model ##
     file_name <- paste0(current_subject, "_", permuted, "_", seed_fold)
-    jm_fit <- fit_joint_models(train_long_data, train_cox_df, file_name)
+    jm_fit <- fit_joint_correl_theta_models(train_long_data, train_cox_df, file_name)
 
     ## Print summary ##
     tmp <- kable(summary(jm_fit)$Survival, caption = "Joint Model",  format = "html")  %>%
@@ -266,9 +358,9 @@ metrics_df <- tibble("subjects" = rep(current_subject, length(seed_list)),
                       "cor" = core_list)
 
 write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", 
-                           paste0(current_subject, "_true_fit_metrics_base_dir_model_df.csv")))
+                           paste0(current_subject, "_fit_metrics_theta_correlation_model_df.csv")))
 write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", 
-                            paste0(current_subject, "_true_model_params_base_dir_model_df.csv")))
+                            paste0(current_subject, "_model_params_theta_correlation_model_df.csv")))
 
 ```
 

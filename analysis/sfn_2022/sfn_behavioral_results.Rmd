@@ -47,7 +47,7 @@ library(scales)
 source(path(here(), "R", 'mutate_cond.R'))
 source(path(here(), "R", 'create_distance_df.R'))
 source(path(here(), "R", 'clean_behavioral_data.R'))
-source(path(here(), "R", 'merge_theta_and_behavioral_data.R'))
+# source(path(here(), "R", 'merge_theta_and_behavioral_data.R'))
 
 ## plotting helpers ##
 ggthemr("light")
@@ -257,6 +257,45 @@ prolific_data_distance <- create_distance_prolific(prolific_data_clean)
 ```
 
 
+```{r}
+
+## no longer use this approach for survival modeling, but useful for creating this figure ##
+create_subject_survival_aalen <- function(df, sub){
+  
+  survival_df <- df %>%
+    filter(last_away != 0) %>% # filter out times person ran into the ghost
+    filter(subject == sub) %>%
+    group_by(trial_numeric) %>%
+    filter(as.character(Direction) != "Still") %>%
+    mutate(Direction = factor(Direction)) %>%
+    filter(dots_eaten > 0) %>%
+    mutate(trial_time = trial_time - first(trial_time)) %>%
+    filter(trial_time <= trial_time[away_choice == last_away]) %>%
+    mutate(trial_time = round(trial_time/.05)*.05) %>%
+    mutate(survival_time = max(trial_time)) %>%
+    mutate(time1 = round(trial_time, digits = 2)) %>%
+    mutate(tmp = n()) %>%
+    filter(tmp > 3) %>%
+    mutate(time2 = c(time1[2:n()], time1[n()] + .05)) %>%
+    # mutate(time1_r = round(time1/.05)*.05) %>%
+    # mutate(time2_r = round(time2/.05)*.05) %>%
+    mutate(dif = time2 - time1) %>%
+    mutate(status = if_else(survival_time ==trial_time, 1, 0 )) %>%
+    mutate(censor = 1)  %>%
+    mutate(dif_prob = if_else(dif < .049 | dif > .051, 1, 0)) %>%
+    mutate(dif_prob_sum = sum(dif_prob)) %>%
+    filter(dif_prob_sum == 0) %>%
+    select(subject, trial_numeric, survival_time, min_distance, status, reward_groups, censor, UserLocation, GhostLocation, starts_with("Biscuit"),
+           distance_to_ghost, jittered_start_location, Eaten, Score, Lives, Direction, time1, time2, dif, number_of_runs, 
+           discounted_reward, cdf_distance, distance_to_next_reward, points_aquired, points_remaining) %>%
+    distinct() 
+  
+  return(survival_df)
+  
+}
+
+```
+
 
 ```{r aalen}
 ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
@@ -284,25 +323,28 @@ basic_aalen_fit <- survfit(Surv(time1, time2, status) ~  plot_subject, data=bci_
 
 survival_plot <- ggsurvplot(basic_aalen_fit, 
            conf.int = TRUE, 
-           legend.title = "Subject",
-           ylab = "Probability of turning around",
-           ggtheme = theme_bw(base_family = 'Georgia'),
-           font.family = "Georgia",
-           font.main = c(16, "bold"),
-           font.x = c(14),
-           font.y = c(14),
-           xlim  = c(0, 5),
+           legend.title = "Participants",
+           ylab = "Probability of staying in trial",
+           xlab = "Time (s)",
+           ggtheme = theme_bw(base_family = "Gill Sans"),
+           font.family = "Gill Sans",
+           font.main = c(20, "bold"),
+           font.legend = c(18),
+           font.tickslab = c(18),
+           font.x = c(20),
+           font.y = c(20),
+           xlim  = c(0, 3),
            legend.labs = c("Patient 1", "Prolific 1", "Patient 2", "Prolific 2", "Patient 3", "Prolific 3"),
-           palette = c("#E48DB7", "#FFA801", "#55BBC8", "#FFA801", "#DE0D16", "#FFA801")) +
-  ggtitle("Players moved towards dots/ghost for about\n 1-2 seconds before turning around")
+           palette = c("#1EA3EB", "#FCE724", "#1EA3EB", "#FCE724", "#1EA3EB", "#FCE724")) +
+  ggtitle("Survival model: participants moved towards dots/ghost for \nabout 1-2 seconds before turning around")
 
 
-ggsave(filename = path(here(), "figures", "SFN", "survival_plot.tif"),
-     device = "tiff",
-     width = 6,
-     height = 4,
+ggsave(filename = path(here(), "figures", "SFN", "survival_plot.png"),
+     device = "png",
+     width = 10,
+     height = 7.5,
      units = "in",
-     dpi = 320,
+     dpi = 300,
      plot =  print(survival_plot$plot))
 
 ```

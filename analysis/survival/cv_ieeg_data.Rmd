@@ -290,6 +290,7 @@ theta_joint_df <- full_join(fit_metrics_df, survival_df, by = c("subject", "seed
 
 coef_plot <- theta_joint_df %>%
   ggplot(., aes(x = case, y = Mean, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
   geom_boxplot(color = "black") +
   geom_point(position = position_dodge2(.25), shape = 21, color = "black") +
   theme(panel.background = element_rect(fill = "white"), legend.position = "none",
@@ -297,14 +298,15 @@ coef_plot <- theta_joint_df %>%
         plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
         axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#FB6087")) +
-  scale_color_manual(values = c("darkgrey", "#FB6087")) +
+  scale_fill_manual(values = c("darkgrey", "#7f6ba6")) +
+  scale_color_manual(values = c("darkgrey", "#7f6ba6")) +
   labs(y = "", x= "") +
   ggtitle("Coefficient - Theta")
 
 
 p_plot <- theta_joint_df %>%
   ggplot(., aes(x = case, y = P, fill = case)) +
+  geom_hline(yintercept = 0.05, color = '#2D2327', linetype = "dashed") +
   geom_boxplot(color = "black") +
   geom_point(position = position_dodge2(.25), shape = 21, color = "black") +
   theme(panel.background = element_rect(fill = "white"), legend.position = "none",
@@ -312,14 +314,15 @@ p_plot <- theta_joint_df %>%
         plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
         axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#FB6087")) +
-  scale_color_manual(values = c("darkgrey", "#FB6087")) +
+  scale_fill_manual(values = c("darkgrey", "#d67365")) +
+  scale_color_manual(values = c("darkgrey", "#d67365")) +
   labs(y = "", x= "") +
   ggtitle("'P' Value")
 
 
 auc_plot <- theta_joint_df %>%
   ggplot(., aes(x = case, y = auc, fill = case)) +
+  geom_hline(yintercept = 0.5, color = '#2D2327', linetype = "dashed") +
   geom_boxplot(color = "black") +
   geom_point(position = position_dodge2(.25), shape = 21, color = "black") +
   theme(panel.background = element_rect(fill = "white"), legend.position = "none",
@@ -327,14 +330,15 @@ auc_plot <- theta_joint_df %>%
         plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
         axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#FB6087")) +
-  scale_color_manual(values = c("darkgrey", "#FB6087")) +
+  scale_fill_manual(values = c("darkgrey", "#8fbf6d")) +
+  scale_color_manual(values = c("darkgrey", "#8fbf6d")) +
   labs(y = "", x= "") +
   ggtitle("AUC")
 
 
 cor_plot <- theta_joint_df %>%
   ggplot(., aes(x = case, y = cor, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
   geom_boxplot(color = "black") +
   geom_point(position = position_dodge2(.25), shape = 21, color = "black") +
   theme(panel.background = element_rect(fill = "white"), legend.position = "none",
@@ -342,24 +346,163 @@ cor_plot <- theta_joint_df %>%
         plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
         axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#FB6087")) +
-  scale_color_manual(values = c("darkgrey", "#FB6087")) +
+  scale_fill_manual(values = c("darkgrey", "#f1bd39")) +
+  scale_color_manual(values = c("darkgrey", "#f1bd39")) +
   labs(y = "", x= "") +
   ggtitle("True vs Predicted Correlation")
 
-ggsave(path(here(), "figures", "survival", "BJH016_coef_plot.png"), plot = coef_plot, width = 5.5, height = 5, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "BJH016_p_plot.png"), plot = p_plot, width = 5.5, height = 5, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "BJH016_auc_plot.png"), plot = auc_plot, width = 5.5, height = 5, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "BJH016_cor_plot.png"), plot = cor_plot, width = 5.5, height = 5, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "BJH016_coef_plot.png"), plot = coef_plot, width = 5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "BJH016_p_plot.png"), plot = p_plot, width = 5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "BJH016_auc_plot.png"), plot = auc_plot, width = 5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "BJH016_cor_plot.png"), plot = cor_plot, width = 5, height = 4.25, units = "in", dpi = 300)
 
 
 
 ```
 
-```{r}
+
+## Online Sample
+
+
+```{r load-files}
+
+file_list <- list.files(path(here(), "data", "joint_models", "model_summaries"), "_*_fit_metrics_base_dir_model_df.csv")
+file_list <- file_list[grepl("Subject_", file_list)]
+
+fit_metrics_df <- tibble()
+for(file in file_list){
+  
+  tmp <- read_csv(path(here(), "data", "joint_models", "model_summaries", file))
+    tmp <- tmp %>%
+    mutate(case = if_else(grepl("permuted", file), "permuted", "true"))
+  fit_metrics_df <- bind_rows(fit_metrics_df, tmp)
+  
+  
+}
+
+file_list <- list.files(path(here(), "data", "joint_models", "model_summaries"), "_*_model_params_base_dir_model_df.csv")
+file_list <- file_list[grepl("Subject_", file_list)]
+survival_df <- tibble()
+for(file in file_list){
+  
+  tmp <- read_csv(path(here(), "data", "joint_models", "model_summaries", file))
+  tmp <- tmp %>%
+    mutate(case = if_else(grepl("permuted", file), "permuted", "true"))
+  survival_df <- bind_rows(survival_df, tmp)
+  
+  
+}
+
+
+fit_metrics_df <- fit_metrics_df %>%
+  rename(subject = subjects, seed_split =seed)  %>%
+  mutate(seed = as.numeric(gsub("-.*", "", seed_split)))  %>%
+  mutate(fold = as.numeric(gsub(".*-", "", seed_split))) %>%
+  select(-seed_split)
+
+survival_df <- survival_df %>%
+  group_by(subject, seed, case) %>%
+  mutate(fold = c(1, 1, 2, 2, 3, 3, 4, 4, 5, 5))
+
+
+```
+
+```{r, fig.width = 5, fig.height = 5}
+
+coef_threat_plot <- survival_df %>%
+  filter(predictor == "value(distance_to_ghost)") %>%
+  ggplot(., aes(x = case, y = Mean, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
+  scale_color_manual(values = c("darkgrey", "#86C8B7")) +
+  labs(y = "", x= "") +
+  ylim(-4.5, .5) +
+  ggtitle("Coefficient - Threat")
+
+
+coef_reward_plot <- survival_df %>%
+  filter(predictor == "value(points_remaining)") %>%
+  ggplot(., aes(x = case, y = Mean, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#FB6087")) +
+  scale_color_manual(values = c("darkgrey", "#FB6087")) +
+  labs(y = "", x= "") + ylim(-4.5, .5) +
+  ggtitle("Coefficient - Reward")
+
+
+auc_plot <- fit_metrics_df %>%
+  ggplot(., aes(x = case, y = auc, fill = case)) +
+  geom_hline(yintercept = 0.5, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#8fbf6d")) +
+  scale_color_manual(values = c("darkgrey", "#8fbf6d")) +
+  labs(y = "", x= "") +
+  ggtitle("AUC")
+
+
+cor_plot <- fit_metrics_df %>%
+  ggplot(., aes(x = case, y = cor, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#f1bd39")) +
+  scale_color_manual(values = c("darkgrey", "#f1bd39")) +
+  labs(y = "", x= "") +
+  ggtitle("True vs Predicted Correlation")
+
+ggsave(path(here(), "figures", "survival", "prolific_coef_threat_plot.png"), plot = coef_threat_plot, width = 5, height = 4.5, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "prolific_coef_reward_plot.png"), plot = coef_reward_plot, width = 5, height = 4.5, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "prolific_auc_plot.png"), plot = auc_plot, width = 5, height = 4.5, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "prolific_cor_plot.png"), plot = cor_plot, width = 5, height = 4.5, units = "in", dpi = 300)
 
 
 
 ```
+
+```{r sig}
+
+
+coef_reward_df <- survival_df %>%
+  filter(predictor == "value(points_remaining)") 
+
+coef_threat_df <- survival_df %>%
+  filter(predictor == "value(distance_to_ghost)") 
+
+
+
+summary(lmer(Mean ~ case + (1|subject), data = coef_reward_df))
+summary(lmer(Mean ~ case + (1|subject), data = coef_threat_df))
+
+summary(lmer(auc ~ case + (1|subject), data = fit_metrics_df))
+summary(lmer(cor ~ case + (1|subject), data = fit_metrics_df))
+
+
+```
+
 
 
