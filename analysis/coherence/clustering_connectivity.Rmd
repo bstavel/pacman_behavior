@@ -1,0 +1,177 @@
+---
+title: "Clustering Connectivity Results"
+output: html_document
+date: "2024-04-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_connectivity.csv"))
+
+
+## FDr correct/make symmetric
+conn_clean_df <- prep_conn_allsubs_plot_df(conn_df)
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "dlPFC" = "#FB6087")
+
+```
+
+
+```{r create-sig-df, fig.width=20, fig.height=15}
+
+sig_electrodes <- conn_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  group_by(subject, pairs, roi_pair, metric) %>%
+  mutate(sig_time_bins = sum(sig)) %>%
+  ungroup %>%
+  filter(sig_time_bins > 10) %>%
+  select(subject, pairs, roi_pair, metric) %>%
+  distinct() %>%
+  mutate(sig_key = paste0(subject, pairs, metric)) %>%
+  pull(sig_key)
+
+
+conn_clean_sig_elec_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, roi_pair, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  # filter(sig == 1) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(metric, time, roi_pair, subject) %>%
+  mutate(average_sub_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(-pairs, -pval, -p_frd, -sig, -percent_sig, -count_sig, -number_of_region_pairs, -connectivity) %>%
+  distinct()
+
+
+```
+
+
+
+```{r, fig.width=25, fig.height=55}
+
+library(ggdendro)
+
+imcoh_df <- conn_clean_sig_elec_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  select(time,key, roi_pair, average_sub_conn) %>%
+  distinct() %>%
+  pivot_wider(values_from = average_sub_conn, names_from = time)
+
+
+set.seed(123)  # Setting seed for reproducibility
+kmeans_result = kmeans(imcoh_df %>% select(-key, -roi_pair), centers = 5)  # `centers` specifies the number of clusters
+
+dist_matrix = dist(imcoh_df %>% select(-key))
+
+hc = hclust(dist_matrix)
+plot(hc, hang = -5, labels = imcoh_df$roi_pair)  # To visualize the dendrogram
+
+
+dend_data <- dendro_data(as.dendrogram(hc), type = "rectangle")
+dend_data$labels$label <- imcoh_df$roi_pair
+
+ggdendrogram(hc, rotate = TRUE, theme_dendro = T)
+
+p <- ggplot(dend_data$segments) + 
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend))+
+  geom_text(data = dend_data$labels, aes(x, y, label = label),
+            size = 8, hjust = 1, color = "black")+
+  coord_flip() +
+  theme(
+    # Rotating the text to vertical might help avoid overlap
+    axis.text.y = element_text(angle = 0, hjust = -10),
+    # Adjust the plot margins to give more space for labels
+    plot.margin = margin(t = 20, r = 20, b = 10, l = 10, unit = "pt")
+  )
+print(p)
+
+
+imcoh_df$cluster <- cutree(hc, 5)
+
+table(imcoh_df$roi_pair, imcoh_df$cluster)
+```
+
+
+
+

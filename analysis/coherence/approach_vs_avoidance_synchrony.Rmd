@@ -1,0 +1,333 @@
+---
+title: "Approach vs Avoidance Synchrony"
+output: html_document
+date: "2024-05-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+## Approach vs Avoidance Synchrony
+
+The rodent literature predicts that exposure to anxiogenic environments enhances vHPC-mPFC theta synchrony. One possible way of testing this is whether or not synchrony changes when they are approaching vs avoiding. However, this is not an ideal test, because close tot he ghost while they are turned around may still count as anxiogenic. Still, we see some limited evidence that synchrony is higher during approach near the ghost, particularly when they are around 700ms away from the ghost-- where you would expect to see the biggest difference. 
+
+However, we do a difference when we only look at the succesful escape. In that context, there is higher synchrony during approach than avoidance.
+
+
+### All Connectivity Data
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_escape_connectivity.csv"))
+
+
+## FDr correct/make symmetric
+conn_clean_df <- prep_conn_allsubs_plot_df(conn_df)
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "dlPFC" = "#FB6087")
+
+```
+
+
+```{r create-sig-df, fig.width=20, fig.height=15}
+
+sig_electrodes <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  group_by(subject, pairs, roi_pair, metric) %>%
+  mutate(sig_time_bins = sum(sig)) %>%
+  ungroup %>%
+  filter(sig_time_bins > 10) %>%
+  select(subject, pairs, roi_pair, metric) %>%
+  distinct() %>%
+  mutate(sig_key = paste0(subject, pairs, roi_pair, metric)) %>%
+  pull(sig_key)
+
+
+conn_clean_sig_elec_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, roi_pair, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(metric, time, pairs, roi_pair, subject) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(-pairs, -pval, -p_frd, -sig, -percent_sig, -count_sig, -number_of_region_pairs) %>%
+  distinct()
+
+
+```
+
+
+```{r hc-ofc-model}
+
+hc_ofc_avg_conn_df <- conn_clean_sig_elec_df %>%
+  filter(first_region == "Hippocampus") %>%
+  filter(second_region == "OFC") %>%
+  filter(time >= -1 & time <= 1) %>%
+  mutate(case = if_else(time <= 0, "approach", "avoidance")) %>%
+  distinct() %>%
+  group_by(key, case) %>%
+  mutate(average_conn = mean(connectivity)) %>%
+  select(key, subject, roi_pair, metric, case, average_conn) %>%
+  distinct()
+
+
+hc_ofc_avg_conn_df %>%
+  ggplot(., aes(x = case, y = log(average_conn))) +
+  geom_boxplot() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+```
+
+
+## Successgul Escape Only
+
+
+
+### All Connectivity Data
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_connectivity.csv"))
+
+
+## FDr correct/make symmetric
+conn_clean_df <- prep_conn_allsubs_plot_df(conn_df)
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "dlPFC" = "#FB6087")
+
+```
+
+
+```{r create-sig-df, fig.width=20, fig.height=15}
+
+sig_electrodes <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  group_by(subject, pairs, roi_pair, metric) %>%
+  mutate(sig_time_bins = sum(sig)) %>%
+  ungroup %>%
+  filter(sig_time_bins > 10) %>%
+  select(subject, pairs, roi_pair, metric) %>%
+  distinct() %>%
+  mutate(sig_key = paste0(subject, pairs, roi_pair, metric)) %>%
+  pull(sig_key)
+
+
+conn_clean_sig_elec_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, roi_pair, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(metric, time, pairs, roi_pair, subject) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(-pairs, -pval, -p_frd, -sig, -percent_sig, -count_sig, -number_of_region_pairs) %>%
+  distinct()
+
+
+```
+
+
+```{r hc-ofc-model}
+
+hc_ofc_avg_conn_df <- conn_clean_sig_elec_df %>%
+  filter(first_region == "Hippocampus") %>%
+  filter(second_region == "OFC") %>%
+  filter(time >= -1 & time <= 1) %>%
+  mutate(case = if_else(time <= 0, "approach", "avoidance")) %>%
+  distinct() %>%
+  group_by(key, case) %>%
+  mutate(average_conn = mean(connectivity)) %>%
+  select(key, subject, roi_pair, metric, case, average_conn) %>%
+  distinct()
+
+
+hc_ofc_avg_conn_df %>%
+  ggplot(., aes(x = case, y = log(average_conn))) +
+  geom_boxplot() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+```
+
+
+
+```{r run-models}
+
+## Imaginary Coherence
+hc_ofc_imcoh_conn_df <- hc_ofc_avg_conn_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  select(-metric) %>%
+  mutate(imcoh = log(average_conn))
+
+imcoh_model <- lmer(imcoh ~ case + (1|subject:key), data = hc_ofc_imcoh_conn_df)
+summary(imcoh_model)
+
+## PPC
+hc_ofc_ppc_conn_df <- hc_ofc_avg_conn_df %>%
+  filter(metric == "Pairwise Phase Consistency") %>%
+  select(-metric) %>%
+  mutate(ppc = log(average_conn))
+
+ppc_model <- lmer(ppc ~ case + (1|subject:key), data = hc_ofc_ppc_conn_df)
+summary(ppc_model)
+
+
+## PLI
+hc_ofc_pli_conn_df <- hc_ofc_avg_conn_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  select(-metric) %>%
+  mutate(pli = log(average_conn))
+
+pli_model <- lmer(pli ~ case + (1|subject:key), data = hc_ofc_pli_conn_df)
+summary(pli_model)
+
+```
+
+```{r hc-ofc-time-model}
+
+
+hc_ofc_conn_df <- conn_clean_sig_elec_df %>%
+  filter(first_region == "Hippocampus") %>%
+  filter(second_region == "OFC") %>%
+  mutate(case = if_else(time <= 0, "approach", "avoidance")) %>%
+  distinct()
+
+for(time_step in unique(abs(hc_ofc_conn_df$time))){
+  print(time_step)
+  time_df <- hc_ofc_conn_df %>%
+    mutate(time = abs(time)) %>%
+    filter(time == time_step) %>%
+    filter(metric == "Imaginary Coherence") %>%
+    select(-metric) %>%
+    mutate(imcoh = log(connectivity))
+  
+  imcoh_model <- lmer(imcoh ~ case + (1|subject), data = time_df)
+  print(summary(imcoh_model))
+
+
+}
+
+```
+
+```{r hc-ofc-time-model}
+
+
+for(time_step in unique(abs(hc_ofc_conn_df$time))){
+  print(time_step)
+  time_df <- hc_ofc_conn_df %>%
+    mutate(time = abs(time)) %>%
+    filter(time == time_step) %>%
+    filter(metric == "Pairwise Phase Consistency") %>%
+    select(-metric) %>%
+    mutate(ppc = log(connectivity))
+  
+  ppc_model <- lmer(ppc ~ case + (1|subject), data = time_df)
+  print(summary(ppc_model))
+
+
+}
+
+```
+
+
+```{r hc-ofc-time-model}
+
+
+for(time_step in unique(abs(hc_ofc_conn_df$time))){
+  print(time_step)
+  time_df <- hc_ofc_conn_df %>%
+    mutate(time = abs(time)) %>%
+    filter(time == time_step) %>%
+    filter(metric == "Phase Lag Index") %>%
+    select(-metric) %>%
+    mutate(pli = log(connectivity))
+  
+  pli_model <- lmer(pli ~ case + (1|subject), data = time_df)
+  print(summary(pli_model))
+
+
+}
+
+```

@@ -1,0 +1,505 @@
+---
+title: "SLCH002 Hippocampal Theta"
+output: html_document
+date: "2024-04-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(viridis)
+library(lmtest)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+nCores <- 8
+registerDoParallel(nCores)
+
+```
+
+
+```{r load-data, results='asis', echo=FALSE, eval = T}
+
+## Load Data ##
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+  filter(subject != "BJH026") %>% # no hc data
+  filter(trial_time <= 5.10) 
+
+current_subject <- "SLCH002"
+permuted <- FALSE
+
+```
+
+
+
+```{r fit-model-over-10-splits, results='asis', echo=FALSE, eval = T}
+
+auc_list <- c()
+ici_list <- c()
+e50_list <- c()
+e90_list <- c()
+brier_list <- c()
+core_list <- c()
+dic_list <- c()
+pred_time_list <- c()
+num_test_trials <- c()
+num_train_trials <- c()
+seed_list <- c()
+survival_df <- tibble("subject"= c(), "seed" = c(), "predictor" = c(), "Mean" = c(), "StDev" = c(), "Min2.5" = c(), "Max97.5" = c(), "P" = c(), "RHat" = c())
+
+
+## Prep DF for Joint Model Fitting and select predictor variables ##
+joint_dist_df <- game_data_distance %>%
+    filter(subject == current_subject) %>%
+    filter(Direction != "Still") %>%
+    filter(dots_eaten != 0) %>%
+    filter(died == 0) %>%
+    group_by(trial_numeric) %>%
+    # prep time variables
+    mutate(first_move_time = first(trial_time)) %>%
+    mutate(jm_time = trial_time - first(trial_time)) %>%
+    mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+    mutate(turnaround_time_tmp = if_else(event == 1, jm_time, 0)) %>%
+    mutate(turnaround_time = max(turnaround_time_tmp)) %>%
+    ungroup() %>%
+    filter(turnaround_time != 0) %>% # exclude trials where they just ran into the ghost
+    filter(jm_time <= turnaround_time) %>%
+    select(subject, trial_numeric, first_move_time, distance_to_ghost, Direction, last_away, points_remaining, event, turnaround_time,
+           away_choice, trial_time, jm_time, TrialType, reward_groups) %>%
+    mutate(EVENT = 1) %>%
+    mutate(points_remaining = as.vector(scale(points_remaining))) %>%
+    mutate(distance_to_ghost = as.vector(scale(distance_to_ghost))) %>%
+    mutate(trial_time = round(trial_time, 2)) %>%
+    mutate(jm_time = round(jm_time, 2))
+
+# only ieeg trials
+# hc_sub_trials <- hc_theta_data %>%
+#   filter(subject == current_subject) %>%
+#   pull(trial_numeric) %>%
+#   unique()
+# 
+# joint_dist_df <- joint_dist_df %>%
+#   filter(trial_numeric %in% hc_sub_trials)
+
+# theta modeling
+sub_theta_df <- hc_theta_data %>%
+  filter(subject == current_subject) %>%
+  filter(!is.na(theta)) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  distinct() %>%
+  group_by(trial_numeric, electrode) %>%
+  # mutate(
+  #   shift_amount = 10, # Ensure one shift value per group
+  #   theta_shifted = map2_dbl(.x = shift_amount, .y = row_number(), ~ {
+  #     shifted_index <- (.y + .x) %% n()
+  #     if (shifted_index == 0) shifted_index <- n()
+  #     theta[shifted_index]
+  #   })
+  # ) %>%
+  # ungroup() %>%
+  # select(-theta) %>%
+  # rename(theta = theta_shifted) %>%
+  mutate(trial_time = trial_time - .5) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(mean_theta = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  ungroup() 
+
+
+joint_dist_df <- inner_join(sub_theta_df, joint_dist_df, by = c("subject", "trial_numeric", "trial_time"))
+
+# joint_dist_df <- joint_dist_df %>%
+#   mutate(iti = if_else(trial_time >= 0 & is.na(first_move_time), "iti", "trial")) %>%
+#   group_by(iti, trial_numeric) %>%
+#   mutate(baseline_theta = mean(mean_theta)) %>%
+#   mutate(sd_theta = sd(mean_theta)) %>%
+#   ungroup() %>%
+#   rowwise() %>%
+#   mutate(baseline_theta = if_else(iti == "iti", baseline_theta, 999)) %>%
+#   mutate(sd_theta = if_else(iti == "iti", sd_theta, 999)) %>%
+#   ungroup() %>%
+#   group_by(trial_numeric) %>%
+#   mutate(baseline_theta = if_else(iti == "trial", min(baseline_theta), baseline_theta)) %>%
+#   mutate(sd_theta = if_else(iti == "trial", min(sd_theta), sd_theta)) %>%
+#   mutate(mean_theta = (mean_theta - baseline_theta)/sd_theta) %>%
+#   ungroup() %>%
+#   filter(!is.na(first_move_time))
+
+```
+
+```{r}
+
+test_set <- sample(joint_dist_df$trial_numeric, 20)
+
+joint_dist_df %>%
+  filter(trial_numeric %in% test_set) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta)) +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+joint_dist_df %>%
+  group_by(trial_time) %>%
+  mutate(mean_theta = mean(mean_theta)) %>%
+  ggplot(., aes(x = trial_time, y = mean_theta)) +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 4)
+
+
+joint_dist_df %>%
+  filter(trial_numeric %in% test_set) %>%
+  mutate(jm_time = round(trial_time - turnaround_time - first_move_time, 2)) %>%
+  ggplot(., aes(x = jm_time, y = mean_theta)) +
+  geom_line() +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric, scales = "free")
+
+
+joint_dist_df %>%
+  filter(trial_numeric %in% test_set) %>%
+  mutate(jm_time = round(trial_time - turnaround_time - first_move_time, 2)) %>%
+  ggplot(., aes(x = jm_time, y = mean_theta, group = trial_numeric)) +
+  geom_line(alpha = .5) +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-2, 2) + ylim(-3.5, 3.5)
+
+
+joint_dist_df %>%
+  filter(trial_numeric %in% test_set) %>%
+  ggplot(., aes(x = jm_time, y = mean_theta, group = trial_numeric)) +
+  geom_line(alpha = .5) +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 4)
+
+
+
+joint_dist_df %>%
+  # mutate(jm_time = round(jm_time - turnaround_time - first_move_time, 2)) %>%
+  group_by(jm_time) %>%
+  mutate(mean_theta = mean(mean_theta)) %>%
+  ggplot(., aes(x = jm_time, y = mean_theta)) +
+  geom_line() +
+  geom_smooth(method = "loess") +
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(-2, 2) + ylim(-1, 1)
+
+
+
+
+
+```
+
+
+```{r}
+
+a_tmp <- 2
+joint_dist_df <-  joint_dist_df%>%
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time ))
+
+## Create Test/Train ##
+current_seed <- sample(1:100, 1)
+split_df <- joint_dist_df %>% select(trial_numeric, turnaround_time, reward_groups) %>% distinct()
+folds <- create_test_train(split_df, current_seed)
+
+fold <- 1
+
+cat(paste0("\n\n## ", current_subject, " - ", current_seed, "\n"))
+seed_fold <- paste0(current_seed, "-", fold)
+seed_list <- c(seed_list, seed_fold)
+
+split_index <- folds[[fold]]
+train_trials <- split_df[split_index, 'trial_numeric'] %>% pull(trial_numeric)
+test_trials <- split_df[-split_index, 'trial_numeric'] %>% pull(trial_numeric)
+
+# Print train/test info
+print(paste0("Train: ", length(train_trials), " Test: ", length(test_trials)))
+cat(paste0("\n\n"))
+
+## Prep Train/Test DFs ##
+# longitudinal dfs
+train_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% train_trials)
+test_long_data <- joint_dist_df %>%
+  filter(trial_numeric %in% test_trials)
+
+# survival dfs
+cox_df <- create_survival_df(joint_dist_df %>% mutate(trial_numeric = round(trial_numeric, 2)))
+train_cox_df <- cox_df %>%
+  filter(trial_numeric %in% train_trials)
+test_cox_df <- cox_df %>%
+  filter(trial_numeric %in% test_trials)
+
+## Fit Joint Model ##
+file_name <- paste0(current_subject, "_test_", permuted, "_", seed_fold)
+jm_fit <- fit_joint_sin_cos_theta_models(train_long_data, train_cox_df, file_name)
+
+## Print summary ##
+tmp <- kable(summary(jm_fit)$Survival, caption = "Joint Model",  format = "html")  %>%
+  kable_styling()
+print(tmp)
+cat(paste0("\n\n"))
+
+dic_list <- c(dic_list, jm_fit$fit_stats$marginal$DIC)
+survival_df <- rbind(survival_df,
+                                 summary(jm_fit)$Survival %>%
+                                   mutate(predictor = rownames(summary(jm_fit)$Survival)) %>%
+                                   select(predictor, Mean, StDev, `2.5%`, `97.5%`, P, `Rhat`) %>%
+                                   mutate(seed = current_seed) %>%
+                                   mutate(subject = current_subject))
+
+
+# prediction times
+prediction_time <- median(split_df$turnaround_time)
+pred_time_list <- c(pred_time_list, prediction_time)
+
+## train/test perdiction times ##
+min_time <- min(test_cox_df$turnaround_time)
+max_time <- max(test_cox_df$turnaround_time)
+print(paste0("Prediction Time: ", prediction_time))
+print(paste0("Min Test Time: ", min_time))
+print(paste0("Max Test Time: ", max_time))
+cat(paste0("\n\n"))
+
+### Calibration/Discrimintation ###
+## Loop over different prediction times ##
+auc <- c()
+ici <- c()
+e50 <- c()
+e90 <- c()
+brier <- c()
+timepoints <- unique(test_cox_df$turnaround_time)
+test_times <- quantile(timepoints[timepoints > .5], probs = c(.4, .5, .6))
+for(pred_time in test_times){
+  # AUC #
+  tmp_auc <- tvAUC(jm_fit, newdata = test_long_data, Tstart = .5,
+               Thoriz = pred_time, idVar = 'trial_numeric')
+  auc <- c(auc, tmp_auc$auc)
+
+  ## Calibration ##
+  toi <- pred_time - .5
+  # calibration plot
+  calibration_plot(jm_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  # calibration metrics
+  tmp_cal <- calibration_metrics(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+  ici <- c(ici, tmp_cal[1])
+  e50 <- c(e50, tmp_cal[2])
+  e90 <- c(e90, tmp_cal[3])
+
+  # rbier scores
+  tmp_brier <- tvBrier(jm_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+  brier <- c(brier, tmp_brier$Brier)
+
+}
+
+### Print AUC ###
+auc_list <- c(auc_list, mean(auc))
+print(paste0("AUC: ", mean(auc)))
+cat(paste0("\n\n"))
+print("All AUCs: ")
+print(sort(auc))
+cat(paste0("\n\n"))
+
+### Print Calibration ###
+ici_list <- c(ici_list, mean(ici))
+print(paste0("ICI: ", mean(ici)))
+e50_list <- c(e50_list, mean(e50))
+print(paste0("E50: ", mean(e50)))
+e90_list <- c(e90_list, mean(e90))
+print(paste0("E90: ", mean(e90)))
+cat(paste0("\n\n"))
+
+### Brier Scores ###
+brier_list <- c(brier_list, mean(brier))
+print(paste0("Brier Score: ", mean(brier)))
+print("All Bier Scores: ")
+print(sort(brier))
+cat(paste0("\n\n"))
+
+## Custom Checks ##
+
+# get predictions
+test_predictions <- predict_on_test_set(jm_fit, test_long_data, test_cox_df)
+
+# plot prediction plot
+ggthemr("solarized")
+plot_survival_predictions(test_predictions, current_subject)
+
+# plot correlation plot
+cor <- plot_correlation_plot(test_predictions, current_subject)
+core_list <- c(core_list, cor)
+
+
+
+```
+
+
+```{r, fig.width = 15, fig.height = 40}
+
+a_tmp <- 2
+train_long_data <-  train_long_data%>%
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time )) %>%
+  group_by(trial_numeric) %>%
+  mutate(scaled_theta = as.vector(scale(mean_theta))) %>%
+  ungroup()
+           
+
+control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+# lm_theta <- lme(mean_theta ~ ns(jm_time, df = 2), data = train_long_data, random = ~ns(jm_time, df = 2)| trial_numeric, control = control)
+lm_theta <- lme(scaled_theta ~ jm_time, data = train_long_data, 
+                random = ~jm_time| trial_numeric, control = control)
+# lm_theta <- lme(mean_theta ~ sin_term + cos_term, data = train_long_data, random = ~sin_term + cos_term| trial_numeric)
+
+summary(lm_theta)
+
+
+# save predictions #
+train_long_data$prediction <- predict(lm_theta, train_long_data)
+
+# plot predictions #
+train_long_data %>%
+  # filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_theta, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_line() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+```
+```{r}
+
+train_long_data <- train_long_data %>%
+  mutate(long_short = if_else(turnaround_time <= median(turnaround_time), "short", "long"))
+
+lm_theta_short <- lme(scaled_theta ~ jm_time, data = train_long_data %>% filter(long_short == "short"), 
+                random = ~jm_time| trial_numeric, control = control)
+
+
+lm_theta_long <- lme(scaled_theta ~ jm_time, data = train_long_data %>% filter(long_short == "long"), 
+                random = ~jm_time| trial_numeric, control = control)
+
+summary(lm_theta_short)
+summary(lm_theta_long)
+
+
+```
+
+```{r}
+
+train_long_data %>%
+  group_by(jm_time) %>%
+  mutate(value = mean(scaled_theta)) %>%
+  ggplot(., aes(x = jm_time, y = value)) +
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+train_long_data %>%
+  arrange(turnaround_time) %>%
+  filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  group_by(trial_numeric) %>%
+  mutate(mean_theta_shift = c(0, diff(mean_theta))) %>%
+  ggplot(., aes(x = jm_time, y = scaled_theta)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "black") +
+  # geom_smooth(method = "lm", color = "black", formula = "y~x") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_numeric)
+
+```
+
+```{r}
+
+pred_simple_15 <- predict(jm_fit, newdata = test_long_data %>% 
+                            filter(trial_numeric == test_cox_df$trial_numeric[1]), 
+                          return_newdata = TRUE)
+pred_simple_37 <- predict(jm_fit, newdata = test_long_data %>% 
+                            filter(trial_numeric == test_cox_df$trial_numeric[2]), 
+                          return_newdata = TRUE)
+pred_simple_62 <- predict(jm_fit, newdata = test_long_data %>% 
+                            filter(trial_numeric == test_cox_df$trial_numeric[3]), 
+                          return_newdata = TRUE)
+pred_simple_110 <- predict(jm_fit, newdata = test_long_data %>% 
+                             filter(trial_numeric == test_cox_df$trial_numeric[4]),
+                           return_newdata = TRUE)
+
+
+plot(pred_simple_15, outcome = 1)
+plot(pred_simple_37, outcome = 1)
+plot(pred_simple_62, outcome = 1)
+plot(pred_simple_110, outcome = 1)
+
+
+```
+
+

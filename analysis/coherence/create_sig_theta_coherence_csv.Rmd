@@ -1,0 +1,178 @@
+---
+title: "Create Sig Theta Coherence CSV"
+output: html_document
+date: "2024-09-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data", "combined_connectivity.csv"))
+
+
+```
+
+
+```{r add-sfg-mfg-info}
+
+## add mfg/sfg information
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+conn_detailed_df <- conn_df %>%
+  mutate(
+    first_pair = gsub("_to_.*", "", pairs),
+    second_pair = gsub(".*_to_", "", pairs),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(conn_detailed_df$detailed_first_region)
+table(conn_detailed_df$detailed_second_region)
+
+# final rename
+conn_detailed_df <- conn_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region)
+
+
+```
+
+
+```{r create-sig-elecs}
+
+## FDR correct/make symmetric
+conn_clean_df <- prep_detailed_conn_allsubs_plot_df(conn_detailed_df)
+
+sg_df <- conn_clean_df %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  group_by(subject, pairs, roi_pair, metric) %>%
+  mutate(sig_time_bins = sum(sig)) %>%
+  ungroup %>%
+  filter(sig_time_bins > 10) %>%
+  select(subject, pairs, roi_pair, metric) %>%
+  distinct() 
+
+```
+
+
+```{r save}
+
+# write to csv #
+write_csv(sg_df, path(here(), "results", "sig_theta_pairs.csv"))
+
+```
+

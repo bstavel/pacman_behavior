@@ -1,0 +1,287 @@
+---
+title: "Correlation ~ Turn Times"
+output: html_document
+date: "2024-04-29"
+---
+
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+```{r load-data}
+
+freq <- "hfa"
+
+# ieeg data #
+ofc_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_ofc_all_subs_logged_iti_onset.csv")))
+amyg_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_amyg_all_subs_logged_iti_onset.csv")))
+hc_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_hc_all_subs_logged_iti_onset.csv")))
+cing_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_cing_all_subs_logged_iti_onset.csv")))
+dlpfc_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_dlpfc_all_subs_logged_iti_onset.csv")))
+insula_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_insula_all_subs_logged_iti_onset.csv")))
+
+# bind ieeg data #
+all_subs_theta_data <- bind_rows(ofc_theta_data %>% mutate(region = "ofc"),
+                                 amyg_theta_data %>% mutate(region = "amyg"),
+                                 hc_theta_data %>% mutate(region = "hc"),
+                                 cing_theta_data %>% mutate(region = "cing"),
+                                 dlpfc_theta_data %>% mutate(region = "dlpfc"),
+                                 insula_theta_data %>% mutate(region = "insula")) 
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+all_subs_g_dist <- all_subs_g_dist %>%
+  filter(attack_chase_bob == "Bob") 
+
+
+
+```
+
+```{r prep-data}
+
+# merge behavior data with ieeg data
+ieeg_behave_df <- left_join(all_subs_g_dist %>% mutate(trial_time = round(trial_time, 2)), 
+                             all_subs_theta_data %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+# shift to move time, remove data after turn
+onset_lme_df <- ieeg_behave_df %>%
+    # round time so that we can loop over time later
+    mutate(trial_time = round(trial_time, 2)) %>%
+    # exclude time before they started moving, may be good to look at not doing this as well
+    filter(Direction != "Still") %>%
+    # filiter out ITI
+    filter(reward_groups != 99 & !is.na(electrode)) %>%
+    # prep electrode variables
+    mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+    mutate(electrode = gsub("_.*", "", electrode)) %>%
+    # shift the time so that time 0 is the start of movement onset
+    group_by(elec_id, trial_numeric, subject) %>%
+    mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+    # filter time so that trials end when the person turnaround for the final time
+    mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+    mutate(event = replace(event, is.na(event), 0)) %>%
+    mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+    filter(move_time < max(turnaround_time)) %>%
+    ungroup() %>%
+    group_by(move_time) %>%
+    ungroup() %>%
+    select(subject, elec_id, theta, region, trial_numeric, move_time) %>%
+    distinct() 
+
+# calculate turn times
+turn_time_df <- onset_lme_df %>%
+  select(subject, trial_numeric, move_time) %>%
+  distinct() %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(turn_time = last(move_time)) %>%
+  select(subject, trial_numeric, turn_time) %>%
+  distinct() %>%
+  rename(trial = trial_numeric) %>%
+  mutate(logged_times = log(turn_time))
+
+
+```
+
+
+```{r, fig.height = 6, fig.width = 12}
+
+full_ofc_iti_df <- ofc_theta_data %>%
+  filter(trial_time <= 0) %>%
+  filter(subject == "BJH016") %>%
+  distinct() %>%
+  mutate(electrode = gsub("_trial_theta_onset_locked_logged_itibase.csv", "", electrode)) %>%
+  pivot_wider(names_from = electrode, values_from = theta)
+
+
+full_amyg_iti_df <- amyg_theta_data %>%
+  filter(trial_time <= 0) %>%
+  filter(subject == "BJH016") %>%
+  distinct() %>%
+  mutate(electrode = gsub("_trial_theta_onset_locked_logged_itibase.csv", "", electrode)) %>%
+  pivot_wider(names_from = electrode, values_from = theta)
+
+
+half_ofc_iti_df <- ofc_theta_data %>%
+  filter(trial_time <= 0 & trial_time >= -.5) %>%
+  filter(subject == "BJH016") %>%
+  distinct() %>%
+  mutate(electrode = gsub("_trial_theta_onset_locked_logged_itibase.csv", "", electrode)) %>%
+  pivot_wider(names_from = electrode, values_from = theta)
+
+
+half_amyg_iti_df <- amyg_theta_data %>%
+  filter(trial_time <= 0 & trial_time >= -.5) %>%
+  filter(subject == "BJH016") %>%
+  distinct() %>%
+  mutate(electrode = gsub("_trial_theta_onset_locked_logged_itibase.csv", "", electrode)) %>%
+  pivot_wider(names_from = electrode, values_from = theta)
+
+trial <- sample(half_ofc_iti_df$trial_numeric, 1)
+
+cor_half_mat <- cor(half_ofc_iti_df %>% filter(trial_numeric == trial) %>% select(-trial_numeric, -trial_time, -subject),
+    half_amyg_iti_df %>% filter(trial_numeric == trial) %>% select(-trial_numeric, -trial_time, -subject))
+
+
+cor_full_mat <- cor(full_ofc_iti_df %>% filter(trial_numeric == trial) %>% select(-trial_numeric, -trial_time, -subject),
+    full_amyg_iti_df %>% filter(trial_numeric == trial) %>% select(-trial_numeric, -trial_time, -subject))
+
+
+
+t.test(cor_half_mat, cor_full_mat)
+
+
+```
+
+
+
+```{r calculate-correlation}
+
+results <- tibble("subject" = character(),
+                  "first_region" = character(),
+                  "second_region" = character(),
+                  "elec1" = character(),
+                  "elec2" = character(),
+                  "trial" = numeric(),
+                  "correlation" = numeric())
+
+
+
+completed_roi <- c()
+for(first_roi in unique(onset_lme_df$region)) {
+  
+  print(paste0("First region: ", first_roi))
+  
+  first_roi_df <- onset_lme_df %>%
+    filter(region == first_roi)
+  
+  completed_roi <- c(completed_roi, first_roi)
+  
+  other_roi_df <- onset_lme_df %>%
+    filter(!region %in% completed_roi)
+  
+  for(second_roi in unique(other_roi_df$region)) {
+    
+    print(paste0("Second region: ", second_roi))
+    
+    second_roi_df <- other_roi_df %>%
+      filter(region == second_roi)
+    
+    subs_with_both_rois <- intersect(first_roi_df$subject, second_roi_df$subject)
+    
+    for(sub in unique(subs_with_both_rois)){
+      
+      print(sub)
+      
+      first_roi_sub_df <- first_roi_df %>%
+        filter(subject == sub)
+      
+      second_roi_sub_df <- second_roi_df %>%
+        filter(subject == sub)
+
+      for(roi1_elec in unique(first_roi_sub_df$elec_id)){
+        
+        first_elec_df <- first_roi_sub_df %>%
+          filter(elec_id == roi1_elec) %>%
+          select(trial_numeric, move_time, theta) %>%
+          distinct()
+        
+        for(roi2_elec in unique(second_roi_sub_df$elec_id)){
+          
+          second_elec_df <- second_roi_sub_df %>%
+            filter(elec_id == roi2_elec) %>%
+            select(trial_numeric, move_time, theta) %>%
+            distinct()
+          
+          for(trial in unique(second_roi_sub_df$trial_numeric)) {
+            
+            roi1_trial_df <- first_elec_df %>%
+              filter(trial_numeric == trial)
+            
+            roi2_trial_df <- second_elec_df %>%
+              filter(trial_numeric == trial)
+            
+            correlation <- cor(roi1_trial_df$theta, roi2_trial_df$theta)
+            
+            results <- results %>%
+              add_row(subject = sub, 
+                      first_region = first_roi, 
+                      second_region = second_roi, 
+                      elec1 = roi1_elec, 
+                      elec2 = roi2_elec, 
+                      trial = trial, 
+                      correlation = correlation)
+            
+            }
+          }
+        }
+      }
+    }
+}
+
+
+
+
+
+```
+
+
+```{r}
+
+## Bind to Turn Time
+results <- results %>%
+  mutate(pair_id = paste0(elec1, "_", elec2)) 
+
+pairs_turn_df <- left_join(results, turn_time_df, by = c("subject", "trial"))
+
+
+write_csv(pairs_turn_df, path(here(), "results", paste0(freq, "_correlations.csv")))
+
+```
+
+
+
+

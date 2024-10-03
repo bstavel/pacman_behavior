@@ -1,0 +1,622 @@
+---
+title: "Elevated Hippocampal Activity at Turnaround"
+output: html_document
+date: "2024-03-26"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(blme)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+```{r load-data}
+
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+cing_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_cing_all_subs_logged_iti_onset.csv"))
+amyg_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+dlpfc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+insula_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_insula_all_subs_logged_iti_onset.csv"))
+
+# separate dlpfc into sfg and mfg
+dlpfc_theta_data <- dlpfc_theta_data %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+dlpfc_theta_data <- separate_mfg_sfg(dlpfc_theta_data)
+sfg_theta_data <- dlpfc_theta_data %>% filter(sfg == 1) %>% select(-sfg, -mfg)
+mfg_theta_data <- dlpfc_theta_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
+
+```
+
+```{r load-behavioral-data}
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+
+## merge them ##
+# ghost trials #
+hc_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             hc_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+amyg_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             amyg_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+ofc_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             ofc_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+cing_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             cing_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+insula_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             insula_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+mfg_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             mfg_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+sfg_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)),
+                             sfg_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+# no ghost trials #
+hc_ng_behave_df <- left_join(all_subs_ng_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             hc_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+amyg_ng_behave_df <- left_join(all_subs_ng_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             amyg_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+ofc_ng_behave_df <- left_join(all_subs_ng_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)),
+                             ofc_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+cing_ng_behave_df <- left_join(all_subs_ng_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)),
+                             cing_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+insula_ng_behave_df <- left_join(all_subs_ng_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)),
+                             insula_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+mfg_ng_behave_df <- left_join(all_subs_ng_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)),
+                             mfg_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+sfg_ng_behave_df <- left_join(all_subs_ng_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)),
+                             sfg_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+```
+
+
+```{r sig-test-df-prep-function}
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("theta" = c(1, 1, 1))
+
+create_sig_test_df <- function(behave_df){
+
+  turn_df <- behave_df %>%
+      # round time so that we can loop over time later
+      mutate(trial_time = round(trial_time, 2)) %>%
+      # exclude time before they started moving, may be good to look at not doing this as well
+      # filiter out ITI
+      filter(reward_groups != 99 & !is.na(electrode)) %>%
+      # prep electrode variables
+      mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+      mutate(electrode = gsub("_.*", "", electrode)) %>%
+      # shift the time so that time 0 is the start of movement onset
+      group_by(elec_id, trial_numeric, subject) %>%
+      # filter time so that trials end when the person turnaround for the final time
+      mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+      mutate(event = replace(event, is.na(event), 0)) %>%
+      mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+      mutate(turnaround_time = max(turnaround_time)) %>%
+      filter(turnaround_time != 0) %>%
+      mutate(turn_time = trial_time - turnaround_time) %>%
+      ungroup() %>%
+      select(subject, elec_id, theta, trial_numeric, trial_time, turn_time, turnaround_time) %>%
+      distinct()
+
+  aac_df <- turn_df %>%
+    mutate(aac_time = if_else(turn_time <=0, abs(turn_time), turn_time)) %>%
+    mutate(aac_time = round(aac_time, 2)) %>%
+    mutate(aac = if_else(turn_time <=0, "approach", "avoid")) %>%
+    group_by(elec_id, aac, aac_time) %>%
+    mutate(elec_theta = mean(theta)) %>%
+    select(-trial_numeric, -trial_time, -theta, -turn_time, -turnaround_time) %>%
+    distinct()  %>%
+    filter(aac_time <= 2 & aac_time > 0)
+  
+  pvals <- tibble(aac_time = numeric(),estimate = numeric(), sig = numeric(), CI_low = numeric(), CI_high = numeric())
+  
+  for(time_step in unique(aac_df$aac_time)){
+    
+    time_df <- aac_df %>%
+      filter(aac_time == time_step)
+    
+    model_tmp <- blmer(elec_theta ~ aac + (1 + aac|subject), data = time_df, control = control, start = start_values)
+    
+    estimate_tmp <- as.numeric(tidy(model_tmp)[2, 'estimate'])
+    ci_tmp <- bayestestR::ci(model_tmp)
+    pseudop_tmp <- parameters::p_value(model_tmp)
+    
+    pval_tmp <- ci_tmp %>%
+      filter(Parameter == "aacavoid") %>%
+      mutate(sig = if_else(CI_low > 0 & CI_high > 0, 1, if_else(CI_low < 0 & CI_high < 0, 1, 0)))
+    
+    pvals <- bind_rows(pvals, tibble(aac_time = time_step, estimate = estimate_tmp, pseudop = pseudop_tmp$p[2], sig = pval_tmp$sig, CI_low = pval_tmp$CI_low, CI_high = pval_tmp$CI_high))
+    
+  }
+  
+  pvals <- pvals %>%
+    mutate(p_fdr = p.adjust(pseudop, method = "fdr"))
+  
+  aac_test_df <- left_join(aac_df, pvals, by = "aac_time")
+  
+  return(aac_test_df)
+  
+}
+
+```
+
+
+```{r plotting-functions}
+
+plot_conflict_trials <- function(aac_test_df) {
+  app_av_plot <- aac_test_df %>%
+    group_by(subject, aac, aac_time) %>%
+    mutate(sub_theta = mean(elec_theta)) %>%
+    select(-elec_id, -elec_theta) %>%
+    distinct() %>%
+    group_by(aac, aac_time) %>%
+    mutate(average_theta = mean(sub_theta)) %>%
+    mutate(sem_theta = sd(sub_theta)/sqrt(n())) %>%
+    mutate(average_theta_upper = average_theta + sem_theta) %>%
+    mutate(average_theta_lower = average_theta - sem_theta) %>%
+    mutate(sig = if_else(p_fdr < 0.01, .75, 999)) %>%
+    ggplot(aes(x = aac_time, y = average_theta, color = aac, fill = aac)) +
+    geom_point() +
+    geom_line() +
+    geom_ribbon(aes(ymin = average_theta_lower, ymax = average_theta_upper), alpha = 0.2) +
+    geom_label(aes(y = sig), label = "*", color = "black", fill = "white") +
+    geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+    theme(panel.background = element_rect(fill = "white"), 
+          legend.position = "top",
+          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+    scale_color_manual(values = c("#c2383a","#2c75b3")) +
+    scale_fill_manual(values = c("#c2383a","#2c75b3")) +
+    scale_x_reverse() +
+    ylim(-.5, 1) +
+    labs(y = "Average theta power (a.u.)", x = "Time from Turnaround (s)", fill = "", color = "") +
+    ggtitle("Average theta power during approach and avoidance", subtitle = "Significance denoted by *, FDR-corrected for time")
+  return(app_av_plot)
+
+}
+
+plot_conflict_noconflict_trials <- function(aac_test_df, aac_ng_test_df, region_name) {
+  
+  # bind two trial types together
+  aac_df <- bind_rows(aac_test_df %>% mutate(case = "Conflict Trials"), 
+                      aac_ng_test_df %>% mutate(case = "No-Conflict Trials"))
+  
+  # create plot #
+  app_av_combined_plot <- aac_df %>%
+    group_by(case, subject, aac, aac_time) %>%
+    mutate(sub_theta = mean(elec_theta)) %>%
+    select(-elec_id, -elec_theta) %>%
+    distinct() %>%
+    group_by(case, aac, aac_time) %>%
+    mutate(average_theta = mean(sub_theta)) %>%
+    mutate(sem_theta = sd(sub_theta)/sqrt(n())) %>%
+    mutate(average_theta_upper = average_theta + sem_theta) %>%
+    mutate(average_theta_lower = average_theta - sem_theta) %>%
+    mutate(sig = if_else(p_fdr < 0.05, .75, 999)) %>%
+    ggplot(aes(x = aac_time, y = average_theta, color = aac, fill = aac)) +
+    geom_point() +
+    geom_line() +
+    geom_ribbon(aes(ymin = average_theta_lower, ymax = average_theta_upper), alpha = 0.2) +
+    geom_label(aes(y = sig), label = "*", color = "black", fill = "white") +
+    geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+    theme(panel.background = element_rect(fill = "white"), 
+          legend.position = "top",
+          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+    scale_color_manual(values = c("#c2383a","#2c75b3")) +
+    scale_fill_manual(values = c("#c2383a","#2c75b3")) +
+    scale_x_reverse() +
+    ylim(-.5, 1) + xlim(1.5, 0) +
+    labs(y = "Average theta power (a.u.)", x = "Time from Turnaround (s)", fill = "", color = "") +
+    ggtitle(paste0("Average theta power elevated during approach \nin conflict trials: ", region_name), subtitle = "Significance denoted by *, FDR-corrected for time") +
+    facet_wrap(~case, nrow = 1)
+  
+  return(app_av_combined_plot)
+
+}
+
+
+plot_bayes_conflict_noconflict_trials <- function(aac_test_df, aac_ng_test_df, region_name) {
+  
+  # bind two trial types together
+  aac_df <- bind_rows(aac_test_df %>% mutate(case = "Conflict Trials"), 
+                      aac_ng_test_df %>% mutate(case = "No-Conflict Trials"))
+  
+  # create plot #
+  app_av_combined_plot <- aac_df %>%
+    group_by(case, subject, aac, aac_time) %>%
+    mutate(sub_theta = mean(elec_theta)) %>%
+    select(-elec_id, -elec_theta) %>%
+    distinct() %>%
+    group_by(case, aac, aac_time) %>%
+    mutate(average_theta = mean(sub_theta)) %>%
+    mutate(sem_theta = sd(sub_theta)/sqrt(n())) %>%
+    mutate(average_theta_upper = average_theta + sem_theta) %>%
+    mutate(average_theta_lower = average_theta - sem_theta) %>%
+    mutate(sig = if_else(sig ==1, .75, 999)) %>%
+    ggplot(aes(x = aac_time, y = average_theta, color = aac, fill = aac)) +
+    geom_point() +
+    geom_line() +
+    geom_ribbon(aes(ymin = average_theta_lower, ymax = average_theta_upper), alpha = 0.2) +
+    geom_label(aes(y = sig), label = "*", color = "black", fill = "white") +
+    geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+    theme(panel.background = element_rect(fill = "white"), 
+          legend.position = "top",
+          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+    scale_color_manual(values = c("#c2383a","#2c75b3")) +
+    scale_fill_manual(values = c("#c2383a","#2c75b3")) +
+    scale_x_reverse() +
+    ylim(-.5, 1) +
+    labs(y = "Average theta power (a.u.)", x = "Time from Turnaround (s)", fill = "", color = "") +
+    ggtitle(paste0("Average theta power elevated during approach \nin conflict trials: ", region_name), subtitle = "Significance denoted by *, FDR-corrected for time") +
+    facet_wrap(~case, nrow = 1)
+  
+  return(app_av_combined_plot)
+
+}
+
+```
+
+
+
+## Conflict Trials
+
+
+## Hippocampus
+
+```{r hc-theta-turnaround, fig.width = 8, fig.height = 6, warning = F}
+
+hc_power_plot <- hc_turn_df %>%
+  mutate(turn_time = round(turn_time, 2)) %>%
+  filter(turn_time >= -2 &turn_time <=2) %>%
+  group_by(subject, elec_id, turn_time) %>%
+  mutate(elec_theta = mean(theta)) %>%
+  select(-trial_numeric, -trial_time, -theta) %>%
+  distinct()  %>%
+  group_by(subject, turn_time) %>%
+  mutate(sub_theta = mean(elec_theta)) %>%
+  select(-elec_id, -elec_theta) %>%
+  distinct() %>%
+  group_by(turn_time) %>%
+  mutate(average_theta = mean(sub_theta)) %>%
+  mutate(sem_theta = sd(sub_theta)/sqrt(n())) %>%
+  mutate(average_theta_upper = average_theta + sem_theta) %>%
+  mutate(average_theta_lower = average_theta - sem_theta) %>%
+  ggplot(aes(x = turn_time, y = average_theta)) +
+  geom_point(color = "#FFA602") +
+  geom_line(color = "#FFA602") +
+  geom_ribbon(aes(ymin = average_theta_lower, ymax = average_theta_upper), alpha = 0.2, fill = "#FFA602") +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(y = "Average theta power  (a.u.)", x = "Time from Turnaround (s)", fill = "", color = "") +
+  ggtitle("Average theta power across trials")
+
+ggsave(path(here(), "figures", "hc_theta_plot.png"), 
+       plot = hc_power_plot, width = 8, height = 6)
+
+```
+
+
+
+```{r plot-both-hc, fig.width = 8, fig.height = 6, warning = F}
+
+# create df for conflict, no conflict trials
+hc_conflict_df <- create_sig_test_df(hc_behave_df)
+hc_noconflict_df <- create_sig_test_df(hc_ng_behave_df)
+
+# create plot
+hc_plot <- plot_conflict_noconflict_trials(hc_conflict_df, hc_noconflict_df, "hippocampus")
+
+# print plot
+hc_plot
+
+# save plot
+ggsave(path(here(), "figures", "hc_app_avoid_combined_theta_plot.png"), plot = hc_plot, width = 8, height = 6)
+
+```
+
+
+## Amygdala
+
+```{r plot-amyg, fig.width = 8, fig.height = 6, warning = F}
+
+# create df for conflict, no conflict trials
+amyg_conflict_df <- create_sig_test_df(amyg_behave_df)
+amyg_noconflict_df <- create_sig_test_df(amyg_ng_behave_df)
+
+# create plot
+amyg_plot <- plot_conflict_noconflict_trials(amyg_conflict_df, amyg_noconflict_df, "amygdala")
+
+# print plot
+amyg_plot
+
+# save plot
+ggsave(path(here(), "figures", "amyg_app_avoid_combined_theta_plot.png"), plot = amyg_plot, width = 8, height = 6)
+
+
+```
+
+## OFC
+
+```{r plot-amyg, fig.width = 8, fig.height = 6, warning = F}
+
+# create df for conflict, no conflict trials
+ofc_conflict_df <- create_sig_test_df(ofc_behave_df)
+ofc_noconflict_df <- create_sig_test_df(ofc_ng_behave_df)
+
+# create plot
+ofc_plot <- plot_conflict_noconflict_trials(ofc_conflict_df, ofc_noconflict_df, "OFC")
+
+# print plot
+ofc_plot
+
+# save plot
+ggsave(path(here(), "figures", "ofc_app_avoid_combined_theta_plot.png"), plot = ofc_plot, width = 8, height = 6)
+
+
+```
+
+
+## Anterior Cingulate
+
+```{r plot-amyg, fig.width = 8, fig.height = 6, warning = F}
+
+# create df for conflict, no conflict trials
+cing_conflict_df <- create_sig_test_df(cing_behave_df)
+cing_noconflict_df <- create_sig_test_df(cing_ng_behave_df)
+
+# create plot
+cing_plot <- plot_conflict_noconflict_trials(cing_conflict_df, cing_noconflict_df, "Ant. Cingulate")
+
+# print plot
+cing_plot
+
+# save plot
+ggsave(path(here(), "figures", "cing_app_avoid_combined_theta_plot.png"), plot = cing_plot, width = 8, height = 6)
+
+
+```
+
+
+## Insula
+
+```{r plot-insula, fig.width = 8, fig.height = 6, warning = F}
+
+# create df for conflict, no conflict trials
+insula_conflict_df <- create_sig_test_df(insula_behave_df)
+insula_noconflict_df <- create_sig_test_df(insula_ng_behave_df)
+
+# create plot
+insula_plot <- plot_conflict_noconflict_trials(insula_conflict_df, insula_noconflict_df, "Insula")
+
+# print plot
+insula_plot
+
+# save plot
+ggsave(path(here(), "figures", "insula_app_avoid_combined_theta_plot.png"), plot = insula_plot, width = 8, height = 5)
+
+
+```
+
+## MFG
+
+```{r plot-mfg, fig.width = 8, fig.height = 6, warning = F}
+
+# create df for conflict, no conflict trials
+mfg_conflict_df <- create_sig_test_df(mfg_behave_df)
+mfg_noconflict_df <- create_sig_test_df(mfg_ng_behave_df)
+
+# create plot
+mfg_plot <- plot_conflict_noconflict_trials(mfg_conflict_df, mfg_noconflict_df, "MFG")
+
+# print plot
+mfg_plot <- mfg_plot + ylim(-.75, 1)
+
+# save plot
+ggsave(path(here(), "figures", "mfg_app_avoid_combined_theta_plot.png"), plot = mfg_plot, width = 8, height = 5)
+
+
+```
+
+## SFG
+
+```{r plot-sfg, fig.width = 8, fig.height = 6, warning = F}
+
+# create df for conflict, no conflict trials
+sfg_conflict_df <- create_sig_test_df(sfg_behave_df)
+sfg_noconflict_df <- create_sig_test_df(sfg_ng_behave_df)
+
+# create plot
+sfg_plot <- plot_conflict_noconflict_trials(sfg_conflict_df, sfg_noconflict_df, "SFG")
+
+# print plot
+sfg_plot <- sfg_plot + ylim(-.5, 1.3)
+
+# save plot
+ggsave(path(here(), "figures", "sfg_app_avoid_combined_theta_plot.png"), plot = sfg_plot, width = 8, height = 6)
+
+
+```
+
+
+
+## Attack Trials -- sanity check
+
+```{r read-in-attack-tables}
+
+## load and compile attack tables ##
+for(sub in unique(aac_df$subject)){
+  
+  tmp <- read_csv(path(here(), "data", "ieeg_behave", paste0(sub, "_attack_events.csv")))
+  tmp <- tmp %>%
+    mutate(subject = sub)
+  
+  if(exists("attack_events")){
+    attack_events <- bind_rows(attack_events, tmp)
+  } else {
+    attack_events <- tmp
+  }
+  
+}
+
+## modify to get trials of interest ##
+attack_events <- attack_events %>%
+  mutate(trial_numeric = neural_trial_numeric + 1) %>%
+  mutate(attacks_ids = paste0(subject, "_", trial_numeric))
+
+
+```
+
+
+```{r}
+
+aac_attack_df <- hc_turn_df %>%
+  mutate(trial_ids = paste0(subject, "_", trial_numeric)) %>%
+  filter(!trial_ids %in% attack_events$attacks_ids) %>%
+  mutate(aac_time = if_else(turn_time <=0, abs(turn_time), turn_time)) %>%
+  mutate(aac_time = round(aac_time, 2)) %>%
+  mutate(aac = if_else(turn_time <=0, "approach", "avoid")) %>%
+  group_by(elec_id, aac, aac_time) %>%
+  mutate(elec_theta = mean(theta)) %>%
+  select(-trial_numeric, -trial_time, -theta, -turn_time, -trial_ids, -turnaround_time) %>%
+  distinct()  %>%
+  filter(aac_time <= 2 & aac_time > 0)
+
+pvals <- tibble(aac_time = numeric(), pval = numeric())
+
+for(time_step in unique(aac_attack_df$aac_time)){
+  
+  time_df <- aac_attack_df %>%
+    filter(aac_time == time_step)
+  
+  model_tmp <- tidy(lmer(elec_theta ~ aac + (1|subject), data = time_df))
+  
+  pval_tmp <- model_tmp %>%
+    filter(term == "aacavoid") %>%
+    pull(p.value)
+  
+  pvals <- bind_rows(pvals, tibble(aac_time = time_step, pval = pval_tmp))
+  
+}
+
+pvals <- pvals %>%
+  mutate(p_fdr = p.adjust(pval, method = "fdr"))
+
+```
+
+```{r plot, fig.width = 8, fig.height = 6, warning = F}
+
+aac_attack_test_df <- left_join(aac_attack_df, pvals, by = "aac_time")
+
+aac_attack_test_df %>%
+  group_by(subject, aac, aac_time) %>%
+  mutate(sub_theta = mean(elec_theta)) %>%
+  select(-elec_id, -elec_theta) %>%
+  distinct() %>%
+  group_by(aac, aac_time) %>%
+  mutate(average_theta = mean(sub_theta)) %>%
+  mutate(sem_theta = sd(sub_theta)/sqrt(n())) %>%
+  mutate(average_theta_upper = average_theta + sem_theta) %>%
+  mutate(average_theta_lower = average_theta - sem_theta) %>%
+  mutate(sig = if_else(p_fdr < 0.05, .75, 999)) %>%
+  ggplot(aes(x = aac_time, y = average_theta, color = aac, fill = aac)) +
+  geom_point() +
+  geom_line() +
+  geom_ribbon(aes(ymin = average_theta_lower, ymax = average_theta_upper), alpha = 0.2) +
+  geom_label(aes(y = sig), label = "*", color = "black", fill = "white") +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  scale_color_manual(values = c("#E48DB7","#55BBC8")) +
+  scale_fill_manual(values = c("#E48DB7","#55BBC8")) +
+  scale_x_reverse() +
+  ylim(-.5, 1) +
+  labs(y = "Average Theta Power", x = "Time from Turnaround (s)", fill = "", color = "") +
+  ggtitle("Average theta power during approach and avoidance", subtitle = "Significance denoted by *, FDR-corrected for time")
+
+
+
+```
+
+

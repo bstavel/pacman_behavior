@@ -1,0 +1,105 @@
+---
+title: "Behavioral Data for Lexin"
+output: html_document
+date: "2024-01-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 5,  # set default width of figures
+  fig.height = 8,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+
+```{r load-data}
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_ng_dist <- all_subs_ng_dist %>% 
+  mutate(distance_to_ghost = NA, GhostLocation = NA) %>%
+  select(subject, trial_numeric, trial_time, distance_to_ghost, points_remaining, towards_ghost, GhostLocation, UserLocation)
+
+all_subs_g_dist <- all_subs_g_dist %>% 
+  select(subject, trial_numeric, trial_time, distance_to_ghost, points_remaining, towards_ghost, GhostLocation, UserLocation)
+
+
+all_subs_dist <- rbind(all_subs_g_dist, all_subs_ng_dist)
+
+
+# write it out #
+write_csv(all_subs_dist, path(here(), "munge", "for_lexin", "all_subs_behavioral_data.csv"))
+
+```

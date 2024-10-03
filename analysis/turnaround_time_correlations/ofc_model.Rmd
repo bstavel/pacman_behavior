@@ -1,0 +1,691 @@
+---
+title: "OFC Model"
+output: html_document
+date: "2024-03-25"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+Sig Predictors Are:
+
+ofc ~ insula
+ofc ~ amygdala
+ofc ~ dlpfc (but much subject variability)
+
+```{r load-data}
+
+# load correlations #
+ofc_hc_results <- read_csv(path(here(), "results", "turn_time_prediction", "hc_ofc_theta_turn_time_correlations.csv"))
+ofc_hc_beta_results <- read_csv(path(here(), "results", "turn_time_prediction", "hc_ofc_beta_turn_time_correlations.csv"))
+ofc_amyg_results <- read_csv(path(here(), "results", "turn_time_prediction", "amyg_ofc_theta_turn_time_correlations.csv"))
+ofc_cing_results <- read_csv(path(here(), "results", "turn_time_prediction", "cing_ofc_theta_turn_time_correlations.csv"))
+ofc_dlpfc_results <- read_csv(path(here(), "results", "turn_time_prediction", "dlpfc_ofc_theta_turn_time_correlations.csv"))
+ofc_insula_results <- read_csv(path(here(), "results", "turn_time_prediction", "insula_ofc_theta_turn_time_correlations.csv"))
+cing_dlpfc_results <- read_csv(path(here(), "results", "turn_time_prediction", "dlpfc_cing_theta_turn_time_correlations.csv"))
+
+# bind_together #
+ofc_results <- full_join(ofc_hc_results %>% rename(hc_cor = correlation) %>% select(-pair_id, -hc_elec),
+                         ofc_amyg_results %>% rename(amyg_cor = correlation) %>% select(-pair_id, -amyg_elec))
+ofc_results <- full_join(ofc_results, ofc_cing_results %>% rename(cing_cor = correlation) %>% select(-pair_id, -cing_elec))
+ofc_results <- full_join(ofc_results, ofc_dlpfc_results %>% rename(dlpfc_cor = correlation) %>% select(-pair_id, -dlpfc_elec))
+ofc_results <- full_join(ofc_results, ofc_insula_results %>% rename(insula_cor = correlation) %>% select(-pair_id, -insula_elec))
+
+
+ofc_results <- ofc_results %>%
+  group_by(subject, ofc_elec, trial, turn_time) %>%
+  mutate(hc_cor = mean(hc_cor)) %>%
+  mutate(amyg_cor = mean(amyg_cor)) %>%
+  mutate(cing_cor = mean(cing_cor)) %>%
+  mutate(dlpfc_cor = mean(dlpfc_cor)) %>%
+  mutate(insula_cor = mean(insula_cor)) %>%
+  distinct() %>%
+  ungroup()
+
+```
+
+
+```{r full-model}
+
+# log turn time, remove infinite values #
+ofc_clean_results <- ofc_results %>% 
+  filter("BJH016" != subject) %>%
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times))  
+
+# run model #
+all_region_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + cing_cor + dlpfc_cor + insula_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(all_region_model)
+tidy(all_region_model)
+
+
+```
+
+```{r pretty-model-output}
+
+ofc_pretty_results <- ofc_clean_results %>%
+  rename("Hippocampus" = hc_cor) %>%
+  rename("Amygdala" = amyg_cor) %>%
+  rename("Ant. Cingulate" = cing_cor) %>%
+  rename("dlPFC" = dlpfc_cor) %>%
+  rename("Insula" = insula_cor) %>%
+  rename("OFC_Elec" = ofc_elec) %>%
+  rename("Turn Time (logged)" = logged_times)
+
+all_region_pretty_model <- lmerTest::lmer(`Turn Time (logged)` ~ Hippocampus + Amygdala + `Ant. Cingulate` + dlPFC + Insula +  (1|subject:OFC_Elec), data = ofc_pretty_results)
+
+tab_model(all_region_pretty_model)
+
+
+```
+
+
+
+
+```{r no_amyg_model}
+
+# log turn time, remove infinite values #
+ofc_clean_results <- ofc_results %>% 
+  filter(subject != "BJH016") %>%
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times))  
+
+# run model #
+no_amyg_model <- lmerTest::lmer(logged_times ~ hc_cor + cing_cor + dlpfc_cor + insula_cor +  
+                                  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(no_amyg_model)
+
+```
+
+```{r no_insula_model}
+
+# log turn time, remove infinite values #
+ofc_clean_results <- ofc_results %>% 
+  filter(subject != "BJH016") %>%
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times))  
+
+# run model #
+no_insula_model <- lmerTest::lmer(logged_times ~ hc_cor + cing_cor + dlpfc_cor + amyg_cor +  
+                                  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(no_insula_model)
+
+```
+
+```{r no_cing_model}
+
+# log turn time, remove infinite values #
+ofc_clean_results <- ofc_results %>% 
+  filter(subject != "BJH016") %>%
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times))  
+
+# run model #
+no_cing_model <- lmerTest::lmer(logged_times ~ hc_cor + insula_cor + dlpfc_cor + amyg_cor +  
+                                  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(no_cing_model)
+
+```
+```{r no_cing_model}
+
+# log turn time, remove infinite values #
+ofc_clean_results <- ofc_results %>% 
+  filter(subject != "BJH016") %>%
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times))  
+
+# run model #
+no_dlpfc_model <- lmerTest::lmer(logged_times ~ hc_cor + insula_cor + cing_cor + amyg_cor +  
+                                  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(no_dlpfc_model)
+
+```
+
+```{r full-model-remove-each-sub}
+
+for(sub in unique(ofc_results$subject)) {
+  
+  print(sub)
+  
+  # log turn time, remove infinite values #
+  ofc_clean_results <- ofc_results %>% 
+    filter(subject != sub) %>%
+    mutate(logged_times = log(turn_time)) %>%
+    filter(!is.infinite(logged_times))  
+  
+  # run model #
+  all_region_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + cing_cor + dlpfc_cor + insula_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+  
+  # output #
+  print(summary(all_region_model))
+
+}
+
+```
+
+```{r full-model}
+
+# log turn time, remove infinite values #
+ofc_clean_results <- ofc_results %>% 
+  filter(subject != "BJH016") %>%
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times))  
+
+# run model #
+hc_model <- lmerTest::lmer(logged_times ~ hc_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(hc_model)
+
+# run model #
+amyg_model <- lmerTest::lmer(logged_times ~ amyg_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(amyg_model)
+
+# run model #
+insula_model <- lmerTest::lmer(logged_times ~ insula_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(insula_model)
+
+# run model #
+dlpfc_model <- lmerTest::lmer(logged_times ~ dlpfc_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(dlpfc_model)
+
+# run model #
+cing_model <- lmerTest::lmer(logged_times ~ cing_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(cing_model)
+
+
+## No insula
+# run model #
+no_insula_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + cing_cor + dlpfc_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(no_insula_model)
+
+
+## No Amygdala
+# run model #
+no_amyg_model <- lmerTest::lmer(logged_times ~ hc_cor + insula_cor + cing_cor + dlpfc_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(no_amyg_model)
+
+```
+
+
+```{r full-model-checks}
+
+# check residuals
+plot(fitted(all_region_model), resid(all_region_model, type = "pearson"))
+abline(h = 0, col = "red")
+
+# check normality
+qqnorm(resid(all_region_model))
+qqline(resid(all_region_model), col = "red")
+
+# check homoscedasticity
+plot(residuals(all_region_model) ~ fitted(all_region_model))
+abline(h = 0, col = "red")
+
+# check random effects
+lattice::dotplot(ranef(all_region_model, condVar = TRUE))
+```
+```{r full-model-visualization, fig.width = 15, fig.height = 6}
+
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194",  "dlPFC" = "#FB6087")
+
+
+# log turn time, remove infinite values #
+ofc_clean_results <- ofc_results %>% 
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times))
+  
+
+
+all_ofc_roi_plot <- ofc_clean_results %>%
+  rename(Amygdala = amyg_cor, Hippocampus = hc_cor, "Ant. Cingulate" = cing_cor, Insula = insula_cor, dlPFC = dlpfc_cor) %>%
+  pivot_longer(cols = c(Amygdala, Hippocampus, `Ant. Cingulate`, Insula, dlPFC), names_to = "region", values_to = "correlation") %>%
+  mutate(region = factor(region, levels = c("Amygdala", "Hippocampus", "Ant. Cingulate", "Insula", "dlPFC"))) %>%
+  filter(!is.na(correlation)) %>%
+  ggplot(., aes(x = correlation, y = logged_times, color = region)) +
+  geom_point(alpha = .1) + 
+  geom_smooth(method = "lm", formula = 'y~x',color = "black", fill = "lightgrey") +
+  guides(color = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  scale_color_manual (values = roi_colors) +
+  facet_wrap(~region, nrow = 1) +
+  labs(y = "Time until turn (log)", x = "Correlation") +
+  ggtitle("")
+  
+
+ggsave(path(here(), "figures", "correl_turn_predictions", "ofc_to_all_region_effect_plot.png"), 
+       plot = all_ofc_roi_plot, width = 15, height = 6)
+
+```
+
+## dlPFC to Cingulate
+
+```{r add-cing-dlpfc}
+
+
+# ofc_results <- bind_rows(ofc_hc_results %>% select(-ofc_elec, -hc_elec) %>% mutate(region = "hc"),
+#                          ofc_amyg_results %>% select(-ofc_elec, -amyg_elec) %>% mutate(region = "amyg"),
+#                          ofc_insula_results %>% select(-ofc_elec, -insula_elec) %>% mutate(region = "insula"),
+#                          ofc_cing_results %>% select(-ofc_elec, -cing_elec) %>% mutate(region = "cing"),
+#                          ofc_dlpfc_results %>% select(-ofc_elec, -dlpfc_elec) %>% mutate(region = "dlpfc"))
+
+ofc_results <- bind_rows(ofc_hc_results %>% select(-hc_elec) %>% mutate(region = "hc"),
+                         ofc_amyg_results %>% select(-amyg_elec) %>% mutate(region = "amyg"),
+                         ofc_insula_results %>% select(-insula_elec) %>% mutate(region = "insula"),
+                         ofc_cing_results %>% select(-cing_elec) %>% mutate(region = "cing"),
+                         ofc_dlpfc_results %>% select(-dlpfc_elec) %>% mutate(region = "dlpfc"))
+
+cing_dlpfc_avg_results <- cing_dlpfc_results %>%
+  group_by(subject, trial, turn_time, dlpfc_elec) %>%
+  mutate(cing_dlpfc = mean(correlation))  %>%
+  select(-correlation, -pair_id, -cing_elec) %>%
+  distinct()   %>%
+  filter(!is.na(cing_dlpfc))
+
+
+# log turn time, remove infinite values #
+ofc_avg_results <- ofc_results %>% 
+  filter(!is.na(correlation)) %>%
+  group_by(subject, ofc_elec, region, trial, turn_time) %>%
+  mutate(correlation = mean(correlation)) %>%
+  ungroup() %>%
+  select(-pair_id) %>%
+  distinct() %>% 
+  pivot_wider(names_from = region, values_from = correlation) %>%
+  filter(!is.na(insula)) # BJH039 didn't have insula
+  
+ofc_pfc_results <- inner_join(ofc_avg_results, cing_dlpfc_avg_results)
+
+# log turn time, remove infinite values #
+ofc_pfc_clean_results <- ofc_pfc_results %>% 
+  filter(subject != "BJH016") %>%
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times)) %>%
+  na.omit() %>%
+  mutate(group_id = paste(ofc_elec, dlpfc_elec, sep = "_")) %>%
+  select(-ofc_elec, -dlpfc_elec) %>%
+  distinct()
+
+# run model #
+amyg_insula_model <- lmerTest::lmer(logged_times ~ amyg + insula +  (1|subject:group_id) , data = ofc_pfc_clean_results)
+summary(amyg_insula_model)
+BIC(amyg_insula_model)
+performance_aicc(amyg_insula_model)
+
+# run model #
+amyg_insula_pfc_model <- lmerTest::lmer(logged_times ~ amyg + insula + cing_dlpfc +  (1|subject:group_id) , data = ofc_pfc_clean_results)
+summary(amyg_insula_pfc_model)
+BIC(amyg_insula_pfc_model)
+performance_aicc(amyg_insula_pfc_model)
+
+# run model #
+amyg_insula_hc_model <- lmerTest::lmer(logged_times ~ amyg + insula + hc + (1|subject:group_id) , data = ofc_pfc_clean_results)
+summary(amyg_insula_hc_model)
+BIC(amyg_insula_hc_model)
+performance_aicc(amyg_insula_hc_model)
+
+# run model #
+amyg_insula_hc_pfc_model <- lmerTest::lmer(logged_times ~ amyg + insula + hc + cing_dlpfc  +   (1|subject:group_id), data = ofc_pfc_clean_results)
+summary(amyg_insula_hc_pfc_model)
+BIC(amyg_insula_hc_pfc_model)
+performance_aicc(amyg_insula_hc_pfc_model)
+
+
+
+# run model #
+all_roi_pfc_model <- lmerTest::lmer(logged_times ~ amyg + insula + hc + cing + dlpfc + cing_dlpfc  +   (1|subject:group_id), data = ofc_pfc_clean_results)
+summary(all_roi_pfc_model)
+BIC(all_roi_pfc_model)
+performance_aicc(all_roi_pfc_model)
+
+```
+
+```{r}
+
+test_df <- ofc_pfc_clean_results %>% 
+  mutate(ofc_elec = gsub("^([^_]*_[^_]*_).*", "\\1", group_id)) %>%
+  select(-cing_dlpfc, -group_id) %>% 
+  distinct()
+
+# run model #
+amyg_insula_model <- lmerTest::lmer(logged_times ~ amyg + insula +  (1|subject:ofc_elec) , data = test_df)
+summary(amyg_insula_model)
+BIC(amyg_insula_model)
+performance_aicc(amyg_insula_model)
+
+
+# run model #
+amyg_insula_hc_model <- lmerTest::lmer(logged_times ~ amyg + insula + hc + (1|subject:ofc_elec) , data = test_df)
+summary(amyg_insula_hc_model)
+BIC(amyg_insula_hc_model)
+performance_aicc(amyg_insula_hc_model)
+
+# run model #
+all_roi_pfc_model <- lmerTest::lmer(logged_times ~ amyg + insula + hc + cing + dlpfc +  (1|subject:ofc_elec), data = test_df)
+summary(all_roi_pfc_model)
+BIC(all_roi_pfc_model)
+performance_aicc(all_roi_pfc_model)
+
+```
+
+## Compare to beta result
+
+```{r full-model-beta}
+
+ofc_beta_results <- full_join(ofc_results, ofc_hc_beta_results %>% rename(hc_beta_cor = correlation) %>% select(-pair_id, -hc_elec))
+
+
+ofc_beta_results <- ofc_beta_results %>%
+  group_by(subject, ofc_elec, trial, turn_time) %>%
+  mutate(hc_beta_cor = mean(hc_beta_cor))  %>%
+  distinct() %>%
+  ungroup()
+
+# log turn time, remove infinite values #
+ofc_beta_clean_results <- ofc_beta_results %>% 
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times))  
+
+# run model #
+all_beta_region_model <- lmerTest::lmer(logged_times ~ hc_cor + hc_beta_cor + amyg_cor + cing_cor + dlpfc_cor + insula_cor +  (1|subject:ofc_elec), data = ofc_beta_clean_results)
+
+# output #
+summary(all_beta_region_model)
+
+```
+
+```{r subregion-model}
+
+## Removed dlPFC, Insula
+# run model #
+hc_amyg_cing_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + cing_cor +  (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(hc_amyg_cing_model)
+
+##  Insula
+# run model #
+hc_amyg_cing_dlpfc_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + cing_cor + dlpfc_cor + (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(hc_amyg_cing_dlpfc_model)
+
+## Removed Insula
+# run model #
+hc_amyg_cing_insula_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + cing_cor + insula_cor + (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(hc_amyg_cing_insula_model)
+
+## Removed Ant. Cingualte
+# run model #
+hc_amyg_dlpfc_insula_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + dlpfc_cor + insula_cor + (1|subject:ofc_elec), data = ofc_clean_results)
+
+# output #
+summary(hc_amyg_dlpfc_insula_model)
+
+```
+
+
+```{r full-model-alternate-form}
+
+tmp <- ofc_amyg_results %>% rename(amyg_pair = pair_id, amyg_cor = correlation) %>% select(-ofc_elec, -amyg_elec)
+tmp2 <- ofc_hc_results %>% rename(hc_pair = pair_id, hc_cor = correlation) %>% select(-ofc_elec, -hc_elec)
+
+
+ofc_results <- left_join(ofc_hc_results %>% rename(hc_pair = pair_id, hc_cor = correlation) %>% select(-ofc_elec, -hc_elec),
+                  ofc_amyg_results %>% rename(amyg_pair = pair_id, amyg_cor = correlation) %>% select(-ofc_elec, -amyg_elec))
+ofc_results <- left_join(ofc_results, ofc_cing_results %>% rename(cing_pair = pair_id, cing_cor = correlation) %>% select(-ofc_elec, -cing_elec))
+ofc_results <- left_join(ofc_results, ofc_dlpfc_results %>% rename(dlpfc_pair = pair_id, dlpfc_cor = correlation) %>% select(-ofc_elec, -dlpfc_elec))
+ofc_results <- left_join(ofc_results, ofc_insula_results %>% rename(insula_pair = pair_id, insula_cor = correlation) %>% select(-ofc_elec, -insula_elec))
+
+
+ofc_new_results <- ofc_results %>%
+  select(-elec2, -ofc_elec) %>%
+  distinct() %>%
+  filter(!is.na(correlation)) %>%
+  mutate(region2 = paste0(region, "_pair")) %>%
+  pivot_wider(names_from = region2, values_from = pair_id) %>%
+  pivot_wider(names_from = region, values_from = correlation) %>% 
+  filter(subject != "BJH016") %>%
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times)) 
+
+
+all_region_model <- lmerTest::lmer(logged_times ~ amyg + insula + (1|subject:pair_id), data = ofc_new_results)
+summary(all_region_model)
+
+
+ofc_clean_results <- ofc_results %>% 
+  filter(subject != "BJH016") %>%
+  mutate(logged_times = log(turn_time)) %>%
+  # filter(!is.na(correlation)) %>%
+  filter(!is.infinite(logged_times)) 
+
+all_region_model <- lmerTest::lmer(logged_times ~ amyg_cor + hc_cor + (1|subject:amyg_pair) + (1|subject:hc_cor), data = ofc_clean_results)
+
+summary(all_region_model)
+
+```
+
+
+
+```{r permutation-test-amyg}
+
+
+estimates_perm <- NULL
+permutations <- 1:1000
+for(perm in permutations){
+  
+  reg_df <- ofc_pfc_clean_results %>%
+    group_by(subject, group_id) %>%
+    mutate(permuted_times = sample(logged_times)) %>%
+    ungroup()
+  
+  perm_model <- tidy(lme4::lmer(permuted_times ~ amyg + insula +  (1|group_id) , data = reg_df))
+  
+  estimates_tmp <- perm_model %>%
+    filter(term == "amyg") %>%
+    pull(estimate)
+  
+  estimates_perm <- c(estimates_perm, estimates_tmp)
+  
+  
+}
+
+true_model <- tidy(lme4::lmer(logged_times ~ amyg + insula +  (1|group_id) , data = ofc_pfc_clean_results))
+
+estimates_tmp_true <- true_model %>%
+  filter(term == "amyg") %>%
+  pull(estimate)
+
+print(true_model)
+
+
+print(table(estimates_perm >= estimates_tmp_true))
+
+```
+
+
+
+```{r permutation-test-insula}
+
+
+estimates_perm <- NULL
+permutations <- 1:1000
+for(perm in permutations){
+  
+  reg_df <- ofc_pfc_clean_results %>%
+    group_by(subject, ofc_elec, dlpfc_elec) %>%
+    mutate(permuted_times = sample(logged_times)) %>%
+    ungroup()
+  
+  perm_model <- tidy(lme4::lmer(permuted_times ~ amyg + insula +  (1|subject) , data = reg_df))
+  
+  estimates_tmp <- perm_model %>%
+    filter(term == "insula") %>%
+    pull(estimate)
+  
+  estimates_perm <- c(estimates_perm, estimates_tmp)
+  
+  
+}
+
+true_model <- tidy(lme4::lmer(logged_times ~ amyg + insula +  (1|subject) , data = ofc_pfc_clean_results))
+
+estimates_tmp_true <- true_model %>%
+  filter(term == "insula") %>%
+  pull(estimate)
+
+print(true_model)
+
+
+print(table(estimates_perm >= estimates_tmp_true))
+
+```
+
+
+
+```{r permutation-test-hc}
+
+
+estimates_perm <- NULL
+permutations <- 1:1000
+for(perm in permutations){
+  
+  reg_df <- ofc_pfc_clean_results %>%
+    group_by(subject, group_id) %>%
+    mutate(permuted_times = sample(logged_times)) %>%
+    ungroup()
+  
+  perm_model <- tidy(lme4::lmer(permuted_times ~ amyg + insula + hc + (1|group_id) , data = reg_df))
+  
+  estimates_tmp <- perm_model %>%
+    filter(term == "hc") %>%
+    pull(estimate)
+  
+  estimates_perm <- c(estimates_perm, estimates_tmp)
+  
+  
+}
+
+true_model <- tidy(lme4::lmer(logged_times ~ amyg + insula + hc + (1|group_id) , data = ofc_pfc_clean_results))
+
+estimates_tmp_true <- true_model %>%
+  filter(term == "hc") %>%
+  pull(estimate)
+
+print(true_model)
+
+
+print(table(estimates_perm >= estimates_tmp_true))
+
+```
+
+
+```{r permutation-test-hc}
+
+
+estimates_perm <- NULL
+permutations <- 1:1000
+for(perm in permutations){
+  
+  reg_df <- ofc_clean_results %>%
+    group_by(subject, ofc_elec) %>%
+    mutate(permuted_times = sample(logged_times)) %>%
+    ungroup()
+  
+  perm_model <- tidy(lme4::lmer(permuted_times ~  amyg_cor + insula_cor + hc_cor + (1|ofc_elec) , data = reg_df))
+  
+  estimates_tmp <- perm_model %>%
+    filter(term == "hc_cor") %>%
+    pull(estimate)
+  
+  estimates_perm <- c(estimates_perm, estimates_tmp)
+  
+  
+}
+
+true_model <- tidy(lme4::lmer(logged_times ~ amyg_cor + insula_cor + hc_cor + (1|ofc_elec) , data = ofc_clean_results))
+
+estimates_tmp_true <- true_model %>%
+  filter(term == "hc_cor") %>%
+  pull(estimate)
+
+print(true_model)
+
+
+print(table(estimates_perm >= estimates_tmp_true))
+
+```

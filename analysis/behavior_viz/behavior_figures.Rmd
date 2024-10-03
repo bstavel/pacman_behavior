@@ -127,8 +127,8 @@ turn_reward_plot <- turn_reward_df %>%
  
 ggsave(path(here(), "figures", "behavior", "turnaround_reward_plot.png"),
          plot = turn_reward_plot,
-         width = 9.5,
-         height = 7.5,
+         width = 9,
+         height = 5,
          units = "in",
          dpi = 300)
 

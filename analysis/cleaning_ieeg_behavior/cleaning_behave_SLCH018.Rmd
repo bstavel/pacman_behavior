@@ -70,11 +70,11 @@ c25 <- c(
 
 ```
 
-## BJH017
+## SLCH018
 
-```{r BJH017-data-load}
+```{r SLCH018-data-load}
 
-BJH017_data <- read_csv(path(here(), './data/ieeg_behave/BJH017_raw_behave.csv'), col_types = cols(`...1` = col_double(),
+SLCH018_data <- read_csv(path(here(), './data/ieeg_behave/SLCH018_raw_behave.csv'), col_types = cols(`...1` = col_double(),
                                                                                               Subject = col_character(),
                                                                                               Trial = col_character(),
                                                                                               Lives = col_double(),
@@ -97,33 +97,30 @@ BJH017_data <- read_csv(path(here(), './data/ieeg_behave/BJH017_raw_behave.csv')
 
 ```
 
-```{r BJH017-data-prep}
-
-BJH017_data <- BJH017_data %>%
-  mutate(Time = Sample) # old conversion script had different variables
+```{r SLCH018-data-prep}
 
 # clean Biscuits #
-BJH017_data_clean <- clean_bci_data(BJH017_data, 2000)
+SLCH018_data_clean <- clean_bci_data(SLCH018_data, 2000)
 
 # create distance df #
-BJH017_data_distance <- create_distance_df_bci(BJH017_data_clean)
+SLCH018_data_distance <- create_distance_df_bci(SLCH018_data_clean)
 
 # task vars df #
-BJH017_all_vars_df <- get_across_task_variables_bci(BJH017_data_clean)
+SLCH018_all_vars_df <- get_across_task_variables_bci(SLCH018_data_clean)
 
 ```
 
 
 ```{r}
 
-BJH017_all_vars_df %>%
+SLCH018_all_vars_df %>%
   ggplot(., aes(x = block, y = block_deaths)) +
   geom_point(size = 3) +
   theme(panel.background = element_rect(fill = "white")) +
   ggtitle("Deaths across blocks")
 
 
-BJH017_all_vars_df %>%
+SLCH018_all_vars_df %>%
   ggplot(., aes(x = block, y = average_dots_per_block)) +
   geom_point(size = 3) +
   theme(panel.background = element_rect(fill = "white"))+
@@ -136,7 +133,7 @@ BJH017_all_vars_df %>%
 ```{r trials-no-biscuits}
 
 
-BJH017_data_clean %>%
+SLCH018_data_clean %>%
   filter(Trial != "ITI") %>%
   group_by(trial_numeric) %>%
   mutate(total_eaten = max(Eaten)) %>%
@@ -150,7 +147,7 @@ BJH017_data_clean %>%
   theme(panel.background = element_rect(fill = "white")) +
   facet_wrap(~trial_numeric, scale = "free")
 
-no_biscuits_trials <- BJH017_data_clean %>%
+no_biscuits_trials <- SLCH018_data_clean %>%
   filter(Trial != "ITI") %>%
   group_by(trial_numeric) %>%
   mutate(total_eaten = max(Eaten)) %>%
@@ -171,14 +168,14 @@ no_biscuits_trials <- BJH017_data_clean %>%
 ```{r how-long-do-trials-last}
 
 
-BJH017_all_vars_df %>%
+SLCH018_all_vars_df %>%
   ggplot(., aes(x = trial_length)) +
   geom_histogram() +
   geom_vline(xintercept =10) +
   theme(panel.background = element_rect(fill = "white"))
 
 
-long_trials <- BJH017_all_vars_df %>%
+long_trials <- SLCH018_all_vars_df %>%
   select(trial_numeric, trial_length) %>%
   unique() %>%
   filter(trial_length > 10) %>%
@@ -186,7 +183,7 @@ long_trials <- BJH017_all_vars_df %>%
   pull(neural_trial_numeric)
 
   
-BJH017_data_clean %>%
+SLCH018_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_numeric != 0) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
@@ -199,7 +196,11 @@ BJH017_data_clean %>%
   geom_line() +
   ylim(0, 200) +
   theme(panel.background = element_rect(fill = "white")) +
-  facet_wrap(~trial_numeric)# no long trials
+  facet_wrap(~trial_numeric)
+
+
+## looks like long trials are no ghost trials where they just waited for a long time.... best to remove
+
 
 
 
@@ -222,7 +223,7 @@ It looks like movement get a little "wobbly" towards the end. I haven't seen thi
 ```{r all-other-trials, fig.width = 20, fig.height = 25}
 
 # no ghost trials
-BJH017_data_clean %>%
+SLCH018_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_numeric != 0) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
@@ -240,7 +241,7 @@ BJH017_data_clean %>%
 
 
 # first 100 trials
-BJH017_data_clean %>%
+SLCH018_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_numeric != 0) %>%
   filter(TrialType <=16) %>%
@@ -258,7 +259,7 @@ BJH017_data_clean %>%
   facet_wrap(~trial_numeric)
 
 # 100-200 trials
-BJH017_data_clean %>%
+SLCH018_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_length <= 10) %>%
   filter(trial_numeric != 0) %>%
@@ -277,7 +278,7 @@ BJH017_data_clean %>%
 
 
 # 200-300 trials
-BJH017_data_clean %>%
+SLCH018_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_length <= 10) %>%
   filter(trial_numeric != 0) %>%
@@ -300,7 +301,7 @@ BJH017_data_clean %>%
 ```{r more-than-240-trials}
 
 
-length(unique(BJH017_data_clean$trial_numeric))
+length(unique(SLCH018_data_clean$trial_numeric))
 
 # nope!
 ```
@@ -313,19 +314,19 @@ bad_trials <- c(no_biscuits_trials, long_trials)
 
 bad_df <- data_frame("neural_trial_numeric" = bad_trials)
 
-write_csv(bad_df, path(here(), './data/ieeg_behave/BJH017_bad_trials.csv'))
+write_csv(bad_df, path(here(), './data/ieeg_behave/SLCH018_bad_trials.csv'))
 
 ```
 
 ```{r time-lock-events, fig.width = 16, fig.height = 16}
 
-bad_df <- read_csv(path(here(), './data/ieeg_behave/BJH017_bad_trials.csv'))
+bad_df <- read_csv(path(here(), './data/ieeg_behave/SLCH018_bad_trials.csv'))
 
-create_last_away_events(BJH017_data_clean, 'BJH017_last_away_events.csv')
-create_first_dot_events(BJH017_data_clean, 'BJH017_first_dot_events.csv')
-create_first_move_events(BJH017_data_clean, 'BJH017_first_move_events.csv')
-create_died_events(BJH017_data_clean, 'BJH017_died_events.csv')
-create_attack_events(BJH017_data_clean, 'BJH017_attack_events.csv')
+create_last_away_events(SLCH018_data_clean, 'SLCH018_last_away_events.csv')
+create_first_dot_events(SLCH018_data_clean, 'SLCH018_first_dot_events.csv')
+create_first_move_events(SLCH018_data_clean, 'SLCH018_first_move_events.csv')
+create_died_events(SLCH018_data_clean, 'SLCH018_died_events.csv')
+create_attack_events(SLCH018_data_clean, 'SLCH018_attack_events.csv')
 
 ```
 
@@ -333,10 +334,10 @@ create_attack_events(BJH017_data_clean, 'BJH017_attack_events.csv')
 ```{r longest-trial}
 
 # read in bad df
-bad_df <- read_csv(path(here(), './data/ieeg_behave/BJH017_bad_trials.csv'))
+bad_df <- read_csv(path(here(), './data/ieeg_behave/SLCH018_bad_trials.csv'))
 
 
-trial_times <- BJH017_data_clean %>%
+trial_times <- SLCH018_data_clean %>%
   filter(Trial != "ITI") %>%
   filter(trial_numeric != 0) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%

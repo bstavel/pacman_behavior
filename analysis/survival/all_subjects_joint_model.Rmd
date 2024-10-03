@@ -68,7 +68,7 @@ c25 <- c(
 ```{r load-data}
 
 ## Load Data ##
-pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+pilot_game_data_distance <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
 
 
 ```
@@ -77,7 +77,6 @@ pilot_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_
 
 ## Prep DF for Joint Model Fitting and select predictor variables ##
 joint_dist_df <- pilot_game_data_distance %>%
-  filter(subject %in% c("Subject_39", "Subject_46", "Subject_63")) %>%
   filter(Direction != "Still") %>%
   filter(dots_eaten != 0) %>%
   group_by(subject, trial_numeric) %>%

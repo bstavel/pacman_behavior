@@ -145,7 +145,7 @@ XXSUBJECTXX_data_clean %>%
   geom_point() +
   geom_line() +
   theme(panel.background = element_rect(fill = "white")) +
-  facet_wrap(~trial_numeric)
+  facet_wrap(~trial_numeric, scale = "free")
 
 no_biscuits_trials <- XXSUBJECTXX_data_clean %>%
   filter(Trial != "ITI") %>%
@@ -181,12 +181,6 @@ long_trials <- XXSUBJECTXX_all_vars_df %>%
   filter(trial_length > 10) %>%
   mutate(neural_trial_numeric = trial_numeric - 1) %>%
   pull(neural_trial_numeric)
-
-tmp <- XXSUBJECTXX_data_clean %>%
-  filter(Trial != "ITI") %>%
-  filter(trial_numeric != 0) %>%
-  mutate(neural_trial_numeric = trial_numeric - 1) %>%
-  filter(neural_trial_numeric %in% long_trials) 
 
   
 XXSUBJECTXX_data_clean %>%
@@ -226,7 +220,7 @@ bad_trials <- c(no_biscuits_trials, long_trials)
 
 It looks like movement get a little "wobbly" towards the end. I haven't seen this before in the data. Is there something happening with dirft in the time window? Could it be a BCI block size thing? Not sure yet will need to watch out for it in the future. Not sure how much it could affect or bias the analysis though, give it would be off by 2 units in position at most with 50ms variability at worst. Not great for the brain but I am not doing an fast temporal precision things as of now. Pulled out a good example of the issue and print it below.
 
-```{r all-other-trials}
+```{r all-other-trials, fig.width = 20, fig.height = 25}
 
 # no ghost trials
 XXSUBJECTXX_data_clean %>%

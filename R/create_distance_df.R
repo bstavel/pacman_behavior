@@ -22,6 +22,7 @@ create_distance_df_bci <- function(df, ghost = TRUE){
       select(-away_choice_tmp) %>%
       mutate(number_of_runs = sum(away_choice > 0, na.rm = T)) %>%
       mutate(last_away = if_else(number_of_runs == 0, 0, last(away_choice[away_choice > 0]) )) %>%
+      # should rewrite to account for lags in Eaten
       mutate(distance_to_next_reward = case_when(Eaten == 0 ~ abs(UserLocation - Biscuit1), 
                                                  Eaten == 1 ~ abs(UserLocation - Biscuit2),
                                                  Eaten == 2 ~ abs(UserLocation - Biscuit3),

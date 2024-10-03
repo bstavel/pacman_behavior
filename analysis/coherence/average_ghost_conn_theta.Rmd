@@ -1,0 +1,1886 @@
+---
+title: "Theta Coherence ~ Ghost"
+output: html_document
+date: "2024-05-08"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_ghost_connectivity.csv"))
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
+```
+
+
+```{r split-mfg-sfg}
+
+regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
+
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+conn_detailed_df <- conn_df %>%
+  mutate(
+    first_pair = gsub("_to_.*", "", pairs),
+    second_pair = gsub(".*_to_", "", pairs),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(conn_detailed_df$detailed_first_region)
+table(conn_detailed_df$detailed_second_region)
+
+# final rename
+conn_detailed_df <- conn_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region)
+
+
+## FDr correct/make symmetric
+conn_clean_df <- prep_detailed_conn_allsubs_plot_df(conn_detailed_df)
+
+```
+
+
+
+```{r create-sig-df, fig.width=20, fig.height=15}
+
+# use sig electrodes based on full dataset
+sig_df <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+sig_electrodes <- sig_df %>%
+  mutate(sig_key = paste0(subject, pairs, metric)) %>%
+  pull(sig_key)
+
+conn_clean_sig_elec_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(metric, time, pairs, subject) %>%
+  mutate(average_sub_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(-pairs, -pval, -p_frd, -sig, -percent_sig, -count_sig, -number_of_region_pairs, -connectivity, -first_pair, -first_pair_1, -first_pair_2, -second_pair, -second_pair_1, -second_pair_2, -key) %>%
+ distinct()
+
+conn_clean_sig_average_df <- conn_clean_sig_elec_df %>%
+  group_by(metric, time, roi_pair) %>%
+  mutate(average_conn = mean(average_sub_conn, na.rm= T)) %>%
+  ungroup() %>%
+  select(-subject, -average_sub_conn) %>%
+  distinct()
+
+```
+
+
+
+## Average Connectivity Values
+
+
+```{r plot-overallconnect-values, fig.width=10, fig.height=6}
+
+conn_clean_sig_elec_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = mean(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = mean(roi_average_sub)) %>%
+  ungroup() %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  ggtitle("Imaginary Coherence")
+
+
+conn_clean_sig_elec_df %>%
+  filter(metric == "Pairwise Phase Consistency") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = mean(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = mean(roi_average_sub)) %>%
+  ungroup() %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  ggtitle("Pairwise Phase Consistency")
+
+
+conn_clean_sig_elec_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = mean(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = mean(roi_average_sub)) %>%
+  ungroup() %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  ggtitle("Phase Lag Index")
+
+```
+
+
+
+```{r plot-overallconnect-values, fig.width=10, fig.height=6}
+
+conn_clean_sig_elec_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = median(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = median(roi_average_sub)) %>%
+  ungroup() %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_line() +
+  # geom_point() +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  ggtitle("Imaginary Coherence")
+
+
+conn_clean_sig_elec_df %>%
+  filter(metric == "Pairwise Phase Consistency") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = median(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = median(roi_average_sub)) %>%
+  ungroup() %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_line() +
+  # geom_point() +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  ggtitle("Pairwise Phase Consistency")
+
+
+conn_clean_sig_elec_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = median(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = median(roi_average_sub)) %>%
+  ungroup() %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_line() +
+  # geom_point() +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  ggtitle("Phase Lag Index")
+
+```
+
+```{r, fig.width=10, fig.height=6}
+
+turnaround_connectivity_all <- conn_clean_sig_elec_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = mean(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = mean(roi_average_sub)) %>%
+  ungroup() %>%
+  mutate(importance = if_else(first_region %in% c("MFG", "Ant. Cingulate", "Hippocampus"), "focus", "not")) %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  scale_color_manual(values = roi_colors) +
+  guides(alpha = F) +
+  scale_alpha_manual(values = c(1, .2)) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average outflow connectivity across subjects (a.u.)", color = "") +
+  ggtitle("Average outflow connectivity at turnaround")
+
+turnaround_connectivity_cognitive <- conn_clean_sig_elec_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = mean(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = mean(roi_average_sub)) %>%
+  ungroup() %>%
+  mutate(importance = if_else(first_region %in% c("MFG", "Ant. Cingulate", "Hippocampus"), "focus", "not")) %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region, alpha = importance)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  scale_color_manual(values = roi_colors) +
+  guides(alpha = F) +
+  scale_alpha_manual(values = c(1, .2)) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average outflow connectivity across subjects (a.u.)", color = "") +
+  ggtitle("Average outflow connectivity at turnaround")
+
+
+turnaround_connectivity_limbic <- conn_clean_sig_elec_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = mean(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = mean(roi_average_sub)) %>%
+  ungroup() %>%
+  mutate(importance = if_else(!first_region %in% c("MFG", "Ant. Cingulate", "Hippocampus"), "focus", "not")) %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region, alpha = importance)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +  
+  geom_line(size = 1) +
+  scale_color_manual(values = roi_colors) +
+  guides(alpha = F) +
+  scale_alpha_manual(values = c(1, .2)) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average outflow connectivity across subjects (a.u.)", color = "") +
+  ggtitle("Average outflow connectivity at turnaround")
+
+# ggsave(path(here(), "figures", "connectivity", "turnaround_connectivity_all.png"),
+#        plot = turnaround_connectivity_all, width = 10, height = 6)
+# 
+# ggsave(path(here(), "figures", "connectivity", "turnaround_connectivity_cognitive.png"),
+#        plot = turnaround_connectivity_cognitive, width = 10, height = 6)
+# 
+# ggsave(path(here(), "figures", "connectivity", "turnaround_connectivity_limbic.png"),
+#        plot = turnaround_connectivity_limbic, width = 10, height = 6)
+
+
+turnaround_connectivity_all
+turnaround_connectivity_cognitive
+turnaround_connectivity_limbic
+
+
+```
+
+
+
+```{r calculate-sig-difs, fig.height = 6, fig.width = 10, eval = F}
+library(lmerTest)
+
+# filter to amygdala connections #
+amyg_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Amygdala") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity)))
+
+
+# HC vs MFG
+hc_mfg_df <- amyg_df %>% 
+  filter(second_region %in% c("MFG", "Hippocampus")) 
+hc_mfg_pval <- NULL
+for(time_point in unique(hc_mfg_df$time)) {
+  
+  time_df <- hc_mfg_df %>%
+    filter(time == time_point)
+    
+  model_summary <- summary(lmer(log(abs(connectivity)) ~ second_region + (1|subject), 
+               data = time_df))
+  
+  hc_mfg_pval[as.character(time_point)] <- model_summary$coefficients[2, 5]
+
+}
+
+
+# Insula vs MFG
+insula_mfg_df <- amyg_df %>% 
+  filter(second_region %in% c("MFG", "Insula")) 
+insula_mfg_pval <- NULL
+for(time_point in unique(insula_mfg_df$time)) {
+  
+  time_df <- insula_mfg_df %>%
+    filter(time == time_point)
+    
+  model_summary <- summary(lmer(log(abs(connectivity)) ~ second_region + (1|subject), 
+               data = time_df))
+  
+  insula_mfg_pval[as.character(time_point)] <- model_summary$coefficients[2, 5]
+
+}
+
+
+# OFC vs MFG
+ofc_mfg_df <- amyg_df %>% 
+  filter(second_region %in% c("MFG", "OFC")) 
+ofc_mfg_pval <- NULL
+for(time_point in unique(ofc_mfg_df$time)) {
+  
+  time_df <- ofc_mfg_df %>%
+    filter(time == time_point)
+    
+  model_summary <- summary(lmer(log(abs(connectivity)) ~ second_region + (1|subject), 
+               data = time_df))
+  
+  ofc_mfg_pval[as.character(time_point)] <- model_summary$coefficients[2, 5]
+
+}
+
+
+pvalue_df <- tibble("time" = names(ofc_mfg_pval),  "ofc" = ofc_mfg_pval, "insula" = insula_mfg_pval, "hc" = hc_mfg_pval)
+pvalue_df <- pvalue_df %>%
+  mutate(ofc = p.adjust(ofc, method = "fdr"),
+         insula = p.adjust(insula, method = "fdr"),
+         hc = p.adjust(hc, method = "fdr")) %>%
+  mutate(ofc_sig = if_else(ofc < .05, .135, 99),
+         insula_sig = if_else(insula < .05, .14, 99),
+         hc_sig = if_else(hc < .05, .145, 99)) %>%
+  mutate(time = as.numeric(time))
+
+## Hippocampus Connectivity ##
+# filter to hc connections #
+hc_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Hippocampus") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity)))
+
+
+# AMYG vs MFG
+amyg_mfg_df <- hc_df %>% 
+  filter(second_region %in% c("MFG", "Amygdala")) 
+amyg_mfg_pval <- NULL
+for(time_point in unique(amyg_mfg_df$time)) {
+  
+  time_df <- amyg_mfg_df %>%
+    filter(time == time_point)
+    
+  model_summary <- summary(lmer(log(abs(connectivity)) ~ second_region + (1|subject), 
+               data = time_df))
+  
+  amyg_mfg_pval[as.character(time_point)] <- model_summary$coefficients[2, 5]
+
+}
+
+
+pvalue_hc_df <- tibble("time" = names(amyg_mfg_pval),  "amyg" = amyg_mfg_pval)
+pvalue_hc_df <- pvalue_hc_df %>%
+  mutate(amyg = p.adjust(amyg, method = "fdr")) %>%
+  mutate(amyg_sig = if_else(amyg < .05, .14, 99)) %>%
+  mutate(time = as.numeric(time))
+
+```
+
+```{r, fig.width=10, fig.height=6, eval = F}
+
+
+
+amyg_conn_df <- conn_clean_sig_average_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Amygdala") %>%
+  mutate(importance = if_else(!second_region %in% 
+                            c("MFG", "Ant. Cingulate"), "focus", "not"))
+
+amyg_conn_df <- left_join(amyg_conn_df, pvalue_df)
+
+
+amyg_conn_plot <- amyg_conn_df %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region, alpha = importance)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  geom_line(aes(y = ofc_sig), color = roi_colors["OFC"], alpha = .7) +
+  geom_line(aes(y = hc_sig), color = roi_colors["Hippocampus"], alpha = .7) +
+  geom_line(aes(y = insula_sig), color = roi_colors["Insula"], alpha = .7) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average amygdala connectivity to all other regions at trial onset") +
+  ylim(.04, .15)
+
+hc_conn_df <- conn_clean_sig_average_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Hippocampus") %>%
+  mutate(importance = if_else(second_region %in% 
+                            c("MFG", "Ant. Cingulate", "Amygdala"), "focus", "not"))
+
+
+hc_conn_df <- left_join(hc_conn_df, pvalue_hc_df)
+
+hc_conn_plot <- hc_conn_df %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region, alpha = importance)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +  
+  geom_line(size = 1) +
+  geom_line(aes(y = amyg_sig), color = roi_colors["Amygdala"], alpha = .7) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average hippocampal connectivity to all other regions at trial onset") +
+  ylim(.04, .15)
+
+ofc_conn_plot <- conn_clean_sig_average_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "OFC") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +  
+  geom_line(size = 1) +
+  scale_color_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average OFC connectivity to all other regions at trial onset") +
+  ylim(.04, .15)
+
+# ggsave(path(here(), "figures", "connectivity", "amyg_conn_plot.png"),
+#        plot = amyg_conn_plot, width = 10, height = 6)
+# 
+# ggsave(path(here(), "figures", "connectivity", "hc_conn_plot.png"),
+#        plot = hc_conn_plot, width = 10, height = 6)
+# 
+# ggsave(path(here(), "figures", "connectivity", "ofc_conn_plot.png"),
+#        plot = ofc_conn_plot, width = 10, height = 6)
+
+amyg_conn_plot
+hc_conn_plot
+ofc_conn_plot
+
+```
+
+```{r, fig.width=7, fig.height=6, eval = F}
+
+conn_clean_sig_average_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "MFG") %>%
+  mutate(importance = if_else(second_region %in% 
+                            c("MFG", "Ant. Cingulate", "Hippocampus"), "focus", "not")) %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .2)) +
+  scale_color_manual(values = roi_colors) + 
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327"),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327"),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327"),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327")) +
+  labs(x = "Time", y = "Average Connectivity Across Subjects", color = "") +
+  ggtitle("Average MFG connectivity to all other regions at trial onset") +
+  ylim(0, .15)
+
+conn_clean_sig_average_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Ant. Cingulate") %>%
+  mutate(importance = if_else(second_region %in% 
+                            c("MFG", "Ant. Cingulate", "Hippocampus"), "focus", "not")) %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .2)) +
+  scale_color_manual(values = roi_colors) + 
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327"),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327"),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327"),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327")) +
+  labs(x = "Time", y = "Average Connectivity Across Subjects", color = "") +
+  ggtitle("Average Ant. Cingulate connectivity to all other regions at trial onset") +
+  ylim(0, .17)
+
+
+conn_clean_sig_average_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "SFG") %>%
+  mutate(importance = if_else(second_region %in% 
+                            c("MFG", "Ant. Cingulate", "Hippocampus"), "focus", "not")) %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .2)) +
+  scale_color_manual(values = roi_colors) + 
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327"),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327"),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327"),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327")) +
+  labs(x = "Time", y = "Average Connectivity Across Subjects", color = "") +
+  ggtitle("Average SFG connectivity to all other regions at trial onset") +
+  ylim(0, .18)
+
+
+conn_clean_sig_average_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Insula") %>%
+  mutate(importance = if_else(second_region %in% 
+                            c("MFG", "Ant. Cingulate", "Hippocampus"), "focus", "not")) %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .2)) +
+  scale_color_manual(values = roi_colors) + 
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327"),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327"),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327"),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327")) +
+  labs(x = "Time", y = "Average Connectivity Across Subjects", color = "") +
+  ggtitle("Average Insula connectivity to all other regions at trial onset") +
+  ylim(0, .18)
+
+
+```
+
+
+```{r plot-sub-overall-connect-values, fig.width=15, fig.height=10}
+
+
+conn_clean_sig_elec_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = mean(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = mean(roi_average_sub)) %>%
+  ungroup() %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_line(aes( y = roi_average_sub, group = subject), alpha = .5) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~first_region, scales = "free_y") +
+  ggtitle("Imaginary Coherence")
+
+
+conn_clean_sig_elec_df %>%
+  filter(metric == "Pairwise Phase Consistency") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = mean(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = mean(roi_average_sub)) %>%
+  ungroup() %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_line(aes( y = roi_average_sub, group = subject), alpha = .5) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~first_region, scales = "free_y") +
+  ggtitle("Pairwise Phase Consistency")
+
+
+conn_clean_sig_elec_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  group_by(time, first_region, subject) %>%
+  mutate(roi_average_sub = mean(average_sub_conn)) %>%
+  ungroup() %>%
+  select(-second_region, -average_sub_conn) %>%
+  distinct() %>%
+  group_by(time, first_region) %>%
+  mutate(roi_average = mean(roi_average_sub)) %>%
+  ungroup() %>%
+  ggplot(., aes(x=time, y = roi_average, color = first_region)) +
+  geom_line(aes( y = roi_average_sub, group = subject), alpha = .5) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~first_region, scales = "free_y") +
+  ggtitle("Phase Lag Index")
+
+
+```
+
+```{r plot-connect-values, fig.width=15, fig.height=10}
+
+conn_clean_sig_average_df <- conn_clean_sig_elec_df %>%
+  group_by(metric, time, roi_pair) %>%
+  mutate(average_conn = mean(average_sub_conn, na.rm= T)) %>%
+  ungroup() %>%
+  select(-subject, -average_sub_conn) %>%
+  distinct()
+
+conn_clean_sig_average_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = roi_colors) + 
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~first_region, scale = "free_y") +
+  ggtitle("Imaginary Coherence")
+
+
+conn_clean_sig_average_df %>%
+  filter(metric == "Pairwise Phase Consistency") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = roi_colors) + 
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~first_region) +
+  ggtitle("Pairwise Phase Consistency")
+
+
+conn_clean_sig_average_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = roi_colors) + 
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~first_region) +
+  ggtitle("Phase Lag Index")
+
+
+```
+
+
+## Connected Regions
+
+### Imaginary Coherence
+
+```{r, fig.wdith = 10, fig.height = 10}
+
+conn_imcoh_df <- conn_clean_df %>%
+  ungroup() %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  mutate(sig = if_else(key %in% sig_electrodes, 1, 0)) %>%
+  select(subject, first_region, second_region, roi_pair, pairs, sig) %>%
+  distinct()
+
+conn_imcoh_count_df <- conn_imcoh_df %>%
+  group_by(subject, roi_pair, sig) %>%
+  mutate(total_sub_sig_pairs = n()) %>%
+  group_by(subject, roi_pair) %>%
+  mutate(total_sub_pairs = n()) %>%
+  group_by(roi_pair, sig) %>%
+  mutate(total_sig_pairs = n()) %>%
+  group_by(roi_pair) %>%
+  mutate(total_pairs = n()) %>%
+  ungroup() %>%
+  rowwise() %>%
+  mutate(sig_sub_percent = total_sub_sig_pairs / total_sub_pairs,
+         sig_percent = total_sig_pairs / total_pairs) %>%
+  select(-pairs) %>%
+  filter(roi_pair != "mfg_mfg") %>%
+  distinct()
+  
+
+conn_imcoh_count_df %>%
+  filter(sig == 1) %>%
+  select(first_region, roi_pair, sig_percent) %>%
+  arrange(first_region, sig_percent) %>%
+  mutate(roi_pair = factor(roi_pair, levels = unique(roi_pair))) %>%
+  distinct() %>%
+  ggplot(., aes(x = roi_pair, y = sig_percent, fill = first_region)) +
+  geom_col() + 
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = .2)) +
+  scale_fill_manual(values = roi_colors)
+
+
+conn_imcoh_count_df %>%
+  filter(sig == 1) %>%
+  select(first_region, second_region, roi_pair, sig_percent) %>%
+  distinct() %>%
+  arrange(sig_percent) %>%
+  mutate(roi_pair = factor(roi_pair, levels = .$roi_pair)) %>%
+  ggplot(., aes(x = roi_pair, y = sig_percent, fill = first_region)) +
+  geom_col() + 
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = .2)) +
+  scale_fill_manual(values = roi_colors) +
+  facet_wrap(~second_region, scales = "free_x")
+
+
+conn_imcoh_count_df %>%
+  filter(sig == 1) %>%
+  select(first_region, second_region, roi_pair, sig_percent) %>%
+  distinct() %>%
+  arrange(sig_percent) %>%
+  mutate(roi_pair = factor(roi_pair, levels = .$roi_pair)) %>%
+  ggplot(., aes(x = roi_pair, y = sig_percent, fill = first_region)) +
+  geom_col() + 
+  geom_point(data = conn_imcoh_count_df %>% filter(sig == 1), aes(x = roi_pair, y = sig_sub_percent), color = "black", shape = 21) +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = roi_colors) +
+  coord_flip() +
+  facet_wrap(~second_region, scales = "free_y", ncol = 1)
+
+```
+
+```{r, fig.wdith = 10, fig.height = 10}
+
+for( sub in unique(conn_imcoh_count_df$subject)){
+
+  p <- conn_imcoh_count_df %>%
+    arrange(sig_percent) %>%
+    mutate(roi_pair = factor(roi_pair, levels = unique(roi_pair))) %>%
+    filter(subject == sub) %>%
+    ggplot(., aes(x = roi_pair, y = total_sub_sig_pairs, fill = first_region, alpha = factor(sig))) +
+    geom_col() + 
+    theme(panel.background = element_rect(fill = "white"),
+          axis.text.x = element_text(angle = 90, hjust = 1, vjust = .2)) +
+    scale_fill_manual(values = roi_colors) +
+    scale_alpha_manual(values = c(0.3, 1)) +
+    facet_wrap(~second_region, scales = "free_x") +
+    ggtitle(sub)
+  
+  plot(p)
+
+}
+
+
+
+```
+
+
+
+
+
+
+```{r ofc-sig}
+library(blme)
+
+# filter to hippocampus connections #
+ofc_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "OFC") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  mutate(amyg = if_else(second_region == "Amygdala", "amyg", "not_amyg")) %>%
+  mutate(hc = if_else(second_region == "Hippocampus", "hc", "not_hc")) %>%
+  mutate(insula = if_else(second_region == "Insula", "insula", "not_insula")) %>%
+  mutate(mfg = if_else(second_region == "MFG", "mfg", "not_mfg")) %>%
+  mutate(sfg = if_else(second_region == "SFG", "sfg", "not_sfg")) %>%
+  mutate(cing = if_else(second_region == "Ant. Cingulate", "cing", "not_cing"))
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("theta" = c(1, 1, 1))
+  
+### run models over time ###
+tmp_ci_df <- tibble()
+for(time_step in unique(ofc_df$time)){
+  
+  print(time_step)
+
+  time_df <- ofc_df %>% 
+    filter(time == time_step) 
+  
+  # Amygdala #
+  time_model <- blmer(log(connectivity) ~ amyg + (1 + amyg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Amygdala"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Hippocampus #
+  time_model <- blmer(log(connectivity) ~ hc + (1 + hc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Hippocampus"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Insula #
+  time_model <- blmer(log(connectivity) ~ insula + (1 + insula|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Insula"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Cing #
+  time_model <- blmer(log(connectivity) ~ cing + (1 + cing|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Ant. Cingulate"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # MFG #
+  time_model <- blmer(log(connectivity) ~ mfg + (1 + mfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "MFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # sfg #
+  time_model <- blmer(log(connectivity) ~ sfg + (1 + sfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "SFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)  
+  
+  
+
+}
+
+ofc_df_ci_df <- tmp_ci_df
+
+
+```
+
+```{r ofc-plot, fig.width= 15, fig.height = 10}
+
+ofc_df_ci_df %>%
+  filter(Parameter != "(Intercept)") %>%
+  mutate(region = if_else(region == "Ant. Cingualte", "Ant. Cingulate", region)) %>%
+  mutate(CI_low_tmp = CI_low) %>%
+  mutate(CI_low = if_else(region %in% c("OFC", "SFG"), CI_high * -1, CI_low)) %>%
+  mutate(CI_high = if_else(region %in% c("OFC", "SFG"), CI_low_tmp * -1, CI_high)) %>%
+  rowwise() %>%
+  mutate(sig = if_else(CI_low < 0 & CI_high > 0, 999, 1)) %>%
+  ggplot(aes(x = time, color = region, fill = region)) +
+  geom_hline(yintercept = 0, color = "darkgrey") +
+  geom_ribbon(aes(ymin = CI_low, ymax = CI_high), alpha = 0.3) +
+  geom_line(aes(y = sig, color = region), size = 2) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  scale_fill_manual(values = roi_colors) +
+  scale_color_manual(values = roi_colors) +
+  facet_wrap(~region, nrow = 1) +
+  ylim(-1, 1) +
+  ggtitle("OFC Connectivity")
+
+
+
+```
+
+
+```{r hippocampus-sig}
+
+
+# filter to hippocampus connections #
+hc_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Hippocampus") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  mutate(amyg = if_else(second_region == "Amygdala", "amyg", "not_amyg")) %>%
+  mutate(ofc = if_else(second_region == "OFC", "ofc", "not_ofc")) %>%
+  mutate(insula = if_else(second_region == "Insula", "insula", "not_insula")) %>%
+  mutate(mfg = if_else(second_region == "MFG", "mfg", "not_mfg")) %>%
+  mutate(sfg = if_else(second_region == "SFG", "sfg", "not_sfg")) %>%
+  mutate(cing = if_else(second_region == "Ant. Cingulate", "cing", "not_cing"))
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("theta" = c(1, 1, 1))
+  
+### run models over time ###
+tmp_ci_df <- tibble()
+for(time_step in unique(hc_df$time)){
+  
+  print(time_step)
+
+  time_df <- hc_df %>% 
+    filter(time == time_step) 
+  
+  # Amygdala #
+  time_model <- blmer(log(connectivity) ~ amyg + (1 + amyg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Amygdala"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # OFC #
+  time_model <- blmer(log(connectivity) ~ ofc + (1 + ofc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "OFC"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Insula #
+  time_model <- blmer(log(connectivity) ~ insula + (1 + insula|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Insula"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Cing #
+  time_model <- blmer(log(connectivity) ~ cing + (1 + cing|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Ant. Cingulate"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # MFG #
+  time_model <- blmer(log(connectivity) ~ mfg + (1 + mfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "MFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # sfg #
+  time_model <- blmer(log(connectivity) ~ sfg + (1 + sfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "SFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)  
+  
+  
+
+}
+
+hc_ci_df <- tmp_ci_df
+
+```
+
+
+```{r hc-plot, fig.width= 15, fig.height = 10}
+
+hc_ci_df %>%
+  filter(Parameter != "(Intercept)") %>%
+  mutate(region = if_else(region == "Ant. Cingualte", "Ant. Cingulate", region)) %>%
+  mutate(CI_low_tmp = CI_low) %>%
+  mutate(CI_low = if_else(region %in% c("OFC", "SFG"), CI_high * -1, CI_low)) %>%
+  mutate(CI_high = if_else(region %in% c("OFC", "SFG"), CI_low_tmp * -1, CI_high)) %>%
+  rowwise() %>%
+  mutate(sig = if_else(CI_low < 0 & CI_high > 0, 999, 1)) %>%
+  ggplot(aes(x = time, color = region, fill = region)) +
+  geom_hline(yintercept = 0, color = "darkgrey") +
+  geom_ribbon(aes(ymin = CI_low, ymax = CI_high), alpha = 0.3) +
+  geom_line(aes(y = sig, color = region), size = 2) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  scale_fill_manual(values = roi_colors) +
+  scale_color_manual(values = roi_colors) +
+  facet_wrap(~region, nrow = 1) +
+  ylim(-1, 1) +
+  ggtitle("HC Connectivity")
+
+
+
+```
+
+
+```{r amygdala-sig}
+
+
+# filter to hippocampus connections #
+amyg_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Amygdala") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  mutate(amyg = if_else(second_region == "Amygdala", "amyg", "not_amyg")) %>%
+  mutate(hc = if_else(second_region == "Hippocampus", "hc", "not_hc")) %>%
+  mutate(ofc = if_else(second_region == "OFC", "ofc", "not_ofc")) %>%
+  mutate(insula = if_else(second_region == "Insula", "insula", "not_insula")) %>%
+  mutate(mfg = if_else(second_region == "MFG", "mfg", "not_mfg")) %>%
+  mutate(sfg = if_else(second_region == "SFG", "sfg", "not_sfg")) %>%
+  mutate(cing = if_else(second_region == "Ant. Cingulate", "cing", "not_cing"))
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("theta" = c(1, 1, 1))
+  
+### run models over time ###
+tmp_ci_df <- tibble()
+for(time_step in unique(amyg_df$time)){
+  
+  print(time_step)
+
+  time_df <- amyg_df %>% 
+    filter(time == time_step) 
+  
+  # OFC #
+  time_model <- blmer(log(connectivity) ~ ofc + (1 + ofc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "OFC"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Hippocampus #
+  time_model <- blmer(log(connectivity) ~ hc + (1 + hc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Hippocampus"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Insula #
+  time_model <- blmer(log(connectivity) ~ insula + (1 + insula|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Insula"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Cing #
+  time_model <- blmer(log(connectivity) ~ cing + (1 + cing|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Ant. Cingulate"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # MFG #
+  time_model <- blmer(log(connectivity) ~ mfg + (1 + mfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "MFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # sfg #
+  time_model <- blmer(log(connectivity) ~ sfg + (1 + sfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "SFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)   
+  
+  
+
+}
+
+amyg_df_ci_df <- tmp_ci_df
+
+```
+
+
+```{r hc-plot, fig.width= 15, fig.height = 10}
+
+amyg_df_ci_df %>%
+  filter(Parameter != "(Intercept)") %>%
+  mutate(region = if_else(region == "Ant. Cingualte", "Ant. Cingulate", region)) %>%
+  mutate(CI_low_tmp = CI_low) %>%
+  mutate(CI_low = if_else(region %in% c("OFC", "SFG"), CI_high * -1, CI_low)) %>%
+  mutate(CI_high = if_else(region %in% c("OFC", "SFG"), CI_low_tmp * -1, CI_high)) %>%
+  rowwise() %>%
+  mutate(sig = if_else(CI_low < 0 & CI_high > 0, 999, 1)) %>%
+  ggplot(aes(x = time, color = region, fill = region)) +
+  geom_hline(yintercept = 0, color = "darkgrey") +
+  geom_ribbon(aes(ymin = CI_low, ymax = CI_high), alpha = 0.3) +
+  geom_line(aes(y = sig, color = region), size = 2) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  scale_fill_manual(values = roi_colors) +
+  scale_color_manual(values = roi_colors) +
+  facet_wrap(~region, nrow = 1) +
+  ylim(-1, 1) +
+  ggtitle("Amygdala Connectivity")
+
+
+
+```
+
+
+
+```{r insula-sig}
+
+
+# filter to hippocampus connections #
+insula_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Insula") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  mutate(amyg = if_else(second_region == "Amygdala", "amyg", "not_amyg")) %>%
+  mutate(hc = if_else(second_region == "Hippocampus", "hc", "not_hc")) %>%
+  mutate(ofc = if_else(second_region == "OFC", "ofc", "not_ofc")) %>%
+  mutate(insula = if_else(second_region == "Insula", "insula", "not_insula")) %>%
+  mutate(mfg = if_else(second_region == "MFG", "mfg", "not_mfg")) %>%
+  mutate(sfg = if_else(second_region == "SFG", "sfg", "not_sfg")) %>%
+  mutate(cing = if_else(second_region == "Ant. Cingulate", "cing", "not_cing"))
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("theta" = c(1, 1, 1))
+  
+### run models over time ###
+tmp_ci_df <- tibble()
+for(time_step in unique(insula_df$time)){
+  
+  print(time_step)
+
+  time_df <- insula_df %>% 
+    filter(time == time_step) 
+  
+  # Amygdala #
+  time_model <- blmer(log(connectivity) ~ amyg + (1 + amyg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Amygdala"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Hippocampus #
+  time_model <- blmer(log(connectivity) ~ hc + (1 + hc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Hippocampus"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # OFC #
+  time_model <- blmer(log(connectivity) ~ ofc + (1 + ofc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "OFC"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Cing #
+  time_model <- blmer(log(connectivity) ~ cing + (1 + cing|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Ant. Cingulate"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # MFG #
+  time_model <- blmer(log(connectivity) ~ mfg + (1 + mfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "MFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # sfg #
+  time_model <- blmer(log(connectivity) ~ sfg + (1 + sfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "SFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)   
+  
+  
+
+}
+
+insula_df_ci_df <- tmp_ci_df
+
+```
+
+
+```{r hc-plot, fig.width= 15, fig.height = 10}
+
+insula_df_ci_df %>%
+  filter(Parameter != "(Intercept)") %>%
+  mutate(CI_low_tmp = CI_low) %>%
+  mutate(CI_low = if_else(region %in% c("OFC", "SFG"), CI_high * -1, CI_low)) %>%
+  mutate(CI_high = if_else(region %in% c("OFC", "SFG"), CI_low_tmp * -1, CI_high)) %>%
+  rowwise() %>%
+  mutate(sig = if_else(CI_low < 0 & CI_high > 0, 999, .5)) %>%
+  ggplot(aes(x = time, color = region, fill = region)) +
+  geom_hline(yintercept = 0, color = "darkgrey") +
+  geom_ribbon(aes(ymin = CI_low, ymax = CI_high), alpha = 0.3) +
+  geom_line(aes(y = sig, color = region), size = 2) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  scale_fill_manual(values = roi_colors) +
+  scale_color_manual(values = roi_colors) +
+  facet_wrap(~region, nrow = 1) +
+  ylim(-.51, .51) +
+  ggtitle("Insula Connectivity")
+
+
+
+```
+
+
+
+```{r mfg-sig}
+
+
+# filter to hippocampus connections #
+mfg_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "MFG") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  mutate(amyg = if_else(second_region == "Amygdala", "amyg", "not_amyg")) %>%
+  mutate(hc = if_else(second_region == "Hippocampus", "hc", "not_hc")) %>%
+  mutate(ofc = if_else(second_region == "OFC", "ofc", "not_ofc")) %>%
+  mutate(insula = if_else(second_region == "Insula", "insula", "not_insula")) %>%
+  mutate(mfg = if_else(second_region == "MFG", "mfg", "not_mfg")) %>%
+  mutate(sfg = if_else(second_region == "SFG", "sfg", "not_sfg")) %>%
+  mutate(cing = if_else(second_region == "Ant. Cingulate", "cing", "not_cing"))
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("theta" = c(1, 1, 1))
+  
+### run models over time ###
+tmp_ci_df <- tibble()
+for(time_step in unique(mfg_df$time)){
+  
+  print(time_step)
+
+  time_df <- mfg_df %>% 
+    filter(time == time_step) 
+  
+  # Amygdala #
+  time_model <- blmer(log(connectivity) ~ amyg + (1 + amyg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Amygdala"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Hippocampus #
+  time_model <- blmer(log(connectivity) ~ hc + (1 + hc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Hippocampus"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # OFC #
+  time_model <- blmer(log(connectivity) ~ ofc + (1 + ofc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "OFC"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Cing #
+  time_model <- blmer(log(connectivity) ~ cing + (1 + cing|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Ant. Cingulate"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Insula #
+  time_model <- blmer(log(connectivity) ~ insula + (1 + insula|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "Insula"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  
+
+}
+
+mfg_df_ci_df <- tmp_ci_df
+
+```
+
+
+```{r mfg-plot, fig.width= 12, fig.height = 7}
+
+mfg_df_ci_df %>%
+  filter(Parameter != "(Intercept)") %>%
+  mutate(CI_low_tmp = CI_low) %>%
+  mutate(CI_low = if_else(region %in% c("OFC", "SFG"), CI_high * -1, CI_low)) %>%
+  mutate(CI_high = if_else(region %in% c("OFC", "SFG"), CI_low_tmp * -1, CI_high)) %>%
+  rowwise() %>%
+  mutate(sig = if_else(CI_low < 0 & CI_high > 0, 999, 1)) %>%
+  ggplot(aes(x = time, color = region, fill = region)) +
+  geom_hline(yintercept = 0, color = "darkgrey") +
+  geom_ribbon(aes(ymin = CI_low, ymax = CI_high), alpha = 0.3) +
+  geom_line(aes(y = sig, color = region), size = 2) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  scale_fill_manual(values = roi_colors) +
+  scale_color_manual(values = roi_colors) +
+  facet_wrap(~region, nrow = 1) +
+  ylim(-1, 1) +
+  ggtitle("MFG Connectivity")
+
+
+
+```
+
+```{r sfg-sig}
+
+
+# filter to hippocampus connections #
+sfg_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "SFG") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  mutate(amyg = if_else(second_region == "Amygdala", "amyg", "not_amyg")) %>%
+  mutate(hc = if_else(second_region == "Hippocampus", "hc", "not_hc")) %>%
+  mutate(ofc = if_else(second_region == "OFC", "ofc", "not_ofc")) %>%
+  mutate(insula = if_else(second_region == "Insula", "insula", "not_insula")) %>%
+  mutate(mfg = if_else(second_region == "MFG", "mfg", "not_mfg")) %>%
+  mutate(sfg = if_else(second_region == "SFG", "sfg", "not_sfg")) %>%
+  mutate(cing = if_else(second_region == "Ant. Cingulate", "cing", "not_cing"))
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("theta" = c(1, 1, 1))
+  
+### run models over time ###
+tmp_ci_df <- tibble()
+for(time_step in unique(sfg_df$time)){
+  
+  print(time_step)
+
+  time_df <- sfg_df %>% 
+    filter(time == time_step) 
+  
+  # Amygdala #
+  time_model <- blmer(log(connectivity) ~ amyg + (1 + amyg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Amygdala"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Hippocampus #
+  time_model <- blmer(log(connectivity) ~ hc + (1 + hc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Hippocampus"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # OFC #
+  time_model <- blmer(log(connectivity) ~ ofc + (1 + ofc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "OFC"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Cing #
+  time_model <- blmer(log(connectivity) ~ cing + (1 + cing|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Ant. Cingulate"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Insula #
+  time_model <- blmer(log(connectivity) ~ insula + (1 + insula|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "Insula"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  
+
+}
+
+sfg_df_ci_df <- tmp_ci_df
+
+```
+
+
+```{r sfg-plot, fig.width= 15, fig.height = 10}
+
+sfg_df_ci_df %>%
+  filter(Parameter != "(Intercept)") %>%
+  mutate(CI_low_tmp = CI_low) %>%
+  mutate(CI_low = if_else(region %in% c("OFC", "SFG"), CI_high * -1, CI_low)) %>%
+  mutate(CI_high = if_else(region %in% c("OFC", "SFG"), CI_low_tmp * -1, CI_high)) %>%
+  rowwise() %>%
+  mutate(sig = if_else(CI_low < 0 & CI_high > 0, 999, 1)) %>%
+  ggplot(aes(x = time, color = region, fill = region)) +
+  geom_hline(yintercept = 0, color = "darkgrey") +
+  geom_ribbon(aes(ymin = CI_low, ymax = CI_high), alpha = 0.3) +
+  geom_line(aes(y = sig, color = region), size = 2) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none") +
+  scale_fill_manual(values = roi_colors) +
+  scale_color_manual(values = roi_colors) +
+  facet_wrap(~region, nrow = 1) +
+  ylim(-1, 1) +
+  ggtitle("SFG Connectivity")
+
+
+
+```
+
+
+```{r cing-sig}
+
+
+# filter to hippocampus connections #
+cing_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(first_region == "Ant. Cingulate") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  mutate(amyg = if_else(second_region == "Amygdala", "amyg", "not_amyg")) %>%
+  mutate(hc = if_else(second_region == "Hippocampus", "hc", "not_hc")) %>%
+  mutate(ofc = if_else(second_region == "OFC", "ofc", "not_ofc")) %>%
+  mutate(insula = if_else(second_region == "Insula", "insula", "not_insula")) %>%
+  mutate(mfg = if_else(second_region == "MFG", "mfg", "not_mfg")) %>%
+  mutate(sfg = if_else(second_region == "SFG", "sfg", "not_sfg")) %>%
+  mutate(cing = if_else(second_region == "Ant. Cingulate", "cing", "not_cing"))
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("theta" = c(1, 1, 1))
+  
+### run models over time ###
+tmp_ci_df <- tibble()
+for(time_step in unique(cing_df$time)){
+  
+  print(time_step)
+
+  time_df <- cing_df %>% 
+    filter(time == time_step) 
+  
+  # Amygdala #
+  time_model <- blmer(log(connectivity) ~ amyg + (1 + amyg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Amygdala"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # Hippocampus #
+  time_model <- blmer(log(connectivity) ~ hc + (1 + hc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "Hippocampus"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # OFC #
+  time_model <- blmer(log(connectivity) ~ ofc + (1 + ofc|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$ region <- "OFC"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # MFG #
+  time_model <- blmer(log(connectivity) ~ mfg + (1 + mfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "MFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  # sfg #
+  time_model <- blmer(log(connectivity) ~ sfg + (1 + sfg|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "SFG"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)   
+  
+  # Insula #
+  time_model <- blmer(log(connectivity) ~ insula + (1 + insula|pairs), data = time_df, control = control, start = start_values)
+  tmp_ci_df_tmp <- bayestestR::ci(time_model)
+  tmp_ci_df_tmp$time <- time_step
+  tmp_ci_df_tmp$region <- "Insula"
+  tmp_ci_df <- bind_rows(tmp_ci_df, tmp_ci_df_tmp)
+  
+  
+
+}
+
+cing_df_ci_df <- tmp_ci_df
+
+```
+
+
+
+
+
+```{r hc-plot, fig.width= 20, fig.height = 20}
+
+circle_plot <- function(df, plot_title){
+  
+  p <- df %>%
+    filter(Parameter != "(Intercept)") %>%
+    mutate(CI_low_tmp = CI_low) %>%
+    mutate(CI_low = if_else(region %in% c("OFC", "SFG"), CI_high * -1, CI_low)) %>%
+    mutate(CI_high = if_else(region %in% c("OFC", "SFG"), CI_low_tmp * -1, CI_high)) %>%
+    rowwise() %>%
+    mutate(sig = if_else(CI_low < 0 & CI_high > 0, 999, 1)) %>%
+    mutate(region_sig = if_else(sig == 1, region, "Not Sig.")) %>%
+    mutate(new_time = paste0(region, "_", time)) %>%
+    ggplot(aes(x = new_time, color = region_sig, fill = region)) +
+    geom_segment(aes(y = CI_low, yend = CI_high, xend = new_time), size = 4) +
+    geom_point(aes( x = new_time), y = 0, size = 5, color = "#2D2327") +
+    geom_point(aes(color = region, x = new_time), y = 1.25, size = 10) +
+    theme(panel.background = element_rect(fill = "white"), 
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.title = element_blank(),
+          panel.border = element_blank(),
+          plot.title = element_text(size = 35, hjust = .5),
+          legend.position = "none") +
+    scale_color_manual(values = c("Not Sig." = "grey", roi_colors)) +
+    scale_fill_manual(values = c("Not Sig." = "grey", roi_colors)) +
+    # facet_wrap(~region, nrow = 1, scales = "free") +
+    ylim(-1.25, 1.25) +
+    scale_y_reverse() +
+    ggtitle(plot_title) + 
+    coord_polar()
+    
+    return(p)
+
+}
+
+```
+
+```{r}
+
+cing_plot <- circle_plot(cing_df_ci_df, "Ant. Cingulate Connectivity")
+ofc_plot <- circle_plot(ofc_df_ci_df, "OFC Connectivity")
+# sfg_plot <- circle_plot(sfg_df_ci_df, "SFG Connectivity")
+insula_plot <- circle_plot(insula_df_ci_df, "Insula Connectivity")
+mfg_plot <- circle_plot(mfg_df_ci_df, "MFG Connectivity")
+amyg_plot <- circle_plot(amyg_df_ci_df, "Amygdala Connectivity")
+hc_plot <- circle_plot(hc_df_ci_df, "Hippocampus Connectivity")
+
+
+```
+
+```{r hc-plot, fig.width= 20, fig.height = 10}
+
+clean_conn_imcoh_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  # filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  mutate(time = round(time, 1)) 
+
+
+average_imcoh_df <- clean_conn_imcoh_df %>%
+  filter(roi_pair != "mfg_mfg") %>%
+  group_by(subject, pairs) %>%
+  mutate(pair_conn = mean(abs(connectivity))) %>%
+  select(subject, first_region, second_region, roi_pair, pairs, pair_conn) %>%
+  distinct() %>%
+  group_by(subject, roi_pair) %>%
+  select(subject, first_region, second_region, roi_pair, pair_conn) %>%
+  distinct() %>%
+  mutate(roi_pair_sub = mean(pair_conn)) %>%
+  group_by(roi_pair) %>%
+  mutate(roi_pair_mean = mean(roi_pair_sub)) %>%
+  mutate(first_region = factor(first_region, levels = c("Hippocampus", "Amygdala", "OFC", "Insula", "Ant. Cingulate", "SFG", "MFG"))) %>%
+  arrange(first_region, roi_pair_mean) %>%
+  mutate(roi_pair = factor(roi_pair, levels = unique(roi_pair)))
+  
+
+avg_strength_plot <- average_imcoh_df %>%
+  select(first_region, second_region, roi_pair, roi_pair_mean) %>%
+  distinct() %>%
+  arrange(first_region, roi_pair_mean) %>%
+  mutate(roi_pair = factor(roi_pair, levels = .$roi_pair)) %>%
+  ggplot(., aes(x = roi_pair, fill = second_region)) +
+  geom_col(aes(y = roi_pair_mean)) + 
+  geom_point(data = average_imcoh_df, aes(x = roi_pair, y = roi_pair_sub), color = "black", shape = 21) +
+  geom_hline(yintercept = 0, color = "black", size = 1) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+        legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 24, face = 'bold'),
+        strip.background =element_rect(fill = "white"),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank()) +
+  scale_fill_manual(values = roi_colors) +
+  guides(fill = guide_legend(direction = "horizontal", nrow = 1)) +
+  labs(y = "Average Connectvity Strength", x = "", fill = "Region") +
+  ylim(0, .12) +
+  facet_wrap(~first_region, scales = "free_x", nrow = 1) +
+  ggtitle("Average Connectivity Strength Between Region Pairs")
+
+
+ggsave(path(here(), "figures", "connectivity", "avg_strength_plot.png"), avg_strength_plot, width = 20, height = 10)
+
+```
+
+
+```{r hc-plot, fig.width= 12, fig.height = 12}
+
+conn_imcoh_count_df %>%
+  filter(sig == 1) %>%
+  select(first_region, second_region, roi_pair, sig_percent) %>%
+  distinct() %>%
+  mutate(second_region = factor(second_region, levels = c("Hippocampus", "Amygdala", "OFC", "Insula", "Ant. Cingulate", "SFG", "MFG"))) %>%
+  arrange(second_region, sig_percent) %>%
+  mutate(roi_pair = factor(roi_pair, levels = .$roi_pair)) %>%
+  ggplot(., aes(x = roi_pair, y = 100 *sig_percent, fill = first_region)) +
+  geom_col() + 
+  geom_point(data = conn_imcoh_count_df %>% filter(sig == 1), aes(x = roi_pair, y = 100*sig_sub_percent), color = "black", shape = 21) +
+  theme(panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(color = "black", fill = NA, size = 1),
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+        strip.background =element_rect(fill = "white")) + 
+  scale_fill_manual(values = roi_colors) +
+  guides(fill = guide_legend(direction = "horizontal", nrow = 1)) +
+  coord_flip() +
+  labs(x = "Region Pair", y = "Percentage of Significant Electrode Pairs", fill = "Region") +
+  facet_wrap(~second_region, scales = "free_y", ncol = 1) +
+  ylim(0, 100) +
+  ggtitle("Percentage of Significant Pairs by Region")
+
+```
+```{r fig.width = 20, fig.height = 10}
+
+sig_ci_df <- bind_rows(cing_df_ci_df %>% mutate(test_region = "Ant. Cingulate"), 
+                         ofc_df_ci_df %>% mutate(test_region = "OFC"), 
+                         insula_df_ci_df %>% mutate(test_region = "Insula"),
+                         mfg_df_ci_df %>% mutate(test_region = "MFG"),
+                         amyg_df_ci_df %>% mutate(test_region = "Amygdala"),
+                         hc_df_ci_df %>% mutate(test_region = "Hippocampus"))
+
+conn_imcoh_count_df %>%
+  filter(sig == 1) %>%
+  select(first_region, second_region, roi_pair, sig_percent) %>%
+  distinct() %>%
+  arrange(sig_percent) %>%
+  mutate(roi_pair = factor(roi_pair, levels = .$roi_pair)) %>%
+  ggplot(., aes(x = roi_pair, y = sig_percent, fill = first_region)) +
+  geom_col() + 
+  geom_point(data = conn_imcoh_count_df, aes(x = roi_pair, y = sig_sub_percent), color = "black", shape = 21) +
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = .2)) +
+  scale_fill_manual(values = roi_colors) +
+  coord_flip() +
+  facet_wrap(~second_region, scales = "free_y", ncol = 1)
+
+sig_ci_prepped_df <- sig_ci_df %>%
+  filter(Parameter != "(Intercept)") %>%
+  mutate(CI_low_tmp = CI_low) %>%
+  mutate(CI_low = if_else(region %in% c("OFC", "SFG"), CI_high * -1, CI_low)) %>%
+  mutate(CI_high = if_else(region %in% c("OFC", "SFG"), CI_low_tmp * -1, CI_high)) %>%
+  rowwise() %>%
+  mutate(sig = if_else(CI_low < 0 & CI_high > 0, 0, 1)) %>%
+  mutate(sig_neg = if_else(CI_low <0 & CI_high < 0, 1, 0)) %>%
+  mutate(sig_pos = if_else(CI_low >0 & CI_high > 0, 1, 0)) %>%
+  group_by(test_region, region) %>%
+  mutate(percent_bins = sum(sig)/41) %>%
+  mutate(percent_neg_bins = -1 *sum(sig_pos)/41) %>%
+  mutate(percent_pos_bins = sum(sig_neg)/41) %>%
+  mutate(region_pair = paste0(test_region, "_", region)) %>%
+  select(test_region, region_pair, percent_pos_bins, percent_neg_bins, region, percent_bins) %>%
+  distinct() %>%
+  mutate(test_region = factor(test_region, levels = c("Hippocampus", "Amygdala", "OFC", "Insula", "Ant. Cingulate", "MFG"))) %>%
+  arrange(percent_pos_bins, percent_neg_bins) %>%
+  mutate(region_pair = factor(region_pair, levels = .$region_pair))
+
+sig_ci_prepped_df %>%
+  ggplot(., aes(x = region_pair, y = percent_bins, fill = region)) +
+  geom_col() + 
+  # geom_point(data = conn_imcoh_count_df, aes(x = region, y = sig_sub_percent), color = "black", shape = 21) +
+  theme(panel.background = element_rect(fill = "white"),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = .2)) +
+  scale_fill_manual(values = roi_colors) +
+  coord_flip() +
+  facet_wrap(~test_region, scales = "free_y", ncol = 1)
+
+
+sig_ci_prepped_df %>%
+  filter(region != "SFG") %>%
+  ggplot(., aes(x = region_pair, fill = region)) +
+  geom_col(aes(y = percent_pos_bins)) + 
+  geom_col(aes(y = percent_neg_bins), alpha= .7) + 
+  # geom_point(data = conn_imcoh_count_df, aes(x = region, y = sig_sub_percent), color = "black", shape = 21) +
+  geom_hline(yintercept = 0, color = "black", size = 1) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18, face = 'bold'),
+        strip.background = element_rect(fill = "white"),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank()) +
+  scale_fill_manual(values = roi_colors) +
+  guides(fill = guide_legend(direction = "horizontal", nrow = 1)) +
+  labs(y = "Percentage of Time Bins with Significant Difference in Connectvity Strength", x = "", fill = "Test Region") +
+  facet_wrap(~test_region, scales = "free_x", nrow = 1) +
+  ggtitle("Region by Region Significant Differences in Connectivity Strength")
+
+
+```

@@ -1,0 +1,1639 @@
+---
+title: "Insula Amygdala OFC ~ HFA"
+output: html_document
+date: "2024-04-04"
+---
+---
+title: "Insula  Longitudinal Models"
+output: html_document
+date: "2024-03-28"
+---
+
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(viridis)
+library(lmtest)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+```{r load-data}
+
+## Load Data ##
+insula_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_insula_all_subs_logged_iti_onset.csv"))
+amyg_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+ofc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+   filter(trial_time <= 5.10) 
+
+permuted <- FALSE
+
+
+# load sig pairs data #
+sg_df <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+sg_sub_df <- sg_df %>% 
+  filter(subject == "BJH027") %>%
+  filter(roi_pair %in% c("insula_ofc", "amyg_ofc", "ofc_amyg", "ofc_insula")) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  mutate(elec1 = gsub("_to_.*", "", pairs)) %>%
+  mutate(elec2 = gsub(".*_to_", "", pairs))
+
+insula_elecs <- sg_sub_df %>% 
+  filter(roi_pair %in% c("insula_ofc")) %>%
+  select(elec2) %>%
+  distinct() %>%
+  pull()
+
+ofc_elecs <- sg_sub_df %>% 
+  filter(roi_pair == c("ofc_amyg", "ofc_insula")) %>%
+  mutate(elec1 = if_else(roi_pair == "ofc_amyg", elec2, elec1)) %>%
+  select(elec1) %>%
+  distinct() %>%
+  pull()
+
+
+amyg_elecs <- sg_sub_df %>% 
+  filter(roi_pair == "amyg_ofc") %>%
+  select(elec1) %>%
+  distinct() %>%
+  pull()
+
+```
+
+
+## EDA
+
+
+## Average hfa - BJH027
+
+```{r prep-for-eda}
+
+
+
+# Prep brain dfs
+avg_insula_df <- insula_hfa_data %>%
+  filter(subject == "BJH027") %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode %in% insula_elecs) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(mean_hfa = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  ungroup() 
+
+
+avg_amyg_df <- amyg_hfa_data %>%
+  filter(subject == "BJH027") %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode %in% amyg_elecs) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(mean_hfa = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  ungroup() 
+
+
+avg_ofc_df <- ofc_hfa_data %>%
+  filter(subject == "BJH027") %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode %in% ofc_elecs) %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(trial_time, trial_numeric) %>%
+  mutate(mean_hfa = mean(theta)) %>%
+  select(-theta, -electrode) %>%
+  distinct() %>%
+  ungroup() 
+
+
+## Prep Behavior Df
+example_behave_df <- game_data_distance %>%
+  filter(subject == "BJH027") %>%
+  filter(Direction != "Still") %>%
+  filter(dots_eaten != 0) %>%  
+  group_by(trial_numeric) %>%
+  # prep time variables
+  mutate(jm_time = trial_time - first(trial_time)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time_tmp = if_else(event == 1, jm_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time_tmp)) %>%
+  ungroup() %>%
+  filter(turnaround_time != 0) %>% # exclude trials where they just ran into the ghost
+  select(subject, trial_numeric, trial_time, jm_time, event, turnaround_time, last_away,
+         UserLocation, GhostLocation, points_remaining, distance_to_ghost,
+         away_choice, TrialType, reward_groups) %>%
+  mutate(EVENT = 1) %>%
+  mutate(points_remaining = scale(points_remaining)) %>%
+  mutate(distance_to_ghost = scale(distance_to_ghost)) %>%
+  mutate(trial_time = round(trial_time, 2))
+
+
+# Merge with behavior
+insula_df <- inner_join(example_behave_df, avg_insula_df, by = c("subject", "trial_numeric", "trial_time"))
+amyg_df <- inner_join(example_behave_df, avg_amyg_df, by = c("subject", "trial_numeric", "trial_time"))
+ofc_df <- inner_join(example_behave_df, avg_ofc_df, by = c("subject", "trial_numeric", "trial_time"))
+
+```
+
+```{r}
+
+ofc_amyg_results <- read_csv(path(here(), "results", "turn_time_prediction", "amyg_ofc_hfa_turn_time_correlations.csv"))
+ofc_insula_results <- read_csv(path(here(), "results", "turn_time_prediction", "insula_ofc_hfa_turn_time_correlations.csv"))
+
+
+ofc_insula_results <- ofc_insula_results %>%
+  filter(subject == "BJH027") %>%
+  mutate(logged_times = log(turn_time))
+
+# BJH027_AL1-AL2_BJH027_GL7-GL8
+for(pair in unique(ofc_insula_results$pair_id)) {
+  print(pair)
+  lm(logged_times ~ correlation, data = ofc_insula_results %>% filter(pair_id == pair)) %>% summary() %>% print()
+  
+}
+
+ofc_amyg_results <- ofc_amyg_results %>%
+  filter(subject == "BJH027") %>%
+  mutate(logged_times = log(turn_time))
+
+# "BJH027_AL10-AL11_BJH027_GL4-GL5"
+for(pair in unique(ofc_amyg_results$pair_id)) {
+  print(pair)
+  lm(logged_times ~ correlation, data = ofc_amyg_results %>% filter(pair_id == pair)) %>% summary() %>% print()
+  
+}
+
+# Prep brain dfs
+elec_insula_df <- insula_hfa_data %>%
+  filter(subject == "BJH027") %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode == "GL7-GL8") %>%
+  distinct() %>%
+  rename(mean_hfa = hfa)
+
+
+elec_amyg_df <- amyg_hfa_data %>%
+  filter(subject == "BJH027") %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode == "GL4-GL5") %>%
+  distinct() %>%
+  rename(mean_hfa = hfa)
+
+
+elec_ofc_df <- ofc_hfa_data %>%
+  filter(subject == "BJH027") %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode %in% c("AL1-AL2", "AL10-AL11")) %>%
+  distinct() %>%
+  rename(mean_hfa = hfa)
+
+# Merge with behavior
+insula_df <- inner_join(example_behave_df, elec_insula_df, by = c("subject", "trial_numeric", "trial_time"))
+amyg_df <- inner_join(example_behave_df, elec_amyg_df, by = c("subject", "trial_numeric", "trial_time"))
+ofc_df <- inner_join(example_behave_df, elec_ofc_df, by = c("subject", "trial_numeric", "trial_time"))
+
+
+
+
+```
+
+
+```{r turning-time-eda}
+
+example_behave_df %>%
+  select(trial_numeric, turnaround_time) %>%
+  distinct() %>%
+  ggplot(., aes(x = turnaround_time)) +
+  geom_histogram(binwidth = .1) +
+  geom_vline(xintercept = 1.3, color = "black") +
+  theme_bw()
+
+
+example_behave_df %>%
+  group_by(trial_numeric) %>%
+  mutate(true_turn_time = turnaround_time + first(trial_time)) %>%
+  select(trial_numeric, true_turn_time) %>%
+  distinct() %>%
+  ggplot(., aes(x = true_turn_time)) +
+  geom_histogram(binwidth = .1) +
+  geom_vline(xintercept = 5.1, color = "black") +
+  theme_bw()
+
+
+
+```
+
+## Insula
+
+```{r insula-eda, fig.width=10, fig.height=5}
+
+ggthemr("solarized")
+
+
+insula_df <- insula_df %>%
+  mutate(long_short_trial = if_else(is.na(turnaround_time), "discard", if_else(turnaround_time <= 1.3, "short", "long"))) %>%
+  filter(trial_time >= 0)
+
+
+insula_df %>%
+  group_by(trial_time) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_ls_hfa)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle("average hfa grouped by trial time")
+
+insula_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_ls_hfa)) +
+  geom_line() +
+  theme_bw()  +
+  xlim(-2, 2) + ylim(-1, 1) +
+  ggtitle("average hfa grouped by time locked to turnaround")
+
+insula_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_hfa, group = trial_numeric)) +
+  geom_line(alpha = .3) +
+  geom_line(aes(y = mean_ls_hfa), color = "black") +
+  theme_bw() +
+  xlim(-2, 2) +
+  ggtitle("average hfa grouped by trial time with individual trials")
+
+insula_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_hfa, 
+                color = long_short_trial, group = trial_numeric)) +
+  geom_line(alpha = .3) +
+  geom_line(aes(y = mean_ls_hfa), color = "black") +
+  theme_bw() +
+  xlim(-2, 2) +
+  ggtitle("average hfa grouped by trial time and long/short trials with individual trials")
+
+
+insula_df %>%
+  group_by(trial_time, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_ls_hfa, color = long_short_trial)) +
+  geom_line() +
+  theme_bw()  +
+  ggtitle("average hfa grouped by trial time and long/short trials")
+
+insula_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_hfa, color = long_short_trial)) +
+  geom_line() +
+  theme_bw()  +
+  ggtitle("average hfa grouped by jm time and long/short trials")
+
+
+insula_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_hfa, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle("average hfa grouped by jm time and long/short trials before turnaround")
+
+
+insula_df %>%
+  mutate(jm_time = round(jm_time, 1)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(jm_time <= 1.5) %>% # any longer and too few trials to interpret
+  ggplot(., aes(x = factor(jm_time), y = mean_hfa, fill = long_short_trial)) +
+  geom_point(color = "grey", position = position_dodge2(.5)) +
+  geom_boxplot(notch = T, color = "black") +
+  theme_bw()  +
+  ggtitle("average hfa grouped by jm time and long/short trials before turnaround")
+
+
+insula_df %>%
+  ggplot(., aes(x = trial_time, y = mean_hfa, group = trial_numeric, color = long_short_trial)) +
+  geom_line(alpha = .5) +
+  theme_bw()  +
+  ggtitle("individual trials jm time and long/short trials before turnaround")
+
+```
+
+
+## Amygdala
+
+```{r amyg-eda, fig.width=10, fig.height=5}
+
+ggthemr("solarized")
+
+
+amyg_df <- amyg_df %>%
+  mutate(long_short_trial = if_else(is.na(turnaround_time), "discard", if_else(turnaround_time <= 1.3, "short", "long"))) %>%
+  filter(trial_time >= 0)
+
+
+amyg_df %>%
+  group_by(trial_time) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_ls_hfa)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle("average hfa grouped by trial time")
+
+amyg_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_ls_hfa)) +
+  geom_line() +
+  theme_bw()  +
+  xlim(-2, 2) + ylim(-1, 1) +
+  ggtitle("average hfa grouped by time locked to turnaround")
+
+amyg_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_hfa, group = trial_numeric)) +
+  geom_line(alpha = .3) +
+  geom_line(aes(y = mean_ls_hfa), color = "black") +
+  theme_bw() +
+  xlim(-2, 2) +
+  ggtitle("average hfa grouped by trial time with individual trials")
+
+amyg_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_hfa, 
+                color = long_short_trial, group = trial_numeric)) +
+  geom_line(alpha = .3) +
+  geom_line(aes(y = mean_ls_hfa), color = "black") +
+  theme_bw() +
+  xlim(-2, 2) +
+  ggtitle("average hfa grouped by trial time and long/short trials with individual trials")
+
+
+amyg_df %>%
+  group_by(trial_time, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_ls_hfa, color = long_short_trial)) +
+  geom_line() +
+  theme_bw()  +
+  ggtitle("average hfa grouped by trial time and long/short trials")
+
+amyg_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_hfa, color = long_short_trial)) +
+  geom_line() +
+  theme_bw()  +
+  ggtitle("average hfa grouped by jm time and long/short trials")
+
+
+amyg_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_hfa, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle("average hfa grouped by jm time and long/short trials before turnaround")
+
+
+amyg_df %>%
+  mutate(jm_time = round(jm_time, 1)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(jm_time <= 1.5) %>% # any longer and too few trials to interpret
+  ggplot(., aes(x = factor(jm_time), y = mean_hfa, fill = long_short_trial)) +
+  geom_point(color = "grey", position = position_dodge2(.5)) +
+  geom_boxplot(notch = T, color = "black") +
+  theme_bw()  +
+  ggtitle("average hfa grouped by jm time and long/short trials before turnaround")
+
+
+amyg_df %>%
+  ggplot(., aes(x = trial_time, y = mean_hfa, group = trial_numeric, color = long_short_trial)) +
+  geom_line(alpha = .5) +
+  theme_bw()  +
+  ggtitle("individual trials jm time and long/short trials before turnaround")
+
+```
+## OFC
+
+```{r ofc-eda, fig.width=10, fig.height=5}
+
+ggthemr("solarized")
+
+
+ofc_df <- ofc_df %>%
+  mutate(long_short_trial = if_else(is.na(turnaround_time), "discard", if_else(turnaround_time <= 1.3, "short", "long"))) %>%
+  filter(trial_time >= 0)
+
+
+ofc_df %>%
+  group_by(trial_time) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_ls_hfa)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle("average hfa grouped by trial time")
+
+ofc_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_ls_hfa)) +
+  geom_line() +
+  theme_bw()  +
+  xlim(-2, 2) + ylim(-2, 2) +
+  ggtitle("average hfa grouped by time locked to turnaround")
+
+ofc_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_hfa, group = trial_numeric)) +
+  geom_line(alpha = .3) +
+  geom_line(aes(y = mean_ls_hfa), color = "black") +
+  theme_bw() +
+  xlim(-2, 2) +
+  ggtitle("average hfa grouped by trial time with individual trials")
+
+ofc_df %>%
+  group_by(trial_numeric) %>%
+  mutate(trial_time_tmp = round(jm_time - turnaround_time, 2)) %>%
+  ungroup() %>%
+  group_by(trial_time_tmp, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  ggplot(., aes(x = trial_time_tmp, y = mean_hfa, 
+                color = long_short_trial, group = trial_numeric)) +
+  geom_line(alpha = .3) +
+  geom_line(aes(y = mean_ls_hfa), color = "black") +
+  theme_bw() +
+  xlim(-2, 2) +
+  ggtitle("average hfa grouped by trial time and long/short trials with individual trials")
+
+
+ofc_df %>%
+  group_by(trial_time, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = trial_time, y = mean_ls_hfa, color = long_short_trial)) +
+  geom_line() +
+  theme_bw()  +
+  ggtitle("average hfa grouped by trial time and long/short trials")
+
+ofc_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_hfa, color = long_short_trial)) +
+  geom_line() +
+  theme_bw()  +
+  ggtitle("average hfa grouped by jm time and long/short trials")
+
+
+ofc_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  group_by(jm_time, long_short_trial) %>%
+  mutate(mean_ls_hfa = mean(mean_hfa, na.rm = T)) %>%
+  select(-mean_hfa, -trial_numeric) %>%
+  distinct() %>%
+  ggplot(., aes(x = jm_time, y = mean_ls_hfa, color = long_short_trial)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle("average hfa grouped by jm time and long/short trials before turnaround")
+
+
+ofc_df %>%
+  mutate(jm_time = round(jm_time, 1)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(jm_time <= 1.5) %>% # any longer and too few trials to interpret
+  ggplot(., aes(x = factor(jm_time), y = mean_hfa, fill = long_short_trial)) +
+  geom_point(color = "grey", position = position_dodge2(.5)) +
+  geom_boxplot(notch = T, color = "black") +
+  theme_bw()  +
+  ggtitle("average hfa grouped by jm time and long/short trials before turnaround")
+
+
+ofc_df %>%
+  ggplot(., aes(x = trial_time, y = mean_hfa, group = trial_numeric, color = long_short_trial)) +
+  geom_line(alpha = .5) +
+  theme_bw()  +
+  ggtitle("individual trials jm time and long/short trials before turnaround")
+
+```
+## Longitudinal Models
+
+### Insula
+
+```{r model-prep-isnula}
+
+long_insula_df <- insula_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(mean_hfa)) 
+
+a_tmp <- 2
+
+train_long_insula_df <- long_insula_df %>%
+  mutate(trial_numeric = factor(trial_numeric)) %>%
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time )) %>%
+  filter(!trial_numeric %in% sample(trial_numeric, 20))
+
+test_long_insula_df <- long_insula_df %>%
+  mutate(trial_numeric = factor(trial_numeric)) %>%
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time )) %>%
+  filter(!trial_numeric %in% train_long_insula_df$trial_numeric)
+
+```
+
+```{r model-basic}
+
+# fit model #
+time_model <- lme(mean_hfa ~ jm_time, 
+                  data = train_long_insula_df, 
+                  random = ~jm_time | trial_numeric)
+summary(time_model)
+
+# save predictions #
+train_long_insula_df$prediction <- predict(time_model, train_long_insula_df, type = "response")
+
+# plot predictions #
+simple_long_model_plot <- train_long_insula_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  rename("Predicted hfa" = prediction, "True hfa" = mean_hfa) %>%
+  pivot_longer(cols = c(`True hfa`, `Predicted hfa`), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_line() +
+  facet_wrap(~trial_numeric, nrow = 2, scales = "free_x") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        legend.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_color_manual(values = c("#E4635C", "#5BA6D6")) +
+  labs(x = "Trial Time", y = "", color = "") +
+  ggtitle("Linear Model Predicting Trial hfa")
+
+simple_long_model_plot
+
+```
+
+```{r model-single_spline}
+
+# fit model #
+single_split_model <- lme(mean_hfa ~  ns(jm_time, knots = c(.7)), 
+                          data = train_long_insula_df, 
+                          random = ~jm_time | trial_numeric)
+
+ summary(single_split_model)
+
+# save predictions #
+train_long_insula_df$prediction <- predict(single_split_model, train_long_insula_df, type = "response")
+
+# plot predictions #
+train_long_insula_df %>%
+  filter(long_short_trial == "long") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_hfa, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+train_long_insula_df %>%
+  filter(long_short_trial == "short") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_hfa, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+```
+
+
+
+
+```{r bic-insula}
+
+BIC(time_model, single_split_model)
+AIC(time_model, single_split_model)
+
+```
+
+
+
+```{r jm-fits-prep}
+
+cox_df <- train_long_insula_df %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+```
+
+```{r jm-fits-basic}
+
+# joint model #
+jm_spline_fit <- jm(cox_fit, list(single_split_model), 
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_spline_fit)
+
+
+```
+
+
+```{r jm_amyg_ofc_ins_fit}
+
+test_cox_df <- test_long_insula_df %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# get predictions
+test_predictions <- predict_on_test_set(jm_spline_fit, test_long_insula_df, test_cox_df)
+
+# plot prediction plot
+ggthemr("solarized")
+plot_survival_predictions(test_predictions, "BJH027")
+
+# plot correlation plot
+cor <- plot_correlation_plot(test_predictions, "BJH027")
+
+
+auc <- c()
+ici <- c()
+e50 <- c()
+e90 <- c()
+brier <- c()
+timepoints <- unique(test_cox_df$turnaround_time)
+test_times <- quantile(timepoints[timepoints > .5], probs = c(.4, .5, .6))
+for(pred_time in test_times){
+  # AUC #
+  tmp_auc <- tvAUC(jm_amyg_ofc_ins_fit, newdata = test_long_data, Tstart = .5,
+               Thoriz = pred_time, idVar = 'trial_numeric')
+  auc <- c(auc, tmp_auc$auc)
+
+  ## Calibration ##
+  toi <- pred_time - .5
+  # calibration plot
+  calibration_plot(jm_amyg_ofc_ins_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  # calibration metrics
+  tmp_cal <- calibration_metrics(jm_amyg_ofc_ins_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+  ici <- c(ici, tmp_cal[1])
+  e50 <- c(e50, tmp_cal[2])
+  e90 <- c(e90, tmp_cal[3])
+
+  # rbier scores
+  tmp_brier <- tvBrier(jm_amyg_ofc_ins_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+  brier <- c(brier, tmp_brier$Brier)
+
+}
+
+
+pred_simple <- predict(jm_spline_fit, newdata = test_long_insula_df, return_newdata = TRUE, outcomes = 1:3)
+plot(pred_simple)
+
+```
+
+
+### Amygdala
+
+```{r model-prep-isnula}
+
+long_amyg_df <- amyg_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(mean_hfa)) 
+
+
+a_tmp <- 1
+
+train_long_amyg_df <- long_amyg_df %>%
+  mutate(trial_numeric = factor(trial_numeric)) %>%
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time )) %>%
+  filter(!trial_numeric %in% sample(trial_numeric, 20))
+
+test_long_amyg_df <- long_amyg_df %>%
+  mutate(trial_numeric = factor(trial_numeric)) %>%
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time )) %>%
+  filter(!trial_numeric %in% train_long_amyg_df$trial_numeric)
+```
+
+```{r model-basic}
+
+# fit model #
+time_model <- lme(mean_hfa ~ jm_time, 
+                  data = train_long_amyg_df, 
+                  random = ~jm_time | trial_numeric)
+summary(time_model)
+
+# save predictions #
+train_long_amyg_df$prediction <- predict(time_model, train_long_amyg_df, type = "response")
+
+# plot predictions #
+simple_long_model_plot <- train_long_amyg_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  rename("Predicted hfa" = prediction, "True hfa" = mean_hfa) %>%
+  pivot_longer(cols = c(`True hfa`, `Predicted hfa`), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_line() +
+  facet_wrap(~trial_numeric, nrow = 2, scales = "free_x") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        legend.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_color_manual(values = c("#E4635C", "#5BA6D6")) +
+  labs(x = "Trial Time", y = "", color = "") +
+  ggtitle("Linear Model Predicting Trial hfa")
+
+simple_long_model_plot
+
+```
+
+```{r model-single_spline}
+
+# fit model #
+single_split_model <- lme(mean_hfa ~  ns(jm_time, knots = c(.7)), 
+                          data = train_long_amyg_df, 
+                          random = ~jm_time | trial_numeric)
+summary(single_split_model)
+
+# save predictions #
+train_long_amyg_df$prediction <- predict(single_split_model, train_long_amyg_df, type = "response")
+
+# plot predictions #
+train_long_amyg_df %>%
+  filter(long_short_trial == "long") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_hfa, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+train_long_amyg_df %>%
+  filter(long_short_trial == "short") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_hfa, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+```
+
+
+
+
+
+
+```{r model-cin-cos}
+
+# fit model #
+sin_cos_model <- lme(mean_hfa ~ sin_term + cos_term, data = train_long_amyg_df, 
+                     random = ~ jm_time | trial_numeric)
+summary(sin_cos_model)
+
+
+# save predictions #
+train_long_amyg_df$prediction <- predict(sin_cos_model, train_long_amyg_df, type = "response")
+
+# plot predictions #
+train_long_amyg_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_hfa, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+cos_model <- lme(mean_hfa ~  cos_term, data = train_long_amyg_df, random = ~ jm_time | trial_numeric)
+summary(cos_model)
+
+sin_model <- lme(mean_hfa ~  sin_term, data = train_long_amyg_df, random = ~ jm_time | trial_numeric)
+summary(sin_model)
+
+
+```
+
+```{r bic-amyg}
+
+BIC(time_model, single_split_model, sin_cos_model, cos_model, sin_model)
+AIC(time_model, single_split_model, sin_cos_model, cos_model, sin_model)
+
+```
+
+
+
+```{r jm-fits-prep}
+
+cox_df <- train_long_amyg_df %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+```
+
+```{r jm-fits-basic}
+
+# joint model #
+jm_cos_fit <- jm(cox_fit, list(sin_cos_model), 
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_cos_fit)
+
+
+```
+
+
+### OFC
+
+```{r model-prep-ofc}
+
+long_ofc_df <- ofc_df %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(mean_hfa)) 
+
+a_tmp <- 1
+
+train_long_ofc_df <- long_ofc_df %>%
+  mutate(trial_numeric = factor(trial_numeric)) %>%
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time )) %>%
+  filter(!trial_numeric %in% sample(trial_numeric, 20))
+
+test_long_ofc_df <- long_ofc_df %>%
+  mutate(trial_numeric = factor(trial_numeric)) %>%
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time )) %>%
+  filter(!trial_numeric %in% train_long_ofc_df$trial_numeric)
+
+
+```
+
+```{r model-basic}
+
+# fit model #
+time_model <- lme(mean_hfa ~ jm_time, 
+                  data = train_long_ofc_df, 
+                  random = ~jm_time | trial_numeric)
+summary(time_model)
+
+# save predictions #
+train_long_ofc_df$prediction <- predict(time_model, train_long_ofc_df, type = "response")
+
+# plot predictions #
+simple_long_model_plot <- long_ofc_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 10)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  rename("Predicted hfa" = prediction, "True hfa" = mean_hfa) %>%
+  pivot_longer(cols = c(`True hfa`, `Predicted hfa`), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_line() +
+  facet_wrap(~trial_numeric, nrow = 2, scales = "free_x") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        legend.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_color_manual(values = c("#E4635C", "#5BA6D6")) +
+  labs(x = "Trial Time", y = "", color = "") +
+  ggtitle("Linear Model Predicting Trial hfa")
+
+simple_long_model_plot
+
+```
+
+```{r model-single_spline}
+
+# fit model #
+single_split_model <- lme(mean_hfa ~  ns(jm_time, knots = c(.5)), 
+                          data = train_long_ofc_df, 
+                          random = ~jm_time | trial_numeric)
+summary(single_split_model)
+
+# save predictions #
+train_long_ofc_df$prediction <- predict(single_split_model, train_long_ofc_df, type = "response")
+
+# plot predictions #
+train_long_ofc_df %>%
+  filter(long_short_trial == "long") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_hfa, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+train_long_ofc_df %>%
+  filter(long_short_trial == "short") %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_hfa, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+```
+
+
+
+
+
+
+```{r model-cin-cos}
+
+# fit model #
+sin_cos_model <- lme(mean_hfa ~ sin_term + cos_term, data = train_long_ofc_df, 
+                     random = ~ jm_time | trial_numeric)
+summary(sin_cos_model)
+
+
+# save predictions #
+train_long_ofc_df$prediction <- predict(sin_cos_model, train_long_ofc_df, type = "response")
+
+# plot predictions #
+train_long_ofc_df %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_hfa, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+cos_model <- lme(mean_hfa ~  cos_term, data = train_long_ofc_df, random = ~ jm_time | trial_numeric)
+summary(cos_model)
+sin_model <- lme(mean_hfa ~  sin_term, data = train_long_ofc_df, random = ~ jm_time | trial_numeric)
+summary(sin_model)
+
+```
+
+```{r bic-ofc}
+
+BIC(time_model, single_split_model, sin_cos_model, cos_model, sin_model)
+AIC(time_model, single_split_model, sin_cos_model, cos_model, sin_model)
+
+```
+
+
+
+```{r jm-fits-prep}
+
+cox_df <- train_long_ofc_df %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+```
+
+```{r jm-fits-basic}
+
+# joint model #
+jm_cos_fit <- jm(cox_fit, list(sin_cos_model), 
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_cos_fit)
+
+
+```
+
+
+```{r merge-brain-data}
+
+# merge #
+joint_df <- full_join(long_ofc_df %>% rename(ofc_hfa = mean_hfa), long_insula_df %>% rename(insula_hfa = mean_hfa))
+joint_df <- full_join(joint_df, long_amyg_df %>% rename(amyg_hfa = mean_hfa))
+
+
+# long models df #
+a_tmp <- 1
+train_long_data <- joint_df %>% 
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time )) %>%
+  rowwise() %>%
+  mutate(amyg_minus_ofc = amyg_hfa - ofc_hfa) %>%
+  mutate(insula_minus_ofc = insula_hfa - ofc_hfa) %>%
+  ungroup() %>%
+  filter(!trial_numeric %in% sample(trial_numeric, 20))
+test_long_data <- joint_df %>% 
+  mutate(sin_term = sin(a_tmp * pi * jm_time )) %>%
+  mutate(cos_term = cos(a_tmp * pi * jm_time )) %>%
+  rowwise() %>%
+  mutate(amyg_minus_ofc = amyg_hfa - ofc_hfa) %>%
+  mutate(insula_minus_ofc = insula_hfa - ofc_hfa) %>%
+  ungroup() %>%
+  filter(!trial_numeric %in% train_long_data$trial_numeric)
+
+# long_models #
+insula_model <- lme(insula_hfa ~ sin_term, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric)
+amyg_model <- lme(amyg_hfa ~ sin_term, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric)
+ofc_model <- lme(ofc_hfa ~ sin_term, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric)
+
+# cox model #
+cox_df <- train_long_data %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+
+# joint model #
+jm_amyg_ofc_ins_fit <- jm(cox_fit, list(insula_model, amyg_model, ofc_model), 
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_amyg_ofc_ins_fit)
+
+
+# joint model #
+jm_amyg_ofc_ins_fit2 <- update(jm_amyg_ofc_ins_fit, functional_forms = list('insula_hfa' = ~area(insula_hfa),
+                                                                            'amyg_hfa' = ~area(amyg_hfa),
+                                                                            'ofc_hfa' = ~area(ofc_hfa)))
+summary(jm_amyg_ofc_ins_fit2)
+
+```
+
+```{r diff-model}
+control = lmeControl(maxIter = 400000, niterEM = 400000, msMaxIter = 400000)
+# long_models #
+insula_ofc_model <- lme(insula_minus_ofc ~ jm_time, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric, control = control)
+amyg_ofc_model <- lme(amyg_minus_ofc ~ jm_time, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric)
+insula_model <- lme(insula_hfa ~ ns(jm_time, knots=c(.7)), data = train_long_data, 
+                     random = ~ ns(jm_time, knots=c(.7)) | trial_numeric)
+amyg_model <- lme(amyg_hfa ~ ns(jm_time, knots=c(.7)), data = train_long_data, 
+                     random = ~ ns(jm_time, knots=c(.7)) | trial_numeric)
+ofc_model <- lme(ofc_hfa ~ ns(jm_time, knots=c(.7)), data = train_long_data, 
+                     random = ~ ns(jm_time, knots=c(.7))  | trial_numeric)
+
+summary(insula_ofc_model)
+summary(amyg_ofc_model)
+
+summary(insula_model)
+summary(ofc_model)
+summary(amyg_model)
+
+
+# cox model #
+cox_df <- train_long_data %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+
+# joint model #
+jm_amyg_ofc_ins_fit <- jm(cox_fit, list(insula_ofc_model, amyg_ofc_model), 
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_amyg_ofc_ins_fit)
+
+# joint model 2 #
+jm_amyg_ofc_ins_fit2 <- update(jm_amyg_ofc_ins_fit, functional_forms = list('insula_minus_ofc' = ~slope(insula_minus_ofc),
+                                                                            'amyg_minus_ofc' = ~slope(amyg_minus_ofc)))
+summary(jm_amyg_ofc_ins_fit2)
+
+
+# joint model 3 #
+jm_amyg_ofc_ins_fit3 <- update(jm_amyg_ofc_ins_fit, functional_forms = list('insula_minus_ofc' = ~area(insula_minus_ofc),
+                                                                            'amyg_minus_ofc' = ~area(amyg_minus_ofc)))
+summary(jm_amyg_ofc_ins_fit3)
+
+```
+
+
+```{r jm_amyg_ofc_ins_fit}
+
+test_cox_df <- test_long_data %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# get predictions
+test_predictions <- predict_on_test_set(jm_amyg_ofc_ins_fit, test_long_data, test_cox_df)
+
+# plot prediction plot
+ggthemr("solarized")
+plot_survival_predictions(test_predictions, "BJH027")
+
+# plot correlation plot
+cor <- plot_correlation_plot(test_predictions, "BJH027")
+
+
+auc <- c()
+ici <- c()
+e50 <- c()
+e90 <- c()
+brier <- c()
+timepoints <- unique(test_cox_df$turnaround_time)
+test_times <- quantile(timepoints[timepoints > .5], probs = c(.4, .5, .6))
+for(pred_time in test_times){
+  # AUC #
+  tmp_auc <- tvAUC(jm_amyg_ofc_ins_fit, newdata = test_long_data, Tstart = .5,
+               Thoriz = pred_time, idVar = 'trial_numeric')
+  auc <- c(auc, tmp_auc$auc)
+
+  ## Calibration ##
+  toi <- pred_time - .5
+  # calibration plot
+  calibration_plot(jm_amyg_ofc_ins_fit, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  # calibration metrics
+  tmp_cal <- calibration_metrics(jm_amyg_ofc_ins_fit, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+  ici <- c(ici, tmp_cal[1])
+  e50 <- c(e50, tmp_cal[2])
+  e90 <- c(e90, tmp_cal[3])
+
+  # rbier scores
+  tmp_brier <- tvBrier(jm_amyg_ofc_ins_fit, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+  brier <- c(brier, tmp_brier$Brier)
+
+}
+
+
+pred_simple <- predict(jm_amyg_ofc_ins_fit, newdata = train_long_data, return_newdata = TRUE, outcomes = 1:3)
+plot(pred_simple, outcomes = 1:2)
+
+```
+
+```{r jm_amyg_ofc_ins_fit2}
+
+test_cox_df <- test_long_data %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# get predictions
+test_predictions <- predict_on_test_set(jm_amyg_ofc_ins_fit2, test_long_data, test_cox_df)
+
+# plot prediction plot
+ggthemr("solarized")
+plot_survival_predictions(test_predictions, "BJH027")
+
+# plot correlation plot
+cor <- plot_correlation_plot(test_predictions, "BJH027")
+
+
+auc <- c()
+ici <- c()
+e50 <- c()
+e90 <- c()
+brier <- c()
+timepoints <- unique(test_cox_df$turnaround_time)
+test_times <- quantile(timepoints[timepoints > .5], probs = c(.4, .5, .6))
+for(pred_time in test_times){
+  # AUC #
+  tmp_auc <- tvAUC(jm_amyg_ofc_ins_fit2, newdata = test_long_data, Tstart = .5,
+               Thoriz = pred_time, idVar = 'trial_numeric')
+  auc <- c(auc, tmp_auc$auc)
+
+  ## Calibration ##
+  toi <- pred_time - .5
+  # calibration plot
+  calibration_plot(jm_amyg_ofc_ins_fit2, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  # calibration metrics
+  tmp_cal <- calibration_metrics(jm_amyg_ofc_ins_fit2, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+  ici <- c(ici, tmp_cal[1])
+  e50 <- c(e50, tmp_cal[2])
+  e90 <- c(e90, tmp_cal[3])
+
+  # rbier scores
+  tmp_brier <- tvBrier(jm_amyg_ofc_ins_fit2, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+  brier <- c(brier, tmp_brier$Brier)
+
+}
+
+
+pred_simple <- predict(jm_amyg_ofc_ins_fit2, newdata = train_long_data, return_newdata = TRUE, outcomes = 1:3)
+plot(pred_simple, outcomes = 1:2)
+
+```
+
+
+```{r jm_amyg_ofc_ins_fit3}
+
+test_cox_df <- test_long_data %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# get predictions
+test_predictions <- predict_on_test_set(jm_amyg_ofc_ins_fit3, test_long_data, test_cox_df)
+
+# plot prediction plot
+ggthemr("solarized")
+plot_survival_predictions(test_predictions, "BJH027")
+
+# plot correlation plot
+cor <- plot_correlation_plot(test_predictions, "BJH027")
+
+
+auc <- c()
+ici <- c()
+e50 <- c()
+e90 <- c()
+brier <- c()
+timepoints <- unique(test_cox_df$turnaround_time)
+test_times <- quantile(timepoints[timepoints > .5], probs = c(.4, .5, .6))
+for(pred_time in test_times){
+  # AUC #
+  tmp_auc <- tvAUC(jm_amyg_ofc_ins_fit3, newdata = test_long_data, Tstart = .5,
+               Thoriz = pred_time, idVar = 'trial_numeric')
+  auc <- c(auc, tmp_auc$auc)
+
+  ## Calibration ##
+  toi <- pred_time - .5
+  # calibration plot
+  calibration_plot(jm_amyg_ofc_ins_fit3, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  # calibration metrics
+  tmp_cal <- calibration_metrics(jm_amyg_ofc_ins_fit3, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+  ici <- c(ici, tmp_cal[1])
+  e50 <- c(e50, tmp_cal[2])
+  e90 <- c(e90, tmp_cal[3])
+
+  # rbier scores
+  tmp_brier <- tvBrier(jm_amyg_ofc_ins_fit3, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+  brier <- c(brier, tmp_brier$Brier)
+
+}
+
+
+pred_simple <- predict(jm_amyg_ofc_ins_fit3, newdata = train_long_data, return_newdata = TRUE, outcomes = 1:3)
+plot(pred_simple, outcomes = 1:2)
+
+```
+
+
+```{r interaction-model}
+
+train_long_data <- train_long_data %>% 
+  mutate(ofc_amyg_hfa = ofc_hfa * amyg_hfa) %>%
+  mutate(ofc_insula_hfa = ofc_hfa * insula_hfa)
+
+test_long_data <- test_long_data %>% 
+  mutate(ofc_amyg_hfa = ofc_hfa * amyg_hfa) %>%
+  mutate(ofc_insula_hfa = ofc_hfa * insula_hfa)
+
+# long_models #
+insula_model <- lme(insula_hfa ~ sin_term, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric)
+amyg_model <- lme(amyg_hfa ~ sin_term, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric)
+ofc_model <- lme(ofc_hfa ~ sin_term, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric)
+amyg_ofc_model <- lme(ofc_hfa ~ sin_term * amyg_hfa, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric)
+insula_ofc_model <- lme(ofc_insula_hfa ~ sin_term, data = train_long_data, 
+                     random = ~ jm_time | trial_numeric)
+
+
+# joint model #
+jm_amyg_ofc_fit <- jm(cox_fit, list(amyg_model, amyg_ofc_model), 
+                      functional_forms = list('ofc_hfa' = ~value(ofc_hfa) + value(ofc_hfa):amyg_hfa,
+                                              'amyg_hfa' = ~value(amyg_hfa) ),
+                       time_var = "jm_time", data_Surv = cox_df, 
+                       n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_amyg_ofc_fit)
+
+
+# joint model #
+jm_amyg_ofc_ins_fit2 <- update(jm_amyg_ofc_ins_fit, functional_forms = list('insula_hfa' = ~area(insula_hfa),
+                                                                            'amyg_hfa' = ~area(amyg_hfa),
+                                                                            'ofc_hfa' =  ~area(ofc_hfa)
+                                                                            ))
+summary(jm_amyg_ofc_ins_fit2)
+
+
+```
+
+
+## Indvidual electrodes
+
+```{r ofc-pred-models}
+
+# long_models #
+insula_ofc_model <- lme(insula_hfa ~ jm_time + al1_hfa, data = combined_elec_df, 
+                     random = ~ jm_time | trial_numeric)
+amyg_ofc_model <- lme(amyg_hfa ~ jm_time + al10_hfa, data = combined_elec_df, 
+                     random = ~ jm_time | trial_numeric)
+
+summary(insula_ofc_model)
+summary(amyg_ofc_model)
+
+# cox model #
+cox_df <- combined_elec_df %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+
+# joint model #
+jm_amyg_ofc_fit <- jm(cox_fit, list(insula_ofc_model, amyg_ofc_model),
+                       time_var = "jm_time", data_Surv = cox_df, 
+                       n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_amyg_ofc_fit)
+
+
+# joint model #
+jm_amyg_ofc_fit2 <- update(jm_amyg_ofc_fit, functional_forms = list('insula_hfa' = ~slope(insula_hfa),
+                                                                            'amyg_hfa' = ~slope(amyg_hfa) ))
+summary(jm_amyg_ofc_fit2)
+
+
+```
+
+
+
+```{r, fig.width = 15, fig.height = 10}
+
+# merge #
+long_ofc_df <- long_ofc_df %>%
+  pivot_wider(values_from = mean_hfa, names_from = electrode) %>%
+  rename(al1_hfa = `AL1-AL2`, al10_hfa = `AL10-AL11`)
+combined_elec_df <- full_join(long_ofc_df, long_insula_df %>% rename(insula_hfa = mean_hfa) %>% select(-electrode))
+combined_elec_df <- full_join(combined_elec_df, long_amyg_df %>% rename(amyg_hfa = mean_hfa) %>% select(-electrode))
+
+
+train_long_correl_data <- combined_elec_df %>%
+  # filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  group_by(trial_numeric) %>%
+  mutate(al1_insula = cor(al1_hfa, insula_hfa)) %>%
+  mutate(al10_amyg = cor(al10_hfa, amyg_hfa)) %>%
+  ungroup() %>%
+  select(trial_numeric, al1_insula, al10_amyg, turnaround_time) %>%
+  distinct()
+
+
+lm(log(turnaround_time) ~ al1_insula, data = train_long_correl_data) %>% summary()
+lm(log(turnaround_time) ~ al10_amyg, data = train_long_correl_data) %>% summary()
+
+
+trial_set <- sample(combined_elec_df$trial_numeric, 20)
+
+combined_elec_df %>%
+  filter(trial_numeric %in% trial_set) %>%
+  group_by(trial_numeric) %>%
+  mutate(al1_insula = cor(al1_hfa, insula_hfa)) %>%
+  mutate(al10_amyg = cor(al10_hfa, amyg_hfa)) %>%
+  ungroup() %>%
+  mutate(trial_name = paste("Trial", trial_numeric, " ~ ", round(turnaround_time, 2), ": ", round(al10_amyg, 2))) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_name = factor(trial_name, levels = unique(trial_name))) %>%
+  pivot_longer(cols = c(al10_hfa, amyg_hfa), names_to = "region", values_to = "hfa") %>%
+  ggplot(., aes(x = jm_time, y = hfa, color = region)) +
+  geom_point() + 
+  geom_smooth(method = "lm", formula = 'y~x', color = "black", se = F) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_name, scales = "free") 
+
+
+combined_elec_df %>%
+  filter(trial_numeric %in% trial_set) %>%
+  group_by(trial_numeric) %>%
+  mutate(al1_insula = cor(al1_hfa, insula_hfa)) %>%
+  mutate(al10_amyg = cor(al10_hfa, amyg_hfa)) %>%
+  ungroup() %>%
+  mutate(trial_name = paste("Trial", trial_numeric, " ~ ", round(turnaround_time, 2), ": ", round(al10_amyg, 2))) %>%
+  arrange(al10_amyg) %>%
+  mutate(trial_name = factor(trial_name, levels = unique(trial_name))) %>%
+  mutate(interaction = al10_hfa - amyg_hfa) %>%
+  ggplot(., aes(x = jm_time, y = interaction)) +
+  geom_point() + 
+  geom_smooth(method = "lm", formula = 'y~x', color = "black", se = F) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~trial_name) 
+
+```
+
+
+```{r, fig.width = 15, fig.height = 25}
+
+combined_elec_df %>%
+  filter(long_short_trial == "long") %>%
+  filter(jm_time <2) %>%
+  ggplot(., aes(x = al10_hfa, y = amyg_hfa)) +
+  geom_point() + 
+  geom_smooth(method = "lm", formula = 'y~x', color = "black", se = F) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~jm_time, ncol = 6) 
+
+combined_elec_df %>%
+  filter(long_short_trial == "short") %>%
+  filter(jm_time <2) %>%
+  ggplot(., aes(x = al10_hfa, y = amyg_hfa)) +
+  geom_point() + 
+  geom_smooth(method = "lm", formula = 'y~x', color = "black", se = F) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~jm_time, ncol = 6) 
+
+
+combined_elec_df %>%
+  filter(jm_time <2) %>%
+  ggplot(., aes(x = al10_hfa, y = amyg_hfa, color = long_short_trial, fill = long_short_trial)) +
+  geom_point() + 
+  geom_smooth(method = "lm", formula = 'y~x',  se = F) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~jm_time, ncol = 6) 
+
+
+# they become more correlated over the course of the trial!
+
+```
+

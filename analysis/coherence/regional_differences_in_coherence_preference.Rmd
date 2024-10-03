@@ -1,0 +1,417 @@
+---
+title: "Differential Average Connectivity"
+output: html_document
+date: "2024-06-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(blme)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+## Region Pair Differences
+
+This script looks for preferential coherence within a region across the other possible pairs.
+
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_ghost_connectivity.csv"))
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
+```
+
+
+```{r split-mfg-sfg}
+
+regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
+
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+conn_detailed_df <- conn_df %>%
+  mutate(
+    first_pair = gsub("_to_.*", "", pairs),
+    second_pair = gsub(".*_to_", "", pairs),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(conn_detailed_df$detailed_first_region)
+table(conn_detailed_df$detailed_second_region)
+
+# final rename
+conn_detailed_df <- conn_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region)
+
+
+## FDr correct/make symmetric
+conn_clean_df <- prep_detailed_conn_allsubs_plot_df(conn_detailed_df)
+
+```
+
+
+
+```{r prep-sig-df}
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("theta" = c(.25, .25, .25))
+
+# use sig electrodes based on full dataset
+sig_df <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+sig_electrodes <- sig_df %>%
+  mutate(sig_key = paste0(subject, pairs, metric)) %>%
+  pull(sig_key)
+
+# filter to hippocampus connections #
+sig_test_df <- conn_clean_df %>%
+  filter(time >= -2 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  group_by(key) %>%
+  mutate(average_connectivity = mean(connectivity)) %>%
+  select(average_connectivity, second_region, pairs, subject, first_region, second_region, first_pair, second_pair) %>%
+  distinct() %>%
+  mutate(ofc = if_else(second_region == "OFC", "ofc", "not_ofc")) %>%
+  mutate(amyg = if_else(second_region == "Amygdala", "amyg", "not_amyg")) %>%
+  mutate(hc = if_else(second_region == "Hippocampus", "hc", "not_hc")) %>%
+  mutate(insula = if_else(second_region == "Insula", "insula", "not_insula")) %>%
+  mutate(mfg = if_else(second_region == "MFG", "mfg", "not_mfg")) %>%
+  mutate(sfg = if_else(second_region == "SFG", "sfg", "not_sfg")) %>%
+  mutate(cing = if_else(second_region == "Ant. Cingulate", "cing", "not_cing")) %>%
+  ungroup()
+
+```
+
+```{r ofc-diff-conn}
+
+### OFC ##
+ofc_df <- sig_test_df %>%
+  filter(first_region == "OFC") %>%
+  filter(second_region != "SFG")
+
+ofc_amyg_model <- blmer(log(average_connectivity) ~ amyg + (1 + amyg|subject), data = ofc_df %>% filter(subject %in% unique(amyg_df$subject)), control = control, start = start_values)
+summary(ofc_amyg_model)
+ofc_amyg_ci <- bayestestR::ci(ofc_amyg_model)
+ofc_amyg_ci
+
+ofc_hc_model <- blmer(log(average_connectivity) ~ hc + (1 + hc|subject), data =  ofc_df %>% filter(subject %in% unique(hc_df$subject)), control = control, start = start_values)
+summary(ofc_hc_model)
+ofc_hc_ci <- bayestestR::ci(ofc_hc_model)
+ofc_hc_ci
+
+ofc_insula_model <- blmer(log(average_connectivity) ~ insula + (1 + insula|subject), data = ofc_df  %>% filter(subject %in% unique(insula_df$subject)), control = control, start = start_values)
+summary(ofc_insula_model)
+ofc_insula_ci <- bayestestR::ci(ofc_insula_model)
+ofc_insula_ci
+
+ofc_mfg_model <- blmer(log(average_connectivity) ~ mfg + (1 + mfg|subject), data = ofc_df %>% filter(subject %in% unique(mfg_df$subject)), control = control, start = start_values)
+summary(ofc_mfg_model)
+ofc_mfg_ci <- bayestestR::ci(ofc_mfg_model)
+ofc_mfg_ci
+
+ofc_cing_model <- blmer(log(average_connectivity) ~ cing + (1 + cing|subject), data = ofc_df %>% filter(subject %in% unique(cing_df$subject)), control = control, start = start_values)
+summary(ofc_cing_model)
+ofc_cing_ci <- bayestestR::ci(ofc_cing_model)
+ofc_cing_ci
+
+```
+
+
+
+```{r hc-diff-conn}
+
+### HC ##
+hc_df <- sig_test_df %>%
+  filter(first_region == "Hippocampus") %>%
+  filter(second_region != "SFG") %>%
+  mutate(second_region = factor(second_region, levels = c("Insula", "Amygdala", "OFC", "MFG", "Ant. Cingulate"))) 
+
+hc_amyg_model <- blmer(log(average_connectivity) ~ amyg + (1 + amyg|subject), data = hc_df %>% filter(subject %in% unique(amyg_df$subject)), control = control, start = start_values)
+summary(hc_amyg_model)
+hc_amyg_ci <- bayestestR::ci(hc_amyg_model)
+hc_amyg_ci
+
+hc_ofc_model <- blmer(log(average_connectivity) ~ ofc + (1 + ofc|subject), data = hc_df %>% filter(subject %in% unique(ofc_df$subject)), control = control, start = start_values)
+summary(hc_ofc_model)
+hc_ofc_ci <- bayestestR::ci(hc_ofc_model)
+hc_ofc_ci
+
+hc_insula_model <- blmer(log(average_connectivity) ~ insula + (1 + insula|subject), data = hc_df  %>% filter(subject %in% unique(insula_df$subject)), control = control, start = start_values)
+summary(hc_insula_model)
+hc_insula_ci <- bayestestR::ci(hc_insula_model)
+hc_insula_ci
+
+hc_mfg_model <- blmer(log(average_connectivity) ~ mfg + (1 + mfg|subject), data = hc_df %>% filter(subject %in% unique(mfg_df$subject)), control = control, start = start_values)
+summary(hc_mfg_model)
+hc_mfg_ci <- bayestestR::ci(hc_mfg_model)
+hc_mfg_ci
+
+hc_cing_model <- blmer(log(average_connectivity) ~ cing + (1 + cing|subject), data = hc_df %>% filter(subject %in% unique(cing_df$subject)), control = control, start = start_values)
+summary(hc_cing_model)
+hc_cing_ci <- bayestestR::ci(hc_cing_model)
+hc_cing_ci
+
+```
+
+```{r amyg-diff-conn}
+
+### HC ##
+amyg_df <- sig_test_df %>%
+  filter(first_region == "Amygdala") %>%
+  filter(second_region != "SFG") %>%
+  mutate(second_region = factor(second_region, levels = c("Insula", "Amygdala", "OFC", "MFG", "Ant. Cingulate"))) 
+
+amyg_hc_model <- blmer(log(average_connectivity) ~ hc + (1 + hc|subject), data =  amyg_df %>% filter(subject %in% unique(hc_df$subject)), control = control, start = start_values)
+summary(amyg_hc_model)
+amyg_hc_ci <- bayestestR::ci(amyg_hc_model)
+amyg_hc_ci
+
+amyg_ofc_model <- blmer(log(average_connectivity) ~ ofc + (1 + ofc|subject), data = amyg_df %>% filter(subject %in% unique(ofc_df$subject)), control = control, start = start_values)
+summary(amyg_ofc_model)
+amyg_ofc_ci <- bayestestR::ci(amyg_ofc_model)
+amyg_ofc_ci
+
+amyg_insula_model <- blmer(log(average_connectivity) ~ insula + (1 + insula|subject), data = amyg_df  %>% filter(subject %in% unique(insula_df$subject)), control = control, start = start_values)
+summary(amyg_insula_model)
+amyg_insula_ci <- bayestestR::ci(amyg_insula_model)
+amyg_insula_ci
+
+amyg_mfg_model <- blmer(log(average_connectivity) ~ mfg + (1 + mfg|subject), data = amyg_df %>% filter(subject %in% unique(mfg_df$subject)), control = control, start = start_values)
+summary(amyg_mfg_model)
+amyg_mfg_ci <- bayestestR::ci(amyg_mfg_model)
+amyg_mfg_ci
+
+amyg_cing_model <- blmer(log(average_connectivity) ~ cing + (1 + cing|subject), data = amyg_df %>% filter(subject %in% unique(cing_df$subject)), control = control, start = start_values)
+summary(amyg_cing_model)
+amyg_cing_ci <- bayestestR::ci(amyg_cing_model)
+amyg_cing_ci
+
+```
+
+```{r insula-diff-conn}
+
+### Insula ##
+insula_df <- sig_test_df %>%
+  filter(first_region == "Insula") %>%
+  filter(second_region != "SFG") %>%
+  mutate(second_region = factor(second_region, levels = c("Insula", "Amygdala", "OFC", "MFG", "Ant. Cingulate"))) 
+
+insula_hc_model <- blmer(log(average_connectivity) ~ hc + (1 + hc|subject), data =  insula_df %>% filter(subject %in% unique(hc_df$subject)), control = control, start = start_values)
+summary(insula_hc_model)
+insula_hc_ci <- bayestestR::ci(insula_hc_model)
+insula_hc_ci
+
+insula_ofc_model <- blmer(log(average_connectivity) ~ ofc + (1 + ofc|subject), data = insula_df %>% filter(subject %in% unique(ofc_df$subject)), control = control, start = start_values)
+summary(insula_ofc_model)
+insula_ofc_ci <- bayestestR::ci(insula_ofc_model)
+insula_ofc_ci
+
+insula_amyg_model <- blmer(log(average_connectivity) ~ amyg + (1 + amyg|subject), data = insula_df %>% filter(subject %in% unique(amyg_df$subject)), control = control, start = start_values)
+summary(insula_amyg_model)
+insula_amyg_ci <- bayestestR::ci(insula_amyg_model)
+insula_amyg_ci
+
+insula_mfg_model <- blmer(log(average_connectivity) ~ mfg + (1 + mfg|subject), data = insula_df %>% filter(subject %in% unique(mfg_df$subject)), control = control, start = start_values)
+summary(insula_mfg_model)
+insula_mfg_ci <- bayestestR::ci(insula_mfg_model)
+insula_mfg_ci
+
+insula_cing_model <- blmer(log(average_connectivity) ~ cing + (1 + cing|subject), data = insula_df %>% filter(subject %in% unique(cing_df$subject)), control = control, start = start_values)
+summary(insula_cing_model)
+insula_cing_ci <- bayestestR::ci(insula_cing_model)
+insula_cing_ci
+
+```
+
+```{r cing-diff-conn}
+
+### Insula ##
+cing_df <- sig_test_df %>%
+  filter(first_region == "Ant. Cingulate") %>%
+  filter(second_region != "SFG") %>%
+  mutate(second_region = factor(second_region, levels = c("Insula", "Amygdala", "OFC", "MFG", "Ant. Cingulate"))) 
+
+cing_hc_model <- blmer(log(average_connectivity) ~ hc + (1 + hc|subject), data =  cing_df %>% filter(subject %in% unique(hc_df$subject)), control = control, start = start_values)
+summary(cing_hc_model)
+cing_hc_ci <- bayestestR::ci(cing_hc_model)
+cing_hc_ci
+
+cing_ofc_model <- blmer(log(average_connectivity) ~ ofc + (1 + ofc|subject), data = cing_df %>% filter(subject %in% unique(ofc_df$subject)), control = control, start = start_values)
+summary(cing_ofc_model)
+cing_ofc_ci <- bayestestR::ci(cing_ofc_model)
+cing_ofc_ci
+
+cing_amyg_model <- blmer(log(average_connectivity) ~ amyg + (1 + amyg|subject), data = cing_df %>% filter(subject %in% unique(amyg_df$subject)), control = control, start = start_values)
+summary(cing_amyg_model)
+cing_amyg_ci <- bayestestR::ci(cing_amyg_model)
+cing_amyg_ci
+
+cing_mfg_model <- blmer(log(average_connectivity) ~ mfg + (1 + mfg|subject), data = cing_df %>% filter(subject %in% unique(mfg_df$subject)), control = control, start = start_values)
+summary(cing_mfg_model)
+cing_mfg_ci <- bayestestR::ci(cing_mfg_model)
+cing_mfg_ci
+
+cing_insula_model <- blmer(log(average_connectivity) ~ insula + (1 + insula|subject), data = cing_df  %>% filter(subject %in% unique(insula_df$subject)), control = control, start = start_values)
+summary(cing_insula_model)
+cing_insula_ci <- bayestestR::ci(cing_insula_model)
+cing_insula_ci
+
+```
+```{r mfg-diff-conn}
+
+### MFG ##
+mfg_df <- sig_test_df %>%
+  filter(first_region == "MFG") %>%
+  filter(second_region != "SFG") %>%
+  mutate(second_region = factor(second_region, levels = c("Insula", "Amygdala", "OFC", "MFG", "Ant. Cingulate"))) 
+
+mfg_hc_model <- blmer(log(average_connectivity) ~ hc + (1 + hc|subject), data = mfg_df %>% filter(subject %in% unique(hc_df$subject)), control = control, start = start_values)
+summary(mfg_hc_model)
+mfg_hc_ci <- bayestestR::ci(mfg_hc_model)
+mfg_hc_ci
+
+mfg_ofc_model <- blmer(log(average_connectivity) ~ ofc + (1 + ofc|subject), data = mfg_df %>% filter(subject %in% unique(ofc_df$subject)), control = control, start = start_values)
+summary(mfg_ofc_model)
+mfg_ofc_ci <- bayestestR::ci(mfg_ofc_model)
+mfg_ofc_ci
+
+mfg_amyg_model <- blmer(log(average_connectivity) ~ amyg + (1 + amyg|subject), data = mfg_df %>% filter(subject %in% unique(amyg_df$subject)), control = control, start = start_values)
+summary(mfg_amyg_model)
+mfg_amyg_ci <- bayestestR::ci(mfg_amyg_model)
+mfg_amyg_ci
+
+mfg_cing_model <- blmer(log(average_connectivity) ~ cing + (1 + cing|subject), data =  mfg_df %>% filter(subject %in% unique(cing_df$subject)), control = control, start = start_values)
+summary(mfg_cing_model)
+mfg_cing_ci <- bayestestR::ci(mfg_cing_model)
+mfg_cing_ci
+
+mfg_insula_model <- blmer(log(average_connectivity) ~ insula + (1 + insula|subject), data = mfg_df  %>% filter(subject %in% unique(insula_df$subject)), control = control, start = start_values)
+summary(mfg_insula_model)
+mfg_insula_ci <- bayestestR::ci(mfg_insula_model)
+mfg_insula_ci
+
+
+
+```
+

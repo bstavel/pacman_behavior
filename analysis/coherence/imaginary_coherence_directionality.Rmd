@@ -1,0 +1,816 @@
+---
+title: "Directionality"
+output: html_document
+date: "2024-03-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_connectivity.csv"))
+
+
+## FDr correct/make symmetric
+conn_clean_df <- prep_conn_allsubs_plot_df(conn_df)
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA","dlPFC" =  "#876194", "Insula" = "#FB6087")
+
+```
+
+
+```{r prep-group-plot}
+
+conn_average_clean_df <- conn_clean_df %>%
+  select(-pairs, -connectivity, -pval, -p_frd, -sig) %>%
+  distinct() %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(time, roi_pair, metric) %>%
+  mutate(average_percent_sig = mean(percent_sig, na.rm = TRUE)) %>%
+  ungroup() %>%
+  distinct()
+
+```
+
+
+```{r create-sig-df, fig.width=20, fig.height=15}
+
+sig_electrodes <- conn_clean_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  group_by(subject, pairs, roi_pair) %>%
+  mutate(sig_time_bins = sum(sig)) %>%
+  ungroup %>%
+  filter(sig_time_bins > 10) %>%
+  select(subject, pairs, roi_pair) %>%
+  distinct() %>%
+  mutate(sig_key = paste0(subject, pairs, roi_pair)) %>%
+  pull(sig_key)
+
+
+conn_clean_sig_elec_df <- conn_clean_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  mutate(key = paste0(subject, pairs, roi_pair)) %>%
+  filter(key %in% sig_electrodes) %>%
+  group_by(subject, pairs, roi_pair, time) %>%
+  mutate(direction = if_else(connectivity > 0, 1, 0)) %>%
+  group_by(subject, pairs, roi_pair) %>%
+  mutate(direction_switches = sum(direction)) %>%
+  ungroup()
+
+
+
+  
+
+```
+
+```{r, fig.width = 15, fig.height = 20}
+
+conn_clean_sig_elec_df %>%
+  filter(roi_pair == "hc_amyg") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_line(alpha = .3, color = "#DE4A4D") +
+  geom_line(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_elec_df %>%
+  filter(roi_pair == "hc_ofc") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_line(alpha = .3, color = "#88D1A3") +
+  geom_line(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_elec_df %>%
+  filter(roi_pair == "hc_cing") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_line(alpha = .3, color = "#3D99BA") +
+  geom_line(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_elec_df %>%
+  filter(roi_pair == "hc_dlpfc") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_line(alpha = .3, color = "#876194") +
+  geom_line(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+conn_clean_sig_elec_df %>%
+  filter(roi_pair == "hc_insula") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_line(alpha = .3, color = "#FB6087") +
+  geom_line(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+```
+
+
+
+```{r, fig.width = 15, fig.height = 20}
+
+conn_clean_sig_only_elec_df <- conn_clean_sig_elec_df %>% filter(sig == T)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_amyg") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_point(alpha = .3, color = "#DE4A4D") +
+  # geom_point(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_ofc") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_point(alpha = .3, color = "#88D1A3") +
+  # geom_line(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_cing") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_point(alpha = .3, color = "#3D99BA") +
+  # geom_point(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_dlpfc") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_point(alpha = .3, color = "#876194") +
+  # geom_point(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_insula") %>%
+  mutate(mostly_positive = if_else(direction_switches > 250, "positive", "negative")) %>%
+  group_by(subject, roi_pair, mostly_positive, time) %>%
+  mutate(mean_connectivity = mean(connectivity)) %>%
+  ggplot(., aes(x= time, y = connectivity, group = pairs)) +
+  geom_point(alpha = .3, color = "#FB6087") +
+  # geom_point(aes(y = mean_connectivity, group = mostly_positive), color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject)
+
+
+```
+
+
+```{r, fig.width = 15, fig.height = 20}
+
+conn_clean_sig_only_elec_df <- conn_clean_sig_elec_df %>% filter(sig == T)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_amyg") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#DE4A4D", "#DE4A4D")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_ofc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#88D1A3", "#88D1A3")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_cing") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#3D99BA", "#3D99BA")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_dlpfc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#876194", "#876194")) +
+  facet_wrap(~subject)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "hc_insula") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FB6087", "#FB6087")) +
+  facet_wrap(~subject)
+
+
+```
+
+
+```{r amyg, fig.width = 15, fig.height = 20}
+
+conn_clean_sig_only_elec_df <- conn_clean_sig_elec_df %>% filter(sig == T)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "amyg_hc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FFA602", "#FFA602")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "amyg_ofc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#88D1A3", "#88D1A3")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "amyg_cing") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#3D99BA", "#3D99BA")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "amyg_dlpfc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#876194", "#876194")) +
+  facet_wrap(~subject)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "amyg_insula") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FB6087", "#FB6087")) +
+  facet_wrap(~subject)
+
+
+```
+
+```{r ofc, fig.width = 15, fig.height = 20}
+
+conn_clean_sig_only_elec_df <- conn_clean_sig_elec_df %>% filter(sig == T)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "ofc_hc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FFA602", "#FFA602")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "ofc_amyg") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#DE4A4D", "#DE4A4D")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "ofc_cing") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#3D99BA", "#3D99BA")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "ofc_dlpfc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#876194", "#876194")) +
+  facet_wrap(~subject)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "ofc_insula") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FB6087", "#FB6087")) +
+  facet_wrap(~subject)
+
+
+```
+
+```{r cing, fig.width = 15, fig.height = 20}
+
+conn_clean_sig_only_elec_df <- conn_clean_sig_elec_df %>% filter(sig == T)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "cing_hc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FFA602", "#FFA602")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "cing_amyg") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#DE4A4D", "#DE4A4D")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "cing_ofc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#88D1A3", "#88D1A3")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "cing_dlpfc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#876194", "#876194")) +
+  facet_wrap(~subject)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "cing_insula") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FB6087", "#FB6087")) +
+  facet_wrap(~subject)
+
+
+```
+
+```{r dlpfc, fig.width = 15, fig.height = 20}
+
+conn_clean_sig_only_elec_df <- conn_clean_sig_elec_df %>% filter(sig == T)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "dlpfc_hc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FFA602", "#FFA602")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "dlpfc_amyg") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#DE4A4D", "#DE4A4D")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "dlpfc_ofc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#88D1A3", "#88D1A3")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "dlpfc_cing") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#3D99BA", "#3D99BA")) +
+  facet_wrap(~subject)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "dlpfc_insula") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FB6087", "#FB6087")) +
+  facet_wrap(~subject)
+
+
+```
+
+
+
+```{r insula, fig.width = 15, fig.height = 20}
+
+conn_clean_sig_only_elec_df <- conn_clean_sig_elec_df %>% filter(sig == T)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "insula_hc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#FFA602", "#FFA602")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "insula_amyg") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#DE4A4D", "#DE4A4D")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "insula_ofc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#88D1A3", "#88D1A3")) +
+  facet_wrap(~subject)
+
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "insula_cing") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#3D99BA", "#3D99BA")) +
+  facet_wrap(~subject)
+
+conn_clean_sig_only_elec_df %>%
+  filter(roi_pair == "insula_dlpfc") %>%
+  mutate(time = round(time, 2)) %>%
+  mutate(direction = if_else(direction == 1, direction, -1)) %>%
+  group_by(subject, time, direction) %>%
+  mutate(count_sig_pairs = sum(direction)) %>%
+  ungroup() %>%
+  select(time, direction, count_sig_pairs, subject) %>%
+  distinct() %>%
+  ggplot(., aes(x= time, y = count_sig_pairs, fill = factor(direction))) +
+  geom_col() +  # , fill = "#DE4A4D"
+  geom_hline(yintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  scale_fill_manual(values = c("#876194", "#876194")) +
+  facet_wrap(~subject)
+
+
+```

@@ -1,0 +1,342 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-04-04"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(viridis)
+library(lmtest)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(rmarkdown)
+library(broom.mixed)
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+```{r load-data}
+
+## Load Data ##
+amyg_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+amyg_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+## Clean ieeg data ##
+game_data_distance <- game_data_distance %>%
+   filter(trial_time <= 5.10) 
+
+permuted <- FALSE
+
+
+```
+
+
+## Combine Data
+
+
+```{r sig-correlations}
+
+ofc_amyg_results <- read_csv(path(here(), "results", "turn_time_prediction", 
+                                  "amyg_ofc_theta_turn_time_correlations.csv"))
+
+
+ofc_amyg_results <- ofc_amyg_results %>%
+  filter(subject == "BJH027") %>%
+  mutate(logged_times = log(turn_time))
+
+
+ofc_amyg_models <- tibble()
+for(pair in unique(ofc_amyg_results$pair_id)) {
+
+  model <- lm(logged_times ~ correlation, data = ofc_amyg_results %>% filter(pair_id == pair)) %>% tidy()
+  
+  model$pair_id <- pair
+  
+  ofc_amyg_models <- bind_rows(ofc_amyg_models, model)
+  
+}
+
+# get electrode pairs 
+ofc_amyg_sig_models <- ofc_amyg_models %>%
+  filter(term == "correlation" & p.value < .05) %>% 
+  mutate(ofc_elecs = gsub("BJH027_", "", gsub("_BJH027_.*", "", pair_id))) %>%
+  mutate(amyg_elecs = gsub(".*_BJH027_", "", pair_id))
+
+
+# Prep brain dfs
+elec_amyg_df <- amyg_theta_data %>%
+  filter(subject == "BJH027") %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode %in% ofc_amyg_sig_models$amyg_elecs) %>%
+  distinct() %>%
+  mutate(electrode = gsub("-", "_", electrode)) %>%
+  pivot_wider(names_from = electrode, values_from = theta)
+
+
+elec_ofc_df <- ofc_theta_data %>%
+  filter(subject == "BJH027") %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  filter(electrode %in% ofc_amyg_sig_models$ofc_elecs) %>%
+  distinct()  %>%
+  mutate(electrode = gsub("-", "_", electrode)) %>%
+  pivot_wider(names_from = electrode, values_from = theta)
+
+
+electrode_data <- full_join(elec_amyg_df, elec_ofc_df)
+
+
+## Prep Behavior Df
+example_behave_df <- game_data_distance %>%
+  filter(subject == "BJH027") %>%
+  filter(Direction != "Still") %>%
+  filter(dots_eaten != 0) %>%  
+  group_by(trial_numeric) %>%
+  # prep time variables
+  mutate(jm_time = trial_time - first(trial_time)) %>%
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(turnaround_time_tmp = if_else(event == 1, jm_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time_tmp)) %>%
+  ungroup() %>%
+  filter(turnaround_time != 0) %>% # exclude trials where they just ran into the ghost
+  filter(jm_time <= turnaround_time) %>%
+  select(subject, trial_numeric, trial_time, jm_time, event, turnaround_time, last_away,
+         UserLocation, GhostLocation, points_remaining, distance_to_ghost,
+         away_choice, TrialType, reward_groups) %>%
+  mutate(EVENT = 1) %>%
+  mutate(points_remaining = as.vector(scale(points_remaining))) %>%
+  mutate(distance_to_ghost = as.vector(scale(distance_to_ghost))) %>%
+  mutate(trial_time = round(trial_time, 2))
+
+
+ofc_amyg_df <- inner_join(example_behave_df, electrode_data, by = c("subject", "trial_numeric", "trial_time"))
+
+
+```
+
+
+## EDA amyg
+
+
+```{r, fig.width = 15, fig.heigth = 30}
+
+
+ofc_amyg_df %>%
+  mutate(jm_time = round(jm_time , 2)) %>%
+  mutate(long_short = if_else(turnaround_time <= median(turnaround_time), "short", "long")) %>%
+  filter(jm_time < 2) %>%
+  ggplot(., aes(x = AL10_AL11, y = GL4_GL5, color = long_short, fill = long_short)) +
+  geom_point() + 
+  geom_smooth(method = "lm", formula = 'y~x',  se = F) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~jm_time, ncol = 10) 
+
+
+ofc_amyg_df %>%
+  mutate(jm_time = round(jm_time , 2)) %>%
+  mutate(long_short = if_else(turnaround_time <= median(turnaround_time), "short", "long")) %>%
+  filter(jm_time < 2) %>%
+  filter(long_short == "short") %>%
+  ggplot(., aes(x = AL10_AL11, y = GL4_GL5)) +
+  geom_point() + 
+  geom_smooth(method = "lm", formula = 'y~x',  se = F) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~jm_time, ncol = 10) 
+
+
+ofc_amyg_df %>%
+  mutate(jm_time = round(jm_time , 2)) %>%
+  mutate(long_short = if_else(turnaround_time <= median(turnaround_time), "short", "long")) %>%
+  filter(jm_time < 2) %>%
+  filter(long_short == "long") %>%
+  ggplot(., aes(x = AL10_AL11, y = GL4_GL5)) +
+  geom_point() + 
+  geom_smooth(method = "lm", formula = 'y~x',  se = F) +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~jm_time, ncol = 10) 
+
+
+```
+```{r, fig.width = 15, fig.heigth = 10}
+
+ofc_amyg_df <- ofc_amyg_df  %>%
+  mutate(ofc_amyg_diff = GR3_GR4 - AL7_AL8) 
+
+
+ofc_amyg_df %>%
+  mutate(long_short = if_else(turnaround_time <= median(turnaround_time), "short", "long")) %>%
+  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  ggplot(., aes(x = jm_time, y = ofc_amyg_diff, color = long_short, fill = long_short)) +
+  geom_line() +
+  geom_smooth(method = "lm") + 
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+
+```
+
+
+```{r}
+
+ofc_amyg_df <- ofc_amyg_df %>%
+  mutate(long_short = if_else(turnaround_time <= median(turnaround_time), "short", "long")) %>%
+  mutate(ofc_amyg_diff = GR3_GR4 - AL7_AL8) 
+
+
+control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+
+amyg_ofc_model_short <- lme(ofc_amyg_diff ~ jm_time, data = ofc_amyg_df %>% filter(long_short == "short"), 
+                            random = ~jm_time|trial_numeric, control = control)
+
+amyg_ofc_model_long <- lme(ofc_amyg_diff ~ jm_time, data = ofc_amyg_df %>% filter(long_short == "long"), 
+                            random = ~jm_time|trial_numeric, control = control)
+
+summary(amyg_ofc_model_short)
+summary(amyg_ofc_model_long)
+
+
+
+```
+
+```{r}
+
+ofc_amyg_df <- ofc_amyg_df %>%
+  mutate(ofc_amyg_diff = GR3_GR4 - AL7_AL8) 
+
+
+amyg_ofc_model <- lme(ofc_amyg_diff ~ jm_time, data = ofc_amyg_df, random = ~jm_time|trial_numeric, control = control)
+
+summary(amyg_ofc_model)
+
+
+
+
+```
+
+
+
+
+```{r}
+# cox df #
+cox_df <- ofc_amyg_df %>%
+  filter(jm_time == first(jm_time)) %>%
+  ungroup() %>%
+  mutate(event = 1) %>%
+  select(trial_numeric, turnaround_time, event, EVENT) 
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
+
+
+# joint model #
+jm_basic_fit <- jm(cox_fit, list(amyg_ofc_model), 
+                   functional_forms = list("ofc_amyg_diff" = ~area(ofc_amyg_diff)),
+             time_var = "jm_time", data_Surv = cox_df, 
+             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+
+
+summary(jm_basic_fit)
+
+
+
+```
+
+
+
+```{r jm_amyg_ofc_ins_fit2}
+# get predictions
+test_predictions <- predict_on_test_set(jm_basic_fit, ofc_amyg_df, cox_df)
+
+# plot prediction plot
+ggthemr("solarized")
+plot_survival_predictions(test_predictions, "BJH027")
+
+# plot correlation plot
+cor <- plot_correlation_plot(test_predictions, "BJH027")
+
+
+auc <- c()
+ici <- c()
+e50 <- c()
+e90 <- c()
+brier <- c()
+timepoints <- unique(test_cox_df$turnaround_time)
+test_times <- quantile(timepoints[timepoints > .5], probs = c(.4, .5, .6))
+for(pred_time in test_times){
+  # AUC #
+  tmp_auc <- tvAUC(jm_amyg_ofc_ins_fit2, newdata = test_long_data, Tstart = .5,
+               Thoriz = pred_time, idVar = 'trial_numeric')
+  auc <- c(auc, tmp_auc$auc)
+
+  ## Calibration ##
+  toi <- pred_time - .5
+  # calibration plot
+  calibration_plot(jm_amyg_ofc_ins_fit2, newdata = test_long_data, Tstart = .5, Thoriz = pred_time, idVar = 'trial_numeric')
+  # calibration metrics
+  tmp_cal <- calibration_metrics(jm_amyg_ofc_ins_fit2, newdata = test_long_data, Tstart = .5, Dt = toi, idVar = 'trial_numeric')
+  ici <- c(ici, tmp_cal[1])
+  e50 <- c(e50, tmp_cal[2])
+  e90 <- c(e90, tmp_cal[3])
+
+  # rbier scores
+  tmp_brier <- tvBrier(jm_amyg_ofc_ins_fit2, newdata = test_long_data, Tstart = .5, Dt = toi, integrated = F)
+  brier <- c(brier, tmp_brier$Brier)
+
+}
+
+
+pred_simple <- predict(jm_basic_fit, newdata = ofc_amyg_df, return_newdata = TRUE)
+plot(pred_simple)
+
+```

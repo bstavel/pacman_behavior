@@ -1,0 +1,436 @@
+---
+title: "Average Theta Profiles"
+output: html_document
+date: "2024-05-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 5,  # set default width of figures
+  fig.height = 8,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
+
+```
+
+
+```{r load-data}
+
+# ieeg limbic data #
+cing_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_cing_all_subs_logged_iti_onset.csv"))
+ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+amyg_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+insula_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_insula_all_subs_logged_iti_onset.csv"))
+dlpfc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+
+# separate dlpfc into sfg and mfg
+dlpfc_theta_data <- dlpfc_theta_data %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+dlpfc_theta_data <- separate_mfg_sfg(dlpfc_theta_data)
+sfg_theta_data <- dlpfc_theta_data %>% filter(sfg == 1) %>% select(-sfg, -mfg)
+mfg_theta_data <- dlpfc_theta_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
+
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_g_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_g_dist, behavior_iti_df)
+
+```
+
+
+
+```{r bind-data}
+
+# prep theta data #
+cing_data <- cing_theta_data %>% 
+  mutate(freq = "theta") %>%
+  mutate(region = "Ant. Cingulate") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+ofc_data <- ofc_theta_data %>% 
+  mutate(freq = "theta") %>%
+  mutate(region = "OFC") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+hc_data <- hc_theta_data %>% 
+  mutate(freq = "theta") %>%
+  mutate(region = "Hippocampus") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+amyg_data <- amyg_theta_data %>% 
+  mutate(freq = "theta") %>%
+  mutate(region = "Amygdala") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+insula_data <- insula_theta_data %>% 
+  mutate(freq = "theta") %>%
+  mutate(region = "Insula") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+sfg_data <- sfg_theta_data %>%
+  mutate(freq = "theta") %>%
+  mutate(region = "SFG") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+mfg_data <- mfg_theta_data %>%
+  mutate(freq = "theta") %>%
+  mutate(region = "MFG") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+# bind ieeg data #
+ieeg_data <- bind_rows(cing_data, ofc_data, hc_data, amyg_data, insula_data, sfg_data, mfg_data)
+
+
+# bind with behavioral data #
+ieeg_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ieeg_data %>% mutate(trial_time = round(trial_time, 2)))
+
+```
+
+
+```{r shift-to-turnaround}
+
+# shift to center around turnaround  #
+turnaround_df <- ieeg_behave_df %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject, freq, region) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time)) %>%
+  mutate(time = trial_time - turnaround_time) %>%
+  ungroup() 
+
+
+```
+
+
+
+```{r, fig.width = 10, fig.height = 12}
+
+# plot
+turn_avg_theta_df <- turnaround_df %>%
+  mutate(time = round(time, 2)) %>%
+  filter(time >= -2 & time <= 2) %>%
+  group_by(subject, region, time, elec_id) %>%
+  mutate(elec_power = mean(power)) %>%
+  select(-power, -trial_numeric) %>%
+  distinct() %>%
+  group_by(subject, region, time) %>%
+  mutate(sub_power = mean(elec_power)) %>%
+  select(-elec_power, -elec_id) %>%
+  distinct() %>%
+  group_by(region, time) %>%
+  mutate(mean_power = mean(sub_power, na.rm = T)) 
+
+theta_profile_plot <- turn_avg_theta_df %>%
+  mutate(group = if_else(region %in% c("Insula", "MFG"), "Theta power rises \nafter avoidance", "Theta power drops \nafter avoidance")) %>%
+  ggplot(aes(x = time, y = mean_power, color = region)) +
+  geom_vline(xintercept = 0, color = "#2D2327") +
+  geom_point() + 
+  geom_line(size =2.5) +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 22),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 22),
+      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 22),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 22),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 26, face = 'bold')) +
+  labs(y = "Mean Theta Power (a.u.)", x = "Time (s)", color = "Region") +
+  ggtitle("Average Theta Power Across Regions") +
+  facet_wrap(~group, ncol = 2) 
+
+ggsave(path(here(), "figures", "theta_power_profile.png"), theta_profile_plot, width = 22, height = 11)
+
+```
+
+
+```{r, fig.width = 10, fig.height = 12}
+
+# plot
+turn_sub_avg_theta_df <- turnaround_df %>%
+  mutate(time = round(time, 2)) %>%
+  filter(time >= -2 & time <= 2) %>%
+  group_by(subject, region, time, elec_id) %>%
+  mutate(elec_power = mean(power)) %>%
+  select(-power, -trial_numeric) %>%
+  distinct() %>%
+  group_by(subject, region, time) %>%
+  mutate(sub_power = mean(elec_power))
+
+
+turn_sub_avg_theta_df %>%
+  filter(region == "Insula") %>%
+  ggplot(aes(x = time, y = sub_power, group = subject, color = region)) +
+  geom_vline(xintercept = 0, color = "#2D2327") +
+  geom_point() + 
+  geom_line(size =1) +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 24, face = 'bold')) +
+  labs(y = "Mean Theta Power (a.u.)", x = "Time (s)", color = "Region") +
+  ggtitle("Average Subject Theta Power in the Insula")  +
+  facet_wrap(~subject, scale = "free_y")
+
+
+```
+
+```{r, fig.width = 10, fig.height = 12}
+
+
+turn_sub_avg_theta_df %>%
+  filter(region == "Insula") %>%
+  filter(time >= -.2 & time <= .3) %>%
+  ggplot(aes(x = time, y = sub_power, group = subject, color = region)) +
+  geom_vline(xintercept = 0, color = "#2D2327") +
+  geom_point() + 
+  geom_line(size =1) +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 24, face = 'bold')) +
+  labs(y = "Mean Theta Power (a.u.)", x = "Time (s)", color = "Region") +
+  ggtitle("Average Subject Theta Power in the Insula")  +
+  facet_wrap(~subject, scale = "free_y")
+
+
+
+
+```
+
+
+
+
+
+```{r, fig.width = 10, fig.height = 12}
+
+
+turn_sub_avg_theta_df %>%
+  filter(region %in% c("Hippocampus")) %>%
+  filter(time >= -1 & time <= 1) %>%
+  mutate(sub_reg = paste0(subject, region)) %>%
+  ggplot(aes(x = time, y = sub_power, group = sub_reg, color = region)) +
+  geom_vline(xintercept = 0, color = "#2D2327") +
+  geom_point() + 
+  geom_line(size =1) +
+  geom_smooth(method = "lm", color = "black") +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 24, face = 'bold')) +
+  labs(y = "Mean Theta Power (a.u.)", x = "Time (s)", color = "Region") +
+  ggtitle("Average Subject Theta Power in the Hippocampus")  +
+  facet_wrap(~subject, scale = "free_y")
+
+
+
+
+```
+
+
+```{r, fig.width = 10, fig.height = 12}
+
+
+turn_sub_avg_theta_df %>%
+  filter(region %in% c("OFC")) %>%
+  filter(time >= -1 & time <= 1) %>%
+  mutate(sub_reg = paste0(subject, region)) %>%
+  ggplot(aes(x = time, y = sub_power, group = sub_reg, color = region)) +
+  geom_vline(xintercept = 0, color = "#2D2327") +
+  geom_point() + 
+  geom_line(size =1) +
+  geom_smooth(method = "lm", color = "black") +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 24, face = 'bold')) +
+  labs(y = "Mean Theta Power (a.u.)", x = "Time (s)", color = "Region") +
+  ggtitle("Average Subject Theta Power in the OFC")  +
+  facet_wrap(~subject, scale = "free_y")
+
+
+
+
+```
+
+
+```{r, fig.width = 10, fig.height = 12}
+
+
+turn_sub_avg_theta_df %>%
+  filter(region %in% c("Ant. Cingulate")) %>%
+  filter(time >= -1 & time <= 1) %>%
+  mutate(sub_reg = paste0(subject, region)) %>%
+  ggplot(aes(x = time, y = sub_power, group = sub_reg, color = region)) +
+  geom_vline(xintercept = 0, color = "#2D2327") +
+  geom_point() + 
+  geom_line(size =1) +
+  geom_smooth(method = "lm", color = "black") +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 24, face = 'bold')) +
+  labs(y = "Mean Theta Power (a.u.)", x = "Time (s)", color = "Region") +
+  ggtitle("Average Subject Theta Power in the OFC")  +
+  facet_wrap(~subject, scale = "free_y")
+
+
+
+
+```
+
+```{r, fig.width = 10, fig.height = 12}
+
+
+turn_sub_avg_theta_df %>%
+  filter(region %in% c("MFG")) %>%
+  filter(time >= -1 & time <= 1) %>%
+  mutate(sub_reg = paste0(subject, region)) %>%
+  ggplot(aes(x = time, y = sub_power, group = sub_reg, color = region)) +
+  geom_vline(xintercept = 0, color = "#2D2327") +
+  geom_point() + 
+  geom_line(size =1) +
+  geom_smooth(method = "lm", color = "black") +
+  scale_color_manual(values = roi_colors) +
+  theme(panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 24, face = 'bold')) +
+  labs(y = "Mean Theta Power (a.u.)", x = "Time (s)", color = "Region") +
+  ggtitle("Average Subject Theta Power in the OFC")  +
+  facet_wrap(~subject, scale = "free_y")
+
+
+
+
+```
+
+
+
+

@@ -1,0 +1,896 @@
+---
+title: "HFA EDA"
+output: html_document
+date: "2024-04-13"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 5,  # set default width of figures
+  fig.height = 8,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+roi_colors <-  c("amyg" = "#DE4A4D", "hc" = "#FFA602", "ofc" =  "#88D1A3", "cing"=  "#3D99BA", "insula" =  "#876194", "dlpfc" = "#FB6087")
+
+
+```
+
+
+```{r load-data}
+
+# ieeg limbic data #
+cing_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_cing_all_subs_logged_iti_onset.csv"))
+ofc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+amyg_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+hc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_hc_all_subs_logged_iti_onset.csv"))
+dlpfc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+insula_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_insula_all_subs_logged_iti_onset.csv"))
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_g_dist %>% 
+  select(-GhostLocation, -distance_to_ghost, -min_distance, -cdf_distance)
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_dist, behavior_iti_df)
+
+```
+
+
+
+```{r bind-data}
+
+# hfa data #
+dlpfc_data <- dlpfc_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "dlpfc") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+# prep hfa data #
+cing_data <- cing_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "cing") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+ofc_data <- ofc_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "ofc") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+hc_data <- hc_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "hc") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+amyg_data <- amyg_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "amyg") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+insula_data <- insula_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "insula") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+# bind ieeg data #
+ieeg_data <- bind_rows(dlpfc_data, cing_data, ofc_data, hc_data, amyg_data, insula_data)
+
+
+# bind with behavioral data #
+ieeg_behave_df <- left_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ieeg_data %>% mutate(trial_time = round(trial_time, 2)))
+
+```
+
+
+```{r,  fig.width =12, fig.height=40}
+
+ieeg_avg_behave_df <- ieeg_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(subject, region, electrode, trial_time) %>%
+  mutate(elec_avg = mean(power)) %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(subject, region, trial_time) %>%
+  mutate(sub_avg = mean(elec_avg)) %>%
+  select(-electrode, -elec_avg) %>%
+  ungroup() %>%
+  distinct()
+
+ieeg_avg_behave_df %>%
+  filter(trial_time <= 2) %>%
+  ggplot(., aes(x = trial_time, y = sub_avg, color = region)) +
+  geom_line() + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = roi_colors)
+
+```
+
+
+
+```{r,  fig.width =12, fig.height=40}
+
+
+ieeg_avg_behave_df %>%
+  filter(trial_time <= 2) %>%
+  filter(region == "amyg") %>%
+  ggplot(., aes(x = trial_time, y = sub_avg, color = region)) +
+  geom_line() + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = roi_colors) +
+  ggtitle("Amygdala")
+
+```
+
+
+
+```{r,  fig.width =12, fig.height=40}
+
+
+ieeg_avg_behave_df %>%
+  filter(trial_time <= 2) %>%
+  filter(region == "hc") %>%
+  ggplot(., aes(x = trial_time, y = sub_avg, color = region)) +
+  geom_line() + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = roi_colors) +
+  ggtitle("Hippocampus")
+
+```
+
+
+```{r,  fig.width =12, fig.height=40}
+
+
+ieeg_avg_behave_df %>%
+  filter(trial_time <= 2) %>%
+  filter(region == "ofc") %>%
+  ggplot(., aes(x = trial_time, y = sub_avg, color = region)) +
+  geom_line() + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = roi_colors) +
+  ggtitle("OFC")
+
+```
+
+
+```{r,  fig.width =12, fig.height=40}
+
+
+ieeg_avg_behave_df %>%
+  filter(trial_time <= 2) %>%
+  filter(region == "cing") %>%
+  ggplot(., aes(x = trial_time, y = sub_avg, color = region)) +
+  geom_line() + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = roi_colors) +
+  ggtitle("Ant. Cingulate")
+
+```
+
+
+
+```{r,  fig.width =12, fig.height=40}
+
+
+ieeg_avg_behave_df %>%
+  filter(trial_time <= 2) %>%
+  filter(region == "insula") %>%
+  ggplot(., aes(x = trial_time, y = sub_avg, color = region)) +
+  geom_line() + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = roi_colors) +
+  ggtitle("Insula")
+
+```
+
+
+```{r,  fig.width =12, fig.height=40}
+
+
+ieeg_avg_behave_df %>%
+  filter(trial_time <= 2) %>%
+  filter(region == "dlpfc") %>%
+  ggplot(., aes(x = trial_time, y = sub_avg, color = region)) +
+  geom_line() + 
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = roi_colors) +
+  ggtitle("dlPFC")
+
+```
+
+
+
+
+
+### PCA
+
+
+```{r}
+
+
+ofc_pca_prep_df <- ieeg_behave_df %>%
+  filter(region == "ofc" & subject == "BJH039") %>%
+  # exclude time before they started moving, may be good to look at not doing this as well
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  ungroup() %>%
+  distinct() %>%
+  select(elec_id, power, trial_numeric, move_time) %>%
+  pivot_wider(names_from = elec_id, values_from = power)
+
+
+
+pca_ex <- prcomp(ofc_pca_prep_df %>% select(-trial_numeric, -move_time))
+
+
+```
+
+
+
+```{r}
+
+summary(pca_ex)
+
+plot(pca_ex)
+biplot(pca_ex)
+
+ofc_pca_prep_df$PC1 <- pca_ex$x[, "PC1"]
+ofc_pca_prep_df$PC2 <- pca_ex$x[, "PC2"]
+ofc_pca_prep_df$PC3 <- pca_ex$x[, "PC3"]
+
+
+
+ofc_pca_df  <- ofc_pca_prep_df %>%
+  select(PC1, PC2, PC3, trial_numeric, move_time) %>%
+  pivot_longer(cols = starts_with("PC"), values_to = "value", names_to = "PC") %>%
+  group_by(PC, move_time) %>%
+  mutate(avg_value = mean(value)) %>%
+  select(-trial_numeric, -value) %>%
+  distinct() 
+    
+
+```
+
+```{r}
+
+ofc_pca_df  <- ofc_pca_prep_df %>%
+  select(PC1, PC2, PC3, trial_numeric, move_time) %>%
+  pivot_longer(cols = starts_with("PC"), values_to = "value", names_to = "PC") %>%
+  group_by(PC, move_time) %>%
+  mutate(avg_value = mean(value)) %>%
+  select(-trial_numeric, -value) %>%
+  distinct() 
+
+ofc_pca_df %>%
+  filter(move_time <= 2) %>%
+  ggplot(., aes(x = move_time, y = avg_value, color = PC)) + 
+  geom_line() +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+
+```
+
+
+```{r}
+
+
+ofc_behave_df <- ieeg_behave_df %>%
+  filter(region == "ofc")
+
+
+
+```
+
+
+
+```{r,  fig.width =12, fig.height=40}
+
+ofc_reward_group_df <- ofc_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(subject, reward_groups, electrode, trial_time) %>%
+  mutate(elec_avg = mean(power)) %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(subject, reward_groups, trial_time) %>%
+  mutate(sub_avg = mean(elec_avg)) %>%
+  select(-electrode, -elec_avg) %>%
+  ungroup() %>%
+  distinct()
+
+ofc_reward_group_df %>%
+  filter(trial_time <= 2.5) %>%
+  mutate(group_var = paste0(subject, reward_groups)) %>%
+  ggplot(., aes(x = trial_time, y = sub_avg, color = factor(reward_groups), group = group_var)) +
+  geom_line() + 
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~subject, scales = "free_y", ncol = 1) +
+  ggtitle("OFC")
+
+```
+
+
+```{r,  fig.width =12, fig.height=40}
+
+ofc_chase_group_df <- ofc_behave_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  filter(! is.na(attack_chase_bob)) %>%
+  mutate(attack = if_else(attack_chase_bob == "Bob", "Bob", "Attack")) %>%
+  group_by(subject, attack, electrode) %>%
+  mutate(elec_avg = mean(power)) %>%
+  select(-trial_numeric, -power) %>%
+  distinct() %>%
+  group_by(subject, attack) %>%
+  mutate(sub_avg = mean(elec_avg)) 
+
+ofc_chase_group_df %>%
+  filter(trial_time <= 2.5) %>%
+  mutate(group_var = paste0(subject, attack)) %>%
+  ggplot(., aes(x = attack, y = elec_avg, fill = factor(attack))) +
+  geom_boxplot(notch = T) + 
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~subject, scales = "free_y", ncol = 1) +
+  ggtitle("OFC")
+
+
+ofc_chase_group_df %>%
+  filter(trial_time <= 2.5) %>%
+  mutate(group_var = paste0(subject, attack)) %>%
+  ggplot(., aes(x = attack, y = elec_avg, fill = factor(attack))) +
+  geom_violin() +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~subject, scales = "free_y", ncol = 1) +
+  ggtitle("OFC")
+
+
+
+```
+
+```{r}
+
+ofc_chase_df <- ofc_behave_df %>%
+  filter(!is.na(attack_chase_bob)) %>%
+  
+  mutate(attack = if_else(attack_chase_bob == "Bob", "Bob", "Attack")) %>%
+  group_by(subject, electrode, trial_numeric, attack) %>%
+  mutate(avge_hfa = mean(power)) %>%
+  select(-trial_time, -power) %>%
+  distinct()
+
+
+summary(lmer(avge_hfa ~ attack + (1 + attack|subject:electrode), data = ofc_chase_df))
+
+
+```
+
+Reward Group 2 differs from 4 and 1 and has smallest HFA.
+
+Reward Group 3 only differs from 1. 
+
+Reward Group 4 differs from 2 and 1 has the second highest HFA
+
+Reward Group 1  has the highest HFA
+
+```{r}
+
+ofc_reward_df <- ofc_behave_df %>%
+  filter(!is.na(reward_groups)) %>%
+  group_by(subject, electrode, trial_numeric, reward_groups) %>%
+  mutate(avge_hfa = mean(power)) %>%
+  select(subject, electrode, trial_numeric, reward_groups, avge_hfa) %>%
+  distinct() %>%
+  mutate(reward_groups = factor(reward_groups, levels = c(3, 2, 1, 4)))
+
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), data = ofc_reward_df))
+
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), 
+             data = ofc_reward_df %>% filter(subject == "BJH016")))
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), 
+             data = ofc_reward_df %>% filter(subject == "BJH021")))
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), 
+             data = ofc_reward_df %>% filter(subject == "BJH025")))
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), 
+             data = ofc_reward_df %>% filter(subject == "BJH026")))
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), 
+             data = ofc_reward_df %>% filter(subject == "BJH027")))
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), 
+             data = ofc_reward_df %>% filter(subject == "BJH029")))
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), 
+             data = ofc_reward_df %>% filter(subject == "BJH039")))
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), 
+             data = ofc_reward_df %>% filter(subject == "BJH041")))
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), 
+             data = ofc_reward_df %>% filter(subject == "SLCH002")))
+
+summary(lm(avge_hfa ~ factor(reward_groups), 
+             data = ofc_reward_df %>% filter(subject == "LL10")))
+
+summary(lm(avge_hfa ~ factor(reward_groups), 
+             data = ofc_reward_df %>% filter(subject == "LL12")))
+
+summary(lm(avge_hfa ~ factor(reward_groups), 
+             data = ofc_reward_df %>% filter(subject == "LL13")))
+
+summary(lm(avge_hfa ~ factor(reward_groups), 
+             data = ofc_reward_df %>% filter(subject == "LL14")))
+
+summary(lm(avge_hfa ~ factor(reward_groups), 
+             data = ofc_reward_df %>% filter(subject == "LL17")))
+
+summary(lm(avge_hfa ~ factor(reward_groups), 
+             data = ofc_reward_df %>% filter(subject == "LL19")))
+```
+
+
+```{r, fig.width = 12}
+
+ofc_reward_df <- ofc_behave_df %>%
+  filter(!is.na(reward_groups)) %>%
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  filter(Eaten != 0) %>%
+  group_by(subject, electrode, trial_numeric, reward_groups) %>%
+  mutate(avge_hfa = mean(power)) %>%
+  select(subject, electrode, trial_numeric, reward_groups, avge_hfa) %>%
+  distinct() %>%
+  mutate(reward_groups = factor(reward_groups, levels = c(4, 1, 2, 3)))
+
+summary(lmer(avge_hfa ~ factor(reward_groups) + (1|subject:electrode), data = ofc_reward_df))
+
+```
+
+
+```{r, fig.width = 12}
+
+ofc_eaten_df <- ofc_behave_df %>%
+  filter(!is.na(reward_groups)) %>%
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  filter(Eaten != 0) %>%
+  filter(attack_chase_bob == "Bob") %>%
+  group_by(subject, electrode, trial_numeric, Eaten) %>%
+  mutate(avge_hfa = mean(power)) %>%
+  select(subject, electrode, trial_numeric, Eaten, avge_hfa) %>%
+  distinct() %>%
+  mutate(Eaten = factor(Eaten, levels = c(4, 2, 3, 1, 5)))
+
+summary(lmer(avge_hfa ~ factor(Eaten) + (1|subject:electrode), data = ofc_eaten_df))
+
+```
+
+
+```{r, fig.width = 12}
+
+ofc_eaten_df <- ofc_behave_df %>%
+  filter(!is.na(reward_groups)) %>%
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time < max(turnaround_time)) %>%
+  filter(Eaten != 0) %>%
+  filter(attack_chase_bob == "Bob") %>%
+  group_by(subject, electrode, trial_numeric, Eaten) %>%
+  mutate(avge_hfa = mean(power)) %>%
+  select(subject, electrode, trial_numeric, Eaten, avge_hfa) %>%
+  distinct() %>%
+  mutate(Eaten = factor(Eaten, levels = c(4, 2, 3, 1, 5)))
+
+summary(lmer(avge_hfa ~ factor(Eaten) + (1|subject:electrode), data = ofc_eaten_df))
+
+```
+
+
+```{r}
+
+ofc_last_dot_df <- ofc_behave_df %>%
+  filter(!is.na(reward_groups)) %>%
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time <= max(turnaround_time)) %>%
+  filter(Eaten != 0) %>%
+  filter(attack_chase_bob == "Bob") %>%
+  group_by(elec_id, trial_numeric) %>%
+  mutate(dots_until_turn = dots_eaten - Eaten) %>%
+  ungroup() %>%
+  group_by(subject, electrode, trial_numeric, dots_until_turn) %>%
+  mutate(avge_hfa = mean(power)) %>%
+  select(subject, electrode, trial_numeric, dots_until_turn, avge_hfa) %>%
+  distinct() 
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|subject:electrode), data = ofc_last_dot_df))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "BJH016")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "BJH021")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "BJH025")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "BJH026")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "BJH027")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "BJH029")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "BJH039")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "BJH041")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "SLCH002")))
+
+summary(lm(avge_hfa ~ dots_until_turn, 
+             data = ofc_last_dot_df %>% filter(subject == "LL10")))
+
+summary(lm(avge_hfa ~ dots_until_turn, 
+             data = ofc_last_dot_df %>% filter(subject == "LL12")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|electrode), 
+             data = ofc_last_dot_df %>% filter(subject == "LL13")))
+
+summary(lm(avge_hfa ~ dots_until_turn, 
+             data = ofc_last_dot_df %>% filter(subject == "LL14")))
+
+summary(lm(avge_hfa ~ dots_until_turn, 
+             data = ofc_last_dot_df %>% filter(subject == "LL17")))
+
+summary(lm(avge_hfa ~ dots_until_turn, 
+             data = ofc_last_dot_df %>% filter(subject == "LL19")))
+
+```
+
+
+```{r}
+
+ofc_last_dot_df <- ofc_behave_df %>%
+  filter(!is.na(reward_groups)) %>%
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time <= max(turnaround_time)) %>%
+  filter(Eaten != 0) %>%
+  filter(attack_chase_bob == "Bob") %>%
+  group_by(elec_id, trial_numeric) %>%
+  mutate(dots_until_turn = dots_eaten - Eaten) %>%
+  ungroup() %>%
+  group_by(subject, electrode, trial_numeric, Eaten) %>%
+  mutate(avge_hfa = mean(power)) %>%
+  select(subject, electrode, trial_numeric, Eaten, avge_hfa) %>%
+  distinct() 
+
+summary(lmer(avge_hfa ~ Eaten + (1|electrode), data = ofc_last_dot_df))
+
+
+```
+
+```{r}
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|subject:electrode), data = ofc_last_dot_df))
+
+```
+
+```{r}
+
+summary(lm(avge_hfa ~ dots_until_turn, 
+             data = ofc_last_dot_df %>% filter(subject == "BJH016" & electrode == "AL10-AL11")))
+
+summary(lmer(avge_hfa ~ dots_until_turn + (1|subject:electrode), data = ofc_last_dot_df))
+
+
+
+summary(robustlmm::rlmer(avge_hfa ~ dots_until_turn + (1|subject:electrode), data = ofc_last_dot_df))
+
+
+# Robust linear mixed model fit by DAStau 
+# Formula: avge_hfa ~ dots_until_turn + (1 | subject:electrode) 
+#    Data: ofc_last_dot_df 
+# 
+# Scaled residuals: 
+#     Min      1Q  Median      3Q     Max 
+# -6.1509 -0.6488 -0.0045  0.6501  8.3090 
+# 
+# Random effects:
+#  Groups            Name        Variance Std.Dev.
+#  subject:electrode (Intercept) 0.023    0.1517  
+#  Residual                      1.892    1.3755  
+# Number of obs: 72901, groups: subject:electrode, 107
+# 
+# Fixed effects:
+#                  Estimate Std. Error t value
+# (Intercept)     -0.162554   0.017560  -9.257
+# dots_until_turn  0.007053   0.004016   1.756
+# 
+# Correlation of Fixed Effects:
+#             (Intr)
+# dts_ntl_trn -0.413
+# 
+# Robustness weights for the residuals: 
+#  57611 weights are ~= 1. The remaining 15290 ones are summarized as
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#   0.162   0.673   0.818   0.790   0.933   0.999 
+# 
+# Robustness weights for the random effects: 
+#  87 weights are ~= 1. The remaining 20 ones are summarized as
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#   0.505   0.573   0.837   0.778   0.980   0.998 
+# 
+# Rho functions used for fitting:
+#   Residuals:
+#     eff: smoothed Huber (k = 1.345, s = 10) 
+#     sig: smoothed Huber, Proposal 2 (k = 1.345, s = 10) 
+#   Random Effects, variance component 1 (subject:electrode):
+#     eff: smoothed Huber (k = 1.345, s = 10) 
+#     vcp: smoothed Huber, Proposal 2 (k = 1.345, s = 10)
+
+model_dfs <- summary(lmer(avge_hfa ~ dots_until_turn + (1|subject:electrode), data = ofc_last_dot_df))
+coefs <- data.frame(coef(model_dfs))
+p.values <- 2*pt(1.756, coefs$df, lower=FALSE)
+
+```
+
+
+```{r, fig.width = 12, fig.height = 6}
+
+
+ofc_last_dot_df %>%
+  ggplot(., aes(x = dots_until_turn, y = avge_hfa)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal()
+
+
+ofc_last_dot_df %>%
+  ggplot(., aes(x = dots_until_turn, y = avge_hfa)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  facet_wrap(~subject)
+
+
+```
+
+
+```{r, fig.width = 10, fig.height = 20}
+
+ofc_last_dot_sub_df <- ofc_behave_df %>%
+  filter(!is.na(reward_groups)) %>%
+  filter(Direction != "Still") %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", electrode)) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject) %>%
+  mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+  filter(move_time <= max(turnaround_time)) %>%
+  filter(Eaten != 0) %>%
+  filter(attack_chase_bob == "Bob") %>%
+  group_by(elec_id, trial_numeric) %>%
+  mutate(dots_until_turn = dots_eaten - Eaten) %>%
+  ungroup() %>%
+  select(subject, electrode, trial_numeric, dots_until_turn, power, move_time) %>%
+  distinct() %>%
+  filter(subject == "BJH016" & electrode == "AL10-AL11") %>%
+  group_by(trial_numeric, dots_until_turn) %>%
+  mutate(power = mean(power)) %>%
+  ungroup() %>%
+  distinct()
+
+
+ofc_last_dot_sub_df %>%
+  filter(trial_numeric < 100) %>%
+  ggplot(., aes(x = dots_until_turn, y = power)) +
+  geom_line() + 
+  geom_point() + 
+  theme_minimal() +
+  scale_x_reverse() +
+  facet_wrap(~trial_numeric, ncol = 1, scales = "free_y")
+
+```
+
+
+```{r fig.width = 10, fig.height= 6}
+
+ofc_last_dot_sub_df %>%
+  ggplot(., aes(x = dots_until_turn, y = power, group = trial_numeric)) +
+  geom_line(alpha = .6) + 
+  geom_point(alpha = .6) + 
+  theme_minimal() +
+  scale_x_reverse() 
+
+
+ofc_last_dot_sub_df %>%
+  ggplot(., aes(x = factor(dots_until_turn), y = power)) +
+  geom_boxplot(notch = T) +
+  theme_minimal() 
+
+```
+
+
+```{r fig.width = 4, fig.height= 6}
+
+
+ofc_last_dot_sub_df %>%
+  filter(dots_until_turn < 2) %>%
+  mutate(dots_until_turn_fac = factor(dots_until_turn, levels = c(1, 0))) %>%
+  ggplot(., aes(x = dots_until_turn_fac, y = power)) +
+  geom_line(aes(group = trial_numeric), alpha = .6) +
+  geom_point(alpha = .6) +
+  geom_smooth(aes(x=   2- dots_until_turn), method = "lm", formula = 'y~x', color = "black") +
+  theme_minimal()  
+
+```
+
+
+
+
+

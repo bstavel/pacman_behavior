@@ -77,12 +77,23 @@ washu_mni_data <- read_csv(path(here(), 'data/ieeg_mni/washu_mni_table.csv'))
 
 # clean electrode names #
 washu_mni_data_clean <- washu_mni_data %>%
+  mutate(Electrode = if_else(subject == "BJH039", gsub("-", "", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH041", gsub("'", "L", Electrode), Electrode)) %>%
   mutate(elec_clean = if_else(grepl("\\^", Electrode), gsub("([^^]*)\\^.*?(\\d+)$", "\\1\\2", Electrode),
                                     gsub("([^-]*)-.*?(\\d+)$", "\\1\\2", Electrode))) %>% # fix weird Washu naming
   filter(!grepl("lesion", Electrode)) %>% # exclude lesion elecs
   mutate(elec_clean = gsub("-", "", elec_clean)) %>%
   select(-Electrode) %>%
-  rename(Electrode = elec_clean)
+  rename(Electrode = elec_clean) %>%
+  mutate(elec_tmp = Electrode) %>%
+  separate(elec_tmp, 
+           into = c("Letters", "Numbers"), sep = "(?<=[A-Za-z])(?=[0-9])", 
+           convert = TRUE, remove = TRUE, extra = "merge") %>%
+  mutate(Letters = if_else(subject == "BJH026" & X < 0 & Letters != "GL", paste0(Letters, "L"),
+                             if_else(subject == "BJH026" & X > 0, paste0(Letters, "R"), Letters))) %>%
+  mutate(Electrode = if_else(subject == "BJH026", paste0(Letters, Numbers), Electrode)) %>%
+  select(-Letters, -Numbers)
+
 
 
 ```

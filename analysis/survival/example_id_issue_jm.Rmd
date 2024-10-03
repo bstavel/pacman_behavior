@@ -1,0 +1,118 @@
+---
+title: "JM Example"
+output: html_document
+date: "2024-04-19"
+---
+
+```{r setup, include=FALSE}
+
+## libraries ##
+library(tidyverse)
+library(lme4)
+library(here)
+library(fs)
+library(survival)
+library(JMbayes2)
+```
+
+
+```{r load-data}
+
+train_long_data <- read_csv(path(here(), "data/jm_example_train_long_data.csv"))
+train_cox_df <- read_csv(path(here(), "data/jm_example_train_cox_data.csv"))
+
+```
+
+
+
+```{r fitting-comparison}
+
+## change the ID variables ##
+train_long_data <- train_long_data %>%
+  mutate(trial_factor = factor(trial_numeric))
+
+train_cox_df <- train_cox_df %>%
+  mutate(trial_factor = factor(trial_numeric))
+
+# ## shuffled versions
+# # Extracting levels
+# levels_original <- levels(train_long_data$trial_numeric)
+# 
+# # Shuffling the levels
+# levels_shuffled <- sample(levels_original)
+# 
+# # Creating a named vector for mapping
+# level_mapping <- setNames(levels_shuffled, levels_original)
+# 
+# # rename the ID variable
+# train_long_data <- train_long_data %>%
+#   mutate(trial_numeric = factor(level_mapping[trial_numeric]))
+# train_cox_df <- train_cox_df %>%
+#   mutate(trial_numeric = factor(level_mapping[trial_numeric]))
+
+
+# longitudinal model #
+lm_threat_fc <- lme(distance_to_ghost ~ jm_time, data = train_long_data, 
+                 random = ~jm_time | trial_factor, control = lmeControl(opt = 'optim'))
+lm_threat_nm <- lme(distance_to_ghost ~ jm_time, data = train_long_data, 
+                 random = ~jm_time | trial_numeric, control = lmeControl(opt = 'optim'))
+
+
+lm_reward_fc <- lme(points_remaining ~ jm_time, data = train_long_data, 
+                 random = ~jm_time | trial_factor, control = lmeControl(opt = 'optim'))
+lm_reward_nm <- lme(points_remaining ~ jm_time, data = train_long_data, 
+                 random = ~jm_time | trial_numeric, control = lmeControl(opt = 'optim'))
+
+# survival model #
+cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = train_cox_df)
+
+# joint model #
+jm_fit_fc <- jm(cox_fit, list(lm_threat_fc, lm_reward_fc), 
+             time_var = "jm_time",  id_var = "trial_factor",
+             data_Surv = train_cox_df, 
+             n_burnin = 2000, n_iter = 40000, n_chains =8, cores = 6)
+
+jm_fit_nm <- jm(cox_fit, list(lm_threat_nm, lm_reward_nm), 
+             time_var = "jm_time",  id_var = "trial_numeric",
+             data_Surv = train_cox_df, 
+             n_burnin = 2000, n_iter = 40000, n_chains =8, cores = 6)
+
+## print lme results
+summary(lm_threat_fc)
+summary(lm_threat_nm)
+
+
+## priint different jm fits
+summary(jm_fit_fc)
+summary(jm_fit_nm)
+
+```
+
+
+```{r}
+
+pbc2.id$status2 <- as.numeric(pbc2.id$status != 'alive')
+CoxFit <- coxph(Surv(years, status2) ~ sex, data = pbc2.id)
+
+fm1 <- lme(log(serBilir) ~ year * sex, data = pbc2, random = ~ year | id)
+
+jointFit1 <- jm(CoxFit, fm1, time_var = "year")
+summary(jointFit1)
+
+```
+
+```{r}
+
+pbc2$id <- factor(paste0("ID_", pbc2$id))
+pbc2.id$id <- factor(paste0("ID_", pbc2.id$id))
+
+pbc2.id$status2 <- as.numeric(pbc2.id$status != 'alive')
+CoxFit <- coxph(Surv(years, status2) ~ sex, data = pbc2.id)
+
+fm1 <- lme(log(serBilir) ~ year * sex, data = pbc2, random = ~ year | id)
+
+jointFit1 <- jm(CoxFit, fm1, time_var = "year")
+summary(jointFit1)
+
+```
+

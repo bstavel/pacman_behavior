@@ -1,0 +1,193 @@
+---
+title: "Insula Model"
+output: html_document
+date: "2024-03-26"
+---
+
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+Sig Predictors Are:
+
+insula ~ ofc (holds)
+insula ~ dlpfc (holds)
+insula ~ hc (holds)
+
+
+```{r load-data}
+
+# load correlations #
+insula_dlpfc_results <- read_csv(path(here(), "results", "turn_time_prediction",
+                               "insula_dlpfc_theta_turn_time_correlations.csv"))
+insula_amyg_results <- read_csv(path(here(), "results", "turn_time_prediction",
+                                     "insula_amyg_theta_turn_time_correlations.csv"))
+insula_hc_results <- read_csv(path(here(), "results", "turn_time_prediction",
+                                       "insula_hc_theta_turn_time_correlations.csv"))
+insula_cing_results <- read_csv(path(here(), "results", "turn_time_prediction",
+                                     "insula_cing_theta_turn_time_correlations.csv"))
+insula_ofc_results <- read_csv(path(here(), "results", "turn_time_prediction",
+                                    "insula_ofc_theta_turn_time_correlations.csv"))
+
+# bind_together #
+insula_results <- full_join(insula_dlpfc_results %>% rename(dlpfc_cor = correlation) %>% select(-pair_id, -dlpfc_elec),
+                         insula_amyg_results %>% rename(amyg_cor = correlation) %>% select(-pair_id, -amyg_elec))
+insula_results <- full_join(insula_results, insula_cing_results %>% rename(cing_cor = correlation) %>%
+                          select(-pair_id, -cing_elec))
+insula_results <- full_join(insula_results, insula_hc_results %>% rename(hc_cor = correlation) %>% 
+                          select(-pair_id, -hc_elec))
+insula_results <- full_join(insula_results, insula_ofc_results %>% rename(ofc_cor = correlation) %>% 
+                          select(-pair_id, -ofc_elec))
+
+
+insula_results <- insula_results %>%
+  group_by(subject, insula_elec, trial, turn_time) %>%
+  mutate(dlpfc_cor = mean(dlpfc_cor)) %>%
+  mutate(amyg_cor = mean(amyg_cor)) %>%
+  mutate(cing_cor = mean(cing_cor)) %>%
+  mutate(ofc_cor = mean(ofc_cor)) %>%
+  mutate(hc_cor = mean(hc_cor)) %>%
+  distinct() %>%
+  ungroup()
+
+```
+
+
+```{r full-model}
+
+# log turn time, remove infinite values #
+insula_clean_results <- insula_results %>% 
+  filter(subject != "BJH016") %>%
+  mutate(logged_times = log(turn_time)) %>%
+  filter(!is.infinite(logged_times))  
+
+# run model #
+all_region_model <- lmerTest::lmer(logged_times ~ dlpfc_cor + amyg_cor + ofc_cor + cing_cor + hc_cor + 
+                                     (1|subject:insula_elec), data = insula_clean_results)
+
+# output #
+summary(all_region_model)
+tidy(all_region_model)
+
+
+```
+
+```{r no-hc-model}
+
+# run model #
+no_hc_model <- lmerTest::lmer(logged_times ~ dlpfc_cor + amyg_cor + ofc_cor + cing_cor + 
+                                     (1|subject:insula_elec), data = insula_clean_results)
+
+# output #
+summary(no_hc_model)
+
+
+```
+
+```{r no-dlpfc-model}
+
+# run model #
+no_dlpfc_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + ofc_cor + cing_cor + 
+                                     (1|subject:insula_elec), data = insula_clean_results)
+
+# output #
+summary(no_dlpfc_model)
+
+
+```
+
+```{r no-ofc-model}
+
+# run model #
+no_ofc_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + dlpfc_cor + cing_cor + 
+                                     (1|subject:insula_elec), data = insula_clean_results)
+
+# output #
+summary(no_ofc_model)
+
+
+```
+
+```{r no-cing-model}
+
+# run model #
+no_cing_model <- lmerTest::lmer(logged_times ~ hc_cor + amyg_cor + dlpfc_cor + ofc_cor + dlpfc_cor +
+                                     (1|subject:insula_elec), data = insula_clean_results)
+
+# output #
+summary(no_cing_model)
+
+
+```
+
+
+```{r full-model-remove-each-sub}
+
+for(sub in unique(insula_results$subject)) {
+  
+  print(sub)
+  
+  # log turn time, remove infinite values #
+  insula_clean_results <- insula_results %>% 
+    filter(subject != sub) %>%
+    mutate(logged_times = log(turn_time)) %>%
+    filter(!is.infinite(logged_times))  
+  
+  # run model #
+  all_region_model <- lmerTest::lmer(logged_times ~ dlpfc_cor + amyg_cor + ofc_cor +  cing_cor +  hc_cor + 
+                                       (1|subject:insula_elec), data = insula_clean_results)
+  
+  # output #
+  print(summary(all_region_model))
+
+}
+
+```
+
+
+
+
+
