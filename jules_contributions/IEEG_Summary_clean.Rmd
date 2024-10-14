@@ -1,0 +1,511 @@
+---
+title: "Pacman: T-tests, LMMs & Visualisations in iEEG sample"
+author: "Jules"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=F, echo=F}
+knitr::opts_chunk$set(
+  root.dir =
+  echo <- FALSE,
+  fig.width <- 10,  
+  fig.height <- 4,  
+  fig.align <- "center",
+  fig.pos <- "H",  
+  cache <- FALSE) 
+
+## libraries ##
+library(lmerTest)
+library(car)
+library(merTools) 
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr) # devtools::install_github('Mikata-Project/ggthemr')
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(devtools)
+library(patchwork)
+library(sjPlot)
+library(lattice)
+library(Matrix)
+
+```
+```{r plotting helpers, include=F, echo=F}
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "blue1", "steelblue4", "#80B1D3", "lightblue", "skyblue2", "#5BBCD6", "dodgerblue2", "darkturquoise", "#8DD3C7",  "#1C8E7A", "#ACCDE9", "#ACCDF9", 
+  
+  "green1", "green4", "#50A45C", "#78C679",  "palegreen2", "#B3DE69", "#ADDD8E", "#A1D99B", "#C7E9C0","#CCEBC5", "#D9F0A3", 
+  
+  "gold1",  "#FFFFB3", "yellow4", "yellow3", "khaki2", "darkorange", "#FAC898", "#CC7722", "#FFAC1C", 
+  
+  "#FF7F00", "#FDBF6F", "#FDB462", "#F3A300", "#FB8072",  "#FB9A99", "orange", "orange3", "#FF5F1F", "#FF7518",
+  
+  "#E31A1C", "#FF0000", "#FD5372", "deeppink1", "orchid1", "#FCCDE5", "maroon", "pink", "orchid", 
+  
+  "#6A3D9A", "#BC80BD", "#9986A5", "#CAB2D6", "#BEBADA", "orchid4", "purple2", "orchid3",
+  
+  "darkorange4", "brown", "black", "grey70","#D9D9D9", "#CCCDE9" 
+)
+orange <- c("gold1", "darkorange", "#FAC898", "#CC7722", "#FFAC1C", "#FF7F00", "#FDB462", "#F3A300", "#FB8072",  "#FB9A99", "orange", "orange3", "#FF5F1F", "#FF7518", "#FF0000")
+
+pink <- c("#E31A1C", "#FF0000", "#FD5372", "deeppink1", "orchid1", "#FCCDE5", "maroon", "pink", "orchid", "#6A3D9A", "#BC80BD", "#CAB2D6", "orchid4", "purple2", "orchid3")
+
+blue <- c("blue1", "steelblue4", "#80B1D3", "lightblue", "skyblue2", "#5BBCD6", "dodgerblue2", "darkturquoise", "steelblue", "steelblue2", "blue3", "skyblue", "steelblue3", "skyblue3", "dodgerblue", "dodgerblue4")
+
+green <- c("green", "green4", "#50A45C", "#78C679",  "palegreen4", "#B3DE69", "#ADDD8E", "#A1D99B", "#C7E9C0", "#D9F0A3", "#1C8E7A","green3", "darkgreen", "palegreen", "yellow4", "yellow3")
+
+my_theme <- theme_classic() +
+  theme(panel.grid.major.y = element_line(colour = "grey70", linewidth = 0.1), axis.ticks = element_blank())
+
+tt_order <- c("3","15","1","13","2","14","4","16","7","11","5","9","6","10","8","12", "17", "18", "19", "20")
+color_order <- list("3","15","2","14","7","11","6","10", "17", "18", "19", "20") # numbers represent to trial type
+distance_colors1 <- c("#FCCDE5", "#BC80BD")
+distance_colors2 <- c("maroon1", "maroon4")
+dot_colors1 <- c("#CCEBC5", "#8DD3C7")
+dot_colors2 <- c("skyblue", "skyblue4")
+time_colors <- c("khaki2", "#FB9A99")
+```
+```{r data, include=F, echo=F}
+distance_ghost <- read.csv('all_subs_complete_distance_df.csv') 
+distance_noghost <- read.csv('all_subs_noghost_complete_distance_df.csv') 
+all_data <- read.csv('all_subs_complete_behavior_df.csv') # all tt, many NAs
+```
+```{r data preparation, include=F, echo=F}
+ghost_mutated <- distance_ghost %>% 
+  filter(Trial != 0) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(
+    initial_score = first(Score),         # score at trial start 
+    last_away_flip = ifelse(away_choice == last_away & away_choice != 0, trial_flip, 0), # flag: flip of last_away = away_choice
+    last_away_flip = max(last_away_flip), # flag: flip of last_away (=flip number)
+    turn_bob_flip = ifelse(last_away_flip == trial_flip & attack_chase_bob == "Bob", 1, 0), # flag: last_away while ghost is bobbing (=1). this means the participant decided to leave the trial before the ghost started chasing / attacking them
+    turn_bob_trial = max(turn_bob_flip), # flag: trials with flagged flips
+    
+    # this paragraph is necessary for IEEG data due to downsampling of the data
+    ghost_objective_direction_tmp = c(FALSE, diff(GhostLocation)),
+    ghost_objective_direction = if_else(ghost_objective_direction_tmp >= 2, "Right", 
+                                if_else(ghost_objective_direction_tmp <= -2, "Left", "still")),
+    ghost_direction = if_else((base_start_location < 100 & ghost_objective_direction == "Left") |
+                              (base_start_location > 100 & ghost_objective_direction == "Right") , "Towards",
+                      if_else(ghost_objective_direction == "still", "still", "Away")),
+    new_ghost_direction = ifelse(ghost_direction == "still", NA, ghost_direction)) %>%
+  fill(new_ghost_direction, .direction = "downup") %>%
+  mutate(ghost_direction = ifelse(is.na(new_ghost_direction), ghost_direction, new_ghost_direction)) %>%
+  select(-new_ghost_direction) %>%
+  
+  # creating new variables
+  mutate(
+    # ghost starting direction (ghost movement direction at the beginning of the trial)
+    gsd_new = ifelse(trial_flip == 2 & ghost_direction == "Towards", 1, 0),
+    gsd_new = max(gsd_new), 
+    gsd_new = ifelse(gsd_new == 1, "towards", "away"),
+    former_gsd = ghost_start_dir, 
+    
+    # trial type
+    trialtype_new = case_when(
+      gsd_new == "away" & base_start_location > 100 & reward_groups == 2 ~ 1,
+      gsd_new == "away" & base_start_location > 100 & reward_groups == 3 ~ 2,
+      gsd_new == "away" & base_start_location > 100 & reward_groups == 1 ~ 3,
+      gsd_new == "away" & base_start_location > 100 & reward_groups == 4 ~ 4,
+      gsd_new == "towards" & base_start_location < 100 & reward_groups == 2 ~ 5,
+      gsd_new == "towards" & base_start_location < 100 & reward_groups == 3 ~ 6,
+      gsd_new == "towards" & base_start_location < 100 & reward_groups == 1 ~ 7,
+      gsd_new == "towards" & base_start_location < 100 & reward_groups == 4 ~ 8,
+      gsd_new == "towards" & base_start_location > 100 & reward_groups == 2 ~ 9,
+      gsd_new == "towards" & base_start_location > 100 & reward_groups == 3 ~ 10,
+      gsd_new == "towards" & base_start_location > 100 & reward_groups == 1 ~ 11,
+      gsd_new == "towards" & base_start_location > 100 & reward_groups == 4 ~ 12,
+      gsd_new == "away" & base_start_location < 100 & reward_groups == 2 ~ 13,
+      gsd_new == "away" & base_start_location < 100 & reward_groups == 3 ~ 14,
+      gsd_new == "away" & base_start_location < 100 & reward_groups == 1 ~ 15,
+      gsd_new == "away" & base_start_location < 100 & reward_groups == 4 ~ 16),
+    tt_color = if_else(as.factor(trialtype_new) %in% color_order, 'odd', 'even')
+  ) %>%
+  
+  mutate(
+    # movement behavior of pacman 
+    first_flip = min(trial_flip),
+    trial_flip = (trial_flip - first_flip + 1),
+    first_movement_flip = ifelse(move_step != 0, trial_flip, 999), # flag: flips of movement
+    first_movement_flip = min(first_movement_flip),                # flag: first flip of movement per trial
+    first_movement_time =  ifelse(trial_flip == first_movement_flip, trial_time, 0), 
+    first_movement_time = max(first_movement_time), # trial-level
+    first_movement_ghost = ifelse(trial_flip == first_movement_flip, ghost_direction, NA), 
+    move_step = ifelse(trial_flip == 1, 0, move_step), #repeat for former third trials
+    
+    # ghost movement
+    current_ghost_direction = ghost_direction,
+    prev_ghost_direction = lag(ghost_direction),
+    ghost_turn = ifelse(is.na(prev_ghost_direction) | prev_ghost_direction == current_ghost_direction, 0, 1),
+    ghost_turn_count = cumsum(ghost_turn),
+    current_trial_flip = trial_flip,
+
+    ghost_comeback_flip = case_when(
+    turn_bob_trial == 1 & first_flip == 1 ~ (which.max(ghost_turn_count == 2)-1),
+    turn_bob_trial == 1 & first_flip > 1 ~ (which.max(ghost_turn_count == 3)-1),
+    turn_bob_trial != 1 ~ NA),
+    ghost_comeback_flip = ifelse(ghost_comeback_flip == 0, NA, ghost_comeback_flip),
+    ghost_comeback_pos = ifelse(ghost_comeback_flip == current_trial_flip, GhostLocation, 0),
+    ghost_comeback_pos = max(ghost_comeback_pos),
+    
+    first_turnaround_flip = case_when(
+      turn_bob_trial == 1 & first_flip == 1~ (which.max(ghost_turn_count == 1)-1),
+      turn_bob_trial == 1 & first_flip > 1 ~ (which.max(ghost_turn_count == 2)-1),
+      turn_bob_trial != 1 ~ NA),
+    current_ghost_position = GhostLocation, # check
+    first_turnaround_pos = ifelse(first_turnaround_flip == current_trial_flip, GhostLocation, 0),
+    first_turnaround_pos = max(first_turnaround_pos),
+    ghost_start_pos = ifelse(current_trial_flip ==1, GhostLocation, 0),
+    ghost_start_pos = max(ghost_start_pos),
+    first_turnaround_distance = ifelse(first_turnaround_pos != 0, abs(first_turnaround_pos - ghost_start_pos), 0),
+    bobbing_distance = ifelse(ghost_comeback_pos != 0, abs(first_turnaround_pos - ghost_comeback_pos), NA),
+    
+    dot5_position = ifelse(current_trial_flip == 1, Biscuit5, 0),
+    dot5_position = max(dot5_position),
+    ghost_dot5_dis = ifelse(attack_chase_bob == "Bob", abs(current_ghost_position - dot5_position), 999),
+    min_dis_ghost_dot5 = min(ghost_dot5_dis),
+    min_dis_ghost_dot5 = ifelse(min_dis_ghost_dot5 == 999, NA, min_dis_ghost_dot5),
+    overlap_dot5 = ifelse(GhostLocation == dot5_position, "overlap", "no overlap"),
+    ) %>% 
+
+  ungroup()
+
+```
+```{r filtering, echo=F}
+# mark bad trials for each participant
+bad_trials_list <- list(
+  participant1 = data.frame(subject = "SLCH002", Trial = c(10,30,51,57,79,92,97,101,126,133,150,167,168,223,224,225)),
+  participant2 = data.frame(subject = "LL19", Trial = c(5,9,12,13,21,23,27,30,33,44,46,48,53,57,61,64,67,72,73,78,79,91,93, 110,118,120,122,126,127,131,135,157,158,160,174,187,196,206,218,14,52,151)),    
+  participant3 = data.frame(subject = "LL17", Trial = c(16,17,81,83,121,128,132,147,162,173,190,191,223,227,228,235,237,243,245)),    
+  participant4 = data.frame(subject = "LL14", Trial = c(3,6,25,35,48,95,179,183,193,198,206,237,255,274,289,337,382,391, 394,406,417,473,486,491,494,526,543,570,634,647,653,681,686,699,712,728,785,797,81)),    
+  participant5 = data.frame(subject = "LL13", Trial = c(5,6,7,10,19,22,32,49,59,72,102,118,128,161,171,191,195,201,175,181)),    
+  participant6 = data.frame(subject = "LL12", Trial = c(18,40,66,69,89,97,157,247)),    
+  participant7 = data.frame(subject = "LL10", Trial = c(28,29,54,82,100,102,103,164,168,228,8)),    
+  participant8 = data.frame(subject = "BJH041", Trial = c(2,50,59,73,87,89,111)),    
+  participant9 = data.frame(subject = "BJH039", Trial = c(1,2,9,28,100,122,130,160,180,218,13)),    
+  participant10 = data.frame(subject = "BJH029", Trial = c(5,12,32,57,136,140,164,223,230)),    
+  participant11 = data.frame(subject = "BJH016", Trial = c(34,35,36,71,72,432,433,1,4,7,12,14,25,28,39,40,49,59,61,69,76,84,94, 96,103,108,115,116,118,142,169,185,202,238,248,258,310,323,342,360,366,379,382,386,387,391,407,417,451,452,8,16,32,24,66,81,102,112,392)),  
+  participant12 = data.frame(subject = "BJH021", Trial = c(1,2,6,79,82,83,98,104,124,191,209,237,18)),    
+  participant13 = data.frame(subject = "BJH025", Trial = c(23,49,63,80,97,99,100,106,167,170,211,232,10,13,6)),    
+  participant14 = data.frame(subject = "BJH026", Trial = c(4,151,158,162,171,175,182,196,2,31)),    
+  participant15 = data.frame(subject = "BJH027", Trial = c(10,28,34,71,77,78,123,124,149,172,179,180,190,209,211,225,234))
+)
+
+# convert the list to a data frame
+bad_trials_df <- map_df(bad_trials_list, ~ .x %>%  
+                          mutate(subject = subject)) %>%
+                select(subject, Trial)
+
+# filter out bad trials
+clean_ghost_flips <- ghost_mutated %>% 
+  anti_join(bad_trials_df, by = c("subject" = "subject", "Trial" = "Trial"))
+
+# clean up
+rm(bad_trials_list, bad_trials_df, distance_ghost)
+```
+```{r clean df, echo=F}
+# create clean data frames
+clean_distance_data <- clean_ghost_flips %>%
+  filter(turn_bob_trial == 1 & dots_eaten > 0 & last_away_flip == trial_flip) # we keep trials where the participant decided to leave the trial before the ghost started chasing / attacking them
+clean_distance_data$last_away.z.end <- as.vector(scale(clean_distance_data$last_away))
+
+clean_distance_data <- clean_distance_data %>%
+  mutate(last_away.z = last_away.z.end)
+clean_distance_data$dots_eaten.z <- as.vector(scale(clean_distance_data$dots_eaten))
+
+clean_first_movement <- clean_ghost_flips %>% 
+  filter(turn_bob_trial == 1 & dots_eaten > 0 & first_movement_flip == trial_flip) 
+```
+<!-- Trial-level variables --> 
+```{r trial level variables, include=F, echo=F}
+subject_id <- as.factor(gsub("\\D", "", clean_distance_data$subject))
+last_away <- clean_distance_data$last_away
+last_away.z <- clean_distance_data$last_away.z.end
+dots_eaten.z  <- clean_distance_data$dots_eaten.z
+initial_score <- as.numeric(clean_distance_data$initial_score)
+trial <- as.numeric(gsub("\\D", "", clean_distance_data$Trial))
+ghost_start_dir <- as.factor(clean_distance_data$gsd_new) 
+trialtype <- clean_distance_data$trialtype_new
+dots_eaten <- as.numeric(clean_distance_data$dots_eaten)
+lives <- as.numeric(clean_distance_data$Lives)
+lives.num.centered <- (lives - 2)  # lives centered with 2 lives = 0 (3 = 1, 0 = -1)
+rewardgroups <- clean_distance_data$reward_groups
+rewardgroup <- clean_distance_data$reward_groups    # rewardgroup saved as 2 categories
+rewardgroup[rewardgroup == 1 | rewardgroup == 2] <- "0"
+rewardgroup[rewardgroup == 3 | rewardgroup == 4] <- "1"
+last_away_ghost_direction <- as.factor(clean_distance_data$ghost_direction)
+starting_side <- as.factor(clean_distance_data$starting_side)
+bobbing_distance <- as.numeric(clean_distance_data$bobbing_distance)
+first_movement_flip <- as.numeric(clean_first_movement$first_movement_flip)
+first_movement_time <- as.numeric(clean_first_movement$first_movement_time)
+first_movement_ghost <- (clean_first_movement$first_movement_ghost)
+number_runs <- as.numeric(clean_first_movement$number_of_runs)
+first_turnaround_distance <- as.numeric(clean_distance_data$first_turnaround_distance)
+ghost_comeback_flip <- as.numeric(clean_distance_data$ghost_comeback_flip)
+min_dis_ghost_dot5 <- as.numeric(clean_distance_data$min_dis_ghost_dot5)
+
+```
+<!-- New data frame with these variables. -->
+```{r new data, include=F, echo=F}
+new_data <- data.frame(subject_id, trial, trialtype, starting_side, rewardgroups, rewardgroup, last_away, last_away.z, lives, lives.num.centered, initial_score, ghost_start_dir, dots_eaten, first_movement_flip, first_movement_time, first_movement_ghost, number_runs, ghost_comeback_flip, first_turnaround_distance, bobbing_distance,  last_away_ghost_direction, min_dis_ghost_dot5)
+
+merged_ghost_trial <- new_data %>%
+  mutate(
+    rewardgroup = if_else(rewardgroup == "1", 'high', 'low'),
+    rewardgroup = as.factor(rewardgroup),
+    tt_color = if_else(trialtype %in% color_order, 'odd', 'even'))
+
+rm(new_data, subject_id, trial, rewardgroup, last_away, lives, initial_score, ghost_start_dir, lives.num.centered, trialtype, dots_eaten, first_movement_flip, first_movement_time, first_movement_ghost, number_runs, ghost_comeback_flip, clean_first_movement, last_away_ghost_direction, min_dis_ghost_dot5, starting_side, bobbing_distance, first_turnaround_distance, rewardgroups, last_away.z)
+```
+<!-- Variance Dataset --> 
+```{r variance dataset, include=F, message=F, echo=F}
+distance_variance_data <- clean_distance_data %>%
+  group_by(subject, block) %>% # for each block within each subject
+  summarise(dis_b_var = var(last_away.z.end), dis_b_sd = sd(last_away.z.end), dis_b_mean = mean(last_away.z.end)) %>%
+  ungroup()
+general_variance_data <- clean_distance_data %>%
+  group_by(subject) %>% # for each subject
+  summarise(dis_sub_var = var(last_away.z.end), dis_sub_mean = mean(last_away.z.end), dis_sub_sd = sd(last_away.z.end)) %>%
+  ungroup()
+general_variance_data$dis_sample_sd_mean <- mean(general_variance_data$dis_sub_sd) #center dis_tt_sd
+general_variance_data$dis_sub_sd_centered <- general_variance_data$dis_sub_sd - general_variance_data$dis_sample_sd_mean
+
+distance_variance_data <- left_join(distance_variance_data, general_variance_data, by = "subject")
+rm(general_variance_data)
+
+dots_variance_data <- clean_distance_data %>%
+  group_by(subject, block) %>%
+  summarise(dot_b_var = var(dots_eaten), dot_b_sd = sd(dots_eaten), dot_b_mean = mean(dots_eaten)) %>%
+  ungroup() 
+general_variance_data <- clean_distance_data %>%
+  group_by(subject) %>%
+  summarise(dot_sub_var = var(dots_eaten), dot_sub_mean = mean(dots_eaten), dot_sub_sd = sd(dots_eaten)) %>%
+  ungroup()
+general_variance_data$dot_sample_sd_mean <- mean(general_variance_data$dot_sub_sd)
+general_variance_data$dot_sub_sd_centered <- general_variance_data$dot_sub_sd - general_variance_data$dot_sample_sd_mean
+dots_variance_data <- left_join(dots_variance_data, general_variance_data, by = "subject")
+
+variance_data <- left_join(dots_variance_data, distance_variance_data, by = c("subject", "block"))
+
+rm(general_variance_data, distance_variance_data, dots_variance_data) 
+  
+```
+
+# T-tests for dots eaten and distance at last turnaround (last away)  
+## Rewardgroup  
+```{r t-test rg, echo=F}
+#dots
+t_test_rg_dots <- t.test(dots_eaten.z ~ rewardgroup, data = merged_ghost_trial)
+print(t_test_rg_dots)
+d_rg_dots <- cohens_d(dots_eaten.z ~ rewardgroup, data = merged_ghost_trial)
+print(d_rg_dots)
+
+# distance
+t_test_rg_distance <- t.test(last_away.z ~ rewardgroup, data = merged_ghost_trial)
+print(t_test_rg_distance)
+d_rg_distance <- cohens_d(last_away.z ~ rewardgroup, data = merged_ghost_trial)
+print(d_rg_distance)
+```
+
+## GSD
+```{r t-test gsd, echo=F}
+# dots
+t_test_gsd_dots <- t.test(dots_eaten.z ~ ghost_start_dir, data = merged_ghost_trial)
+print(t_test_gsd_dots)
+d_gsd_dots <- cohens_d(dots_eaten.z ~ ghost_start_dir, data = merged_ghost_trial)
+print(d_gsd_dots)
+
+#distance
+t_test_gsd_distance <- t.test(last_away.z ~ ghost_start_dir, data = merged_ghost_trial)
+print(t_test_gsd_distance)
+d_gsd_distance <- cohens_d(last_away.z ~ ghost_start_dir, data = merged_ghost_trial)
+print(d_gsd_distance)
+```
+
+<!-- difference in 3 vs 5 dots -->
+```{r dots eaten per GSD, warning=F, fig.height=7}
+merged_ghost_trial %>%
+  select(subject_id, trial, ghost_start_dir, dots_eaten) %>%
+  distinct() %>%
+  ggplot(., aes(x = ghost_start_dir, fill = as.factor(ghost_start_dir))) +     
+  facet_wrap(~dots_eaten) +     geom_bar(position = "dodge", stat = "count") +     
+  geom_text(stat='count', aes(label=..count..),position = position_dodge(width = 0.9), vjust = -0.5) +     
+  coord_cartesian(ylim = c(0, 600)) +     
+  my_theme + 
+  labs(title = "Dots Eaten by GSD", x = "GSD", y = "Count", subtitle = "Same pattern as in first sample") + 
+  theme(legend.position = "none") +     
+  scale_fill_manual(values = c("towards" = "#8DD3C7", "away" = "#A1D99B"),name = "Ghost Direction")
+```
+
+## Lives
+```{r t-test lives, echo=F}
+# dots
+anova_lives_dots <- aov(dots_eaten.z ~ as.factor(lives), data = merged_ghost_trial)
+print(anova_lives_dots)
+eta_lives_dots <- eta_squared(anova_lives_dots)
+print(eta_lives_dots)
+
+#distance
+anova_lives_distance <- aov(last_away.z ~ as.factor(lives), data = merged_ghost_trial)
+print(anova_lives_distance)
+eta_lives_distance <- eta_squared(anova_lives_distance)
+print(eta_lives_distance)
+
+```
+
+
+
+# LMM  
+- Model comparison with differences in predictors (initial score included vs not) and random slopes for lives (yes/no)  
+- Best model for iEEG sample: w/o interaction terms, w/o random slopes)  
+  
+```{r model definitions, include=T, echo=F}
+model.noRS <- lmer(last_away.z ~ lives.num.centered + rewardgroup + ghost_start_dir + (1|subject_id), data = merged_ghost_trial)
+model.lives <- lmer(last_away.z ~ lives.num.centered + rewardgroup + ghost_start_dir + (1 + lives.num.centered|subject_id), data = merged_ghost_trial)
+model.score <-lmer(last_away.z ~ lives.num.centered + rewardgroup + ghost_start_dir + initial_score + (1|subject_id), data = merged_ghost_trial)
+
+print("Best Model iEEG")
+summary(model.noRS)
+
+print("Best Model Prolific")
+summary(model.lives)
+
+print("Score Model")
+summary(model.score)
+
+print("Comparison")
+anova(model.noRS, model.lives)
+```
+
+# Regression    
+  
+Notes: dotted lines = mean of entire sample  
+  
+``` {r model and model coefficients, echo=F, fig.height=20}
+# Split data by subject
+subject_data <- split(merged_ghost_trial, merged_ghost_trial$subject_id)
+
+# Define a function to fit the model and return both the coefficients and the model object
+fit_lm_and_return_model <- function(subject_df) {
+  model <- lm(last_away.z ~ rewardgroup + ghost_start_dir + lives.num.centered, data = subject_df)
+  coefficients <- coef(model)
+  return(list(coefficients = coefficients, model = model))
+}
+
+# Apply the function to each subject's data
+model_results <- lapply(subject_data, function(subject_df) {
+  subject_id <- unique(subject_df$subject_id)
+  result <- fit_lm_and_return_model(subject_df)
+  result$subject_id <- subject_id
+  return(result)
+})
+
+# Extract coefficients into a data frame
+coefficients_df <- do.call(rbind, lapply(model_results, function(res) {
+  data.frame(subject_id = res$subject_id, t(res$coefficients))
+}))
+
+# Rename the columns
+colnames(coefficients_df) <- c("subject_id", "Intercept", "rg_low_slope", "gsd_towards_slope", "lives.num.centered_slope")
+
+# Add to ghost trial 
+merged_ghost_trial <- merge(merged_ghost_trial, coefficients_df, by = "subject_id")
+```
+```{r individual regression lines, message=F, include=F}
+#coefficients w/o score
+model_all <- lm(last_away.z ~ rewardgroup + ghost_start_dir + lives.num.centered, data = merged_ghost_trial)
+model_all_coefficients <- coef(model_all)
+# notes:
+# intercept <- model_all_coefficients[1]
+# rg_low_slope <- model_all_coefficients[2]
+# gsd_towards_slope <- model_all_coefficients[3]
+# lives_num_centered_slope <- model_all_coefficients[4]
+# initial_score <- model_all_coefficients[4]
+
+# lives
+lives_ind <- merged_ghost_trial %>%
+  select(trial, subject_id, last_away.z, lives.num.centered, Intercept, lives.num.centered_slope) %>%
+  distinct() %>%
+  ggplot(aes(x = lives.num.centered, y = last_away.z)) + 
+    facet_wrap(~subject_id, nrow = 5, scales = "free_y") +  
+    geom_point(alpha = .5, color = "grey") +
+    my_theme + 
+    geom_line(aes(x = lives.num.centered, y = Intercept + lives.num.centered * lives.num.centered_slope),
+               color = "orange", linetype = 1, size = 1) +
+    # adding the line for the whole sample
+    geom_line(aes(x = lives.num.centered, y = model_all_coefficients[1] + lives.num.centered * model_all_coefficients[4]),
+               alpha = 0.8, linewidth = 0.4, colour= "black", linetype=2) +
+    scale_x_continuous(breaks = seq(-1, 1, 1)) + 
+    theme(legend.position = "none")
+
+# rewardgroup
+rg.coefficients <- coef(lm(last_away.z ~ rewardgroup, data = merged_ghost_trial))
+rewardgroup_ind <- merged_ghost_trial %>%
+  select(subject_id, trial, last_away.z, rewardgroup, Intercept, rg_low_slope) %>%
+  distinct() %>%
+  mutate(rewardgroup.num = ifelse(rewardgroup == "high", 1, 0)) %>%
+  ggplot(., aes(x = rewardgroup, y = last_away.z)) +
+      facet_wrap(~subject_id, nrow = 5, scales = "free_y") +
+      geom_point(alpha = .5, color = "grey") +
+      my_theme +
+      geom_line(aes(x = (rewardgroup.num + 1), y = Intercept + rewardgroup.num * rg_low_slope),
+             color = "palegreen", linetype = 1, size = 1) +
+      # adding the line for the whole sample
+      geom_line(aes(x = (rewardgroup.num+1), y = model_all_coefficients[1] + rewardgroup.num * model_all_coefficients[2]),
+                 alpha = 0.8, linewidth = 0.4, colour= "black", linetype=2) +
+      theme(legend.position = "none")
+
+# GSD
+gsd_ind <- merged_ghost_trial %>%
+  select(trial, subject_id, last_away.z, ghost_start_dir, Intercept, gsd_towards_slope) %>%
+  distinct() %>%
+  mutate(gsd.num = ifelse(ghost_start_dir == "towards", 1, 0)) %>%
+  ggplot(., aes(x = ghost_start_dir, y = last_away.z)) + 
+      facet_wrap(~subject_id, nrow = 5, scales = "free_y") +
+      geom_point(alpha = .5, color = "grey") +
+      my_theme +
+      geom_line(aes(x = (gsd.num + 1), y = Intercept + gsd.num * gsd_towards_slope),
+             color = "orchid1", linetype = 1, size = 1) +
+      # adding the line for the whole sample
+      geom_line(aes(x = (gsd.num+1), y = model_all_coefficients[1] + gsd.num * model_all_coefficients[3]),
+                 alpha = 0.8, linewidth = 0.4, colour= "black", linetype=2) +
+      theme(legend.position = "none")
+
+```
+
+### Individual Plots  
+  
+```{r individual regression plots, message=F, fig.width=8, fig.height=8, include=T}
+lives_ind
+rewardgroup_ind
+gsd_ind
+rm(lives_ind, rewardgroup_ind, gsd_ind)
+```
+  
