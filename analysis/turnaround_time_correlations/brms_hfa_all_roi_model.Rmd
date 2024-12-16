@@ -1,0 +1,442 @@
+---
+title: "Bayesian Assessment of HFA Correlations And Time to Turnaround"
+output: html_document
+date: "2024-10-14"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(brms)
+library(bayesplot)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+
+
+```{r load-data}
+
+
+# load correlations #
+correlation_df <- read_csv(path(here(), "results", "hfa_correlations_newsubs.csv"))
+
+```
+
+
+```{r split-mfg-sfg}
+
+regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
+
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+correlation_detailed_df <- correlation_df %>%
+  rowwise() %>%
+  mutate(
+    first_pair = gsub(paste0(subject, "_"), "", elec1),
+    second_pair = gsub(paste0(subject, "_"), "", elec2),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  ungroup() %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(correlation_detailed_df$detailed_first_region)
+table(correlation_detailed_df$detailed_second_region)
+
+# final rename
+correlation_detailed_df <- correlation_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region) %>%
+  select(-detailed_first_region, -detailed_second_region)
+
+# fix pair id to fit with sig pairs
+correlation_df <- correlation_detailed_df %>%
+  rowwise() %>%
+  mutate(roi_pair1 = paste0(subject, gsub(subject, "", elec1), "_to", gsub(subject, "", elec2)),
+         roi_pair2 = paste0(subject, gsub(subject, "", elec2), "_to", gsub(subject, "", elec1))) %>%
+  ungroup()
+
+
+```
+
+
+```{r only-sig-elecs}
+
+# load sig pairs by coherence analysis #
+sig_pairs <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+sig_pairs <- sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence")
+
+# filter ofc_turnDf to sig pairs
+correlation_sig_df <- correlation_df %>%
+  filter(first_region != "sfg" & second_region != "sfg") %>%
+  filter(first_region != second_region) %>%
+  filter( (roi_pair1 %in% sig_pairs$pair_id) | (roi_pair2 %in% sig_pairs$pair_id) ) %>%
+  filter(!is.na(correlation)) %>%
+  filter(!is.infinite(logged_times)) %>%
+  mutate(scale_correlation = scale(correlation)[,1]) %>%
+  mutate(scale_logged_times = scale(logged_times)[,1]) %>%
+  ungroup() %>%
+  mutate(regions = paste(first_region, second_region, sep = "_")) %>%
+  filter(!grepl("insula", regions)) %>%
+  mutate(
+    region_pair = case_when(
+      grepl("ofc", regions) & grepl("hc", regions) ~ "ofc_hc",
+      grepl("ofc", regions) & grepl("amyg", regions) ~ "ofc_amyg",
+      grepl("ofc", regions) & grepl("mfg", regions) ~ "ofc_mfg",
+      grepl("ofc", regions) & grepl("cing", regions) ~ "ofc_cing",
+      grepl("hc", regions) & grepl("amyg", regions) ~ "hc_amyg",
+      grepl("hc", regions) & grepl("mfg", regions) ~ "hc_mfg",
+      grepl("hc", regions) & grepl("cing", regions) ~ "hc_cing",
+      grepl("amyg", regions) & grepl("mfg", regions) ~ "amyg_mfg",
+      grepl("amyg", regions) & grepl("cing", regions) ~ "amyg_cing",
+      grepl("mfg", regions) & grepl("cing", regions) ~ "mfg_cing"
+    ))
+
+
+```
+
+
+```{r distribution-shapes}
+
+correlation_sig_df %>%
+  ggplot(., aes(x = scale_logged_times)) +
+  geom_histogram() +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+correlation_sig_df %>%
+  ggplot(., aes(x = scale_correlation)) +
+  geom_histogram() +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+table(correlation_sig_df$region_pair)
+
+
+
+```
+Maybe increase hfa iter on the next run!
+
+```{r}
+
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+# Fit the model
+model <- brm(
+  formula = scale_correlation ~ scale_logged_times * region_pair + (1 + scale_logged_times | subject/roi_pair1),
+  data = correlation_sig_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 5000, 
+  warmup = 2000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+# save full model #
+save(model, file = path(here(), "results", "full_hfa_all_roi_model_brms_newsubs.RData"))
+
+# load full model #
+load(path(here(), "results", "full_hfa_all_roi_model_brms_newsubs.RData"))
+
+```
+
+
+```{r model-summary}
+
+# summary #
+summary(model)
+
+ 
+
+```
+
+
+```{r trace-plot, fig.height = 50, fig.width = 8}
+
+# plot #
+mcmc_trace(model, regex_pars = c("b_"), facet_args = list(ncol = 1))
+
+
+```
+
+
+```{r}
+
+# For each region pair
+region_pairs <- unique(correlation_sig_df$region_pair)
+
+# values to find CI intervals in the density function
+closest_value <- function(x, v) {
+  # Calculate the absolute differences between each element in v and x
+  differences <- abs(v - x)
+  
+  # Find the index of the minimum difference
+  index_of_min <- which.min(differences)
+  
+  # Return the value in v at the index of the minimum difference
+  closest <- v[index_of_min]
+  return(closest)
+}
+
+# Function to summarize posterior samples
+summarize_posterior <- function(samples) {
+  mean_val <- mean(samples)
+  sd_val <- sd(samples)
+  ci_lower <- quantile(samples, 0.025)
+  ci_upper <- quantile(samples, 0.975)
+  max_density = max(density(samples)$y)
+  ci_lower_dens = density(samples)$y[density(samples)$x == closest_value(ci_lower, density(samples)$x)]
+  ci_upper_dens = density(samples)$y[density(samples)$x == closest_value(ci_upper, density(samples)$x)]
+  prob_positive <- mean(samples > 0)
+  tibble(
+    Mean = mean_val,
+    SD = sd_val,
+    CI_Lower = ci_lower,
+    CI_Upper = ci_upper,
+    Max_Density = max_density,
+    CI_Lower_Density = ci_lower_dens,
+    CI_Upper_Density = ci_upper_dens,
+    Prob_Positive = prob_positive
+  )
+}
+
+# Function to extract sample for each region pair
+get_samples_for_region <- function(region) {
+  if (region == "amyg_cing") {
+    slope <- as_draws_df(model)$b_scale_logged_times
+  } else {
+    interaction_term <- paste0("b_scale_logged_times:region_pair", region)
+    slope <- as_draws_df(model)$b_scale_logged_times + as_draws_df(model)[[interaction_term]]
+  }
+}
+
+# Function to extract slopes for each region pair
+get_slope_for_region <- function(region) {
+  if (region == "amyg_cing") {
+    slope <- as_draws_df(model)$b_scale_logged_times
+  } else {
+    interaction_term <- paste0("b_scale_logged_times:region_pair", region)
+    slope <- as_draws_df(model)$b_scale_logged_times + as_draws_df(model)[[interaction_term]]
+  }
+  summarize_posterior(slope)
+}
+
+# get all samples #
+full_sample <-  lapply(region_pairs, get_samples_for_region)
+names(full_sample) <- region_pairs
+full_sample_df <- as_tibble(full_sample)
+
+# Summarize slopes for all region pairs
+slopes_summary <- lapply(region_pairs, get_slope_for_region)
+names(slopes_summary) <- region_pairs
+
+# Combine summaries into a data frame
+slopes_summary_df <- bind_rows(slopes_summary, .id = "Region_Pair")
+
+```
+
+
+```{r prep-samples-for-plotting, fig.width. = 10, fig.height = 10}
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
+
+full_sample_plot_df <- full_sample_df %>%
+  pivot_longer(everything(), names_to = "Region_Pair", values_to = "samples") %>%
+  mutate(first_region = case_when(
+    grepl("^amyg", Region_Pair) ~ "Amygdala",
+    grepl("^hc", Region_Pair) ~ "Hippocampus",
+    grepl("^ofc", Region_Pair) ~ "OFC",
+    grepl("^cing", Region_Pair) ~ "Ant. Cingulate",
+    # grepl("^insula", Region_Pair) ~ "Insula",
+    grepl("^mfg", Region_Pair) ~ "MFG"
+  )) %>%
+  mutate(Region_Pair = case_when(
+    Region_Pair == "amyg_cing" ~ "Amyg. ~ ACC",
+    Region_Pair == "hc_amyg" ~ "HC ~ Amyg.",
+    # Region_Pair == "amyg_insula" ~ "Amyg. ~ Insula",
+    Region_Pair == "amyg_mfg" ~ "Amyg. ~ MFG",
+    Region_Pair == "ofc_amyg" ~ "OFC ~ Amyg.",
+    Region_Pair == "ofc_cing" ~ "OFC ~ ACC",
+    Region_Pair == "ofc_hc" ~ "OFC ~ HC",
+    # Region_Pair == "ofc_insula" ~ "OFC ~ Insula",
+    Region_Pair == "ofc_mfg" ~ "OFC ~ MFG",
+    Region_Pair == "hc_cing" ~ "HC ~ ACC",
+    # Region_Pair == "hc_insula" ~ "HC ~ Insula",
+    Region_Pair == "hc_mfg" ~ "HC ~ MFG",
+    Region_Pair == "mfg_cing" ~ "MFG ~ ACC"
+    # Region_Pair == "mfg_insula" ~ "MFG ~ Insula",
+    # Region_Pair == "insula_cing" ~ "Insula ~ ACC"
+    
+  )) %>%
+  mutate(Region_Pair = factor(Region_Pair, 
+                              levels = c("OFC ~ Amyg.", "OFC ~ HC", "OFC ~ ACC",  "OFC ~ MFG", 
+                                         "HC ~ Amyg.", "HC ~ ACC", "HC ~ MFG", 
+                                         "Amyg. ~ ACC",  "Amyg. ~ MFG", "MFG ~ ACC")))
+
+slopes_summary_plot_df <- slopes_summary_df %>%
+  mutate(first_region = case_when(
+    grepl("^amyg", Region_Pair) ~ "Amygdala",
+    grepl("^hc", Region_Pair) ~ "Hippocampus",
+    grepl("^ofc", Region_Pair) ~ "OFC",
+    grepl("^cing", Region_Pair) ~ "Ant. Cingulate",
+    # grepl("^insula", Region_Pair) ~ "Insula",
+    grepl("^mfg", Region_Pair) ~ "MFG"
+  )) %>%
+  mutate(Region_Pair = case_when(
+    Region_Pair == "amyg_cing" ~ "Amyg. ~ ACC",
+    Region_Pair == "hc_amyg" ~ "HC ~ Amyg.",
+    # Region_Pair == "amyg_insula" ~ "Amyg. ~ Insula",
+    Region_Pair == "amyg_mfg" ~ "Amyg. ~ MFG",
+    Region_Pair == "ofc_amyg" ~ "OFC ~ Amyg.",
+    Region_Pair == "ofc_cing" ~ "OFC ~ ACC",
+    Region_Pair == "ofc_hc" ~ "OFC ~ HC",
+    # Region_Pair == "ofc_insula" ~ "OFC ~ Insula",
+    Region_Pair == "ofc_mfg" ~ "OFC ~ MFG",
+    Region_Pair == "hc_cing" ~ "HC ~ ACC",
+    # Region_Pair == "hc_insula" ~ "HC ~ Insula",
+    Region_Pair == "hc_mfg" ~ "HC ~ MFG",
+    Region_Pair == "mfg_cing" ~ "MFG ~ ACC"
+    # Region_Pair == "mfg_insula" ~ "MFG ~ Insula",
+    # Region_Pair == "insula_cing" ~ "Insula ~ ACC"
+    
+  ))  %>%
+  mutate(Region_Pair = factor(Region_Pair, 
+                              levels = c("OFC ~ Amyg.", "OFC ~ HC", "OFC ~ ACC",  "OFC ~ MFG", 
+                                         "HC ~ Amyg.", "HC ~ ACC", "HC ~ MFG",
+                                         "Amyg. ~ ACC",  "Amyg. ~ MFG", "MFG ~ ACC"))) %>%
+  mutate(sig = if_else(0 > CI_Lower & 0 < CI_Upper, 99, 32))
+
+turn_time_plot <- full_sample_plot_df %>%
+  ggplot(., aes(x = samples, color = first_region, fill = first_region)) +
+  geom_vline(xintercept = 0, color = "black") +
+  geom_density(alpha = .15) +
+  geom_segment(data = slopes_summary_plot_df, aes(x = Mean, xend = Mean, y = 0, yend = Max_Density, color = first_region), linewidth = 1, linetype = "dotdash",) +
+  geom_segment(data = slopes_summary_plot_df, aes(x = CI_Upper, xend = CI_Upper, y = 0, yend = CI_Upper_Density, color = first_region),  linewidth = 1) +
+  geom_segment(data = slopes_summary_plot_df, aes(x = CI_Lower, xend = CI_Lower, y = 0, yend = CI_Lower_Density, color = first_region),  linewidth = 1) +
+  geom_text(data = slopes_summary_plot_df, aes(x = .075, y = sig), label = "*", size = 20, show.legend = FALSE) +
+  facet_wrap(~Region_Pair,  nrow = 3) +
+  theme(panel.background = element_rect(fill = "white"), 
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+      legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+      plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(color = "Region", fill = "Region", y = "Density", x = "Estimated Beta Coefficiant") +
+  scale_color_manual(values = roi_colors) +
+  scale_fill_manual(values = roi_colors) +
+  ylim(0, 80) +
+  ggtitle("Turnaround Time Correlates with Trial-by-Trial HFA Connectivity", subtitle = "Each facet shows the posterior distribution for the slope for each region pair, * indicates the 95% CI did not include 0")
+
+# ggsave(path(here(), "figures", "correl_turn_predictions", "hfa_turn_time_plot_newsubs.png"),
+#        plot = turn_time_plot,
+#        width = 16, height = 8, units = "in", dpi = 300)
+
+
+turn_time_plot
+```
+
+
+
+
+
+
+
+

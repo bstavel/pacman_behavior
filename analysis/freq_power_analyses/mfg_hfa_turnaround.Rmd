@@ -1,0 +1,308 @@
+---
+title: "MFG HFA Turnaround"
+output: html_document
+date: "2024-11-05"
+---
+---
+title: "Elevated Hippocampal Activity at Turnaround"
+output: html_document
+date: "2024-03-26"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(blme)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+## Testing for elevated hfa power during approach compared to avoidance
+
+This script tests for elevated hfa power during approach in the hippocampus, amygdala, OFC, ACC, Insula, MFG, & SFG in both conflict and no-conflict trials. The window of interest is from 1.5 seconds before turning until 1.5 seconds after turning. I average this window within trials, electrodes, and subjects and then compare the approach vs avoiding sections using the following equation:
+
+lmer(trial_hfa ~ aac + (1 + aac|subject), data = aac_df)
+
+I tried to first use:
+
+lmer(trial_hfa ~ aac + (1 + aac|subject/elec_id), data = aac_df)
+
+But this resulted in singular fits for the no conflict trials. Removing the random slope drastically changed the degrees of freedom and a model with slopes was significantly better than a model without slopes as assessed by an anova.
+
+Meanwhile, removing the nested random effect of electrode did not change the fixed effects estimate hardly at all, and there was no sig difference when I compared the models via anova. The effects in the conflict trials also hold if I include the nested effect of electrode.
+
+Therefore, I believe the best model to assess the affecr of approaching vs avoiding (`aac`) is the one without the nested random effect of electrode, but with a random intercept and slope for subject. I will use this model for all the analyses.
+
+
+
+```{r load-data}
+
+dlpfc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+
+# crop time 
+dlpfc_hfa_data <- dlpfc_hfa_data %>%
+  mutate(trial_time = trial_time - 3)  %>%
+  filter(trial_time >= -1)
+
+# separate dlpfc into sfg and mfg
+dlpfc_hfa_data <- dlpfc_hfa_data %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+dlpfc_hfa_data <- separate_mfg_sfg(dlpfc_hfa_data)
+sfg_hfa_data <- dlpfc_hfa_data %>% filter(sfg == 1) %>% select(-sfg, -mfg)
+mfg_hfa_data <- dlpfc_hfa_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
+
+```
+
+```{r load-behavioral-data}
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+
+## merge them ##
+# ghost trials #
+mfg_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             mfg_hfa_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+# no ghost trials #
+mfg_ng_behave_df <- left_join(all_subs_ng_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)),
+                             mfg_hfa_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+
+```
+
+
+```{r sig-test-df-prep-function}
+
+# set control values for blmer #
+control <- lme4::lmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 1e6))
+start_values <- list("hfa" = c(1, 1, 1))
+
+create_sig_test_df <- function(behave_df){
+
+  # create turn df, by timelocking to the turn
+  turn_df <- behave_df %>%
+      rename(hfa = theta) %>%
+      # round time so that we can loop over time later
+      mutate(trial_time = round(trial_time, 2)) %>%
+      # exclude time before they started moving, may be good to look at not doing this as well
+      # filiter out ITI
+      filter(reward_groups != 99 & !is.na(electrode)) %>%
+      # prep electrode variables
+      mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+      mutate(electrode = gsub("_.*", "", electrode)) %>%
+      # shift the time so that time 0 is the start of movement onset
+      group_by(elec_id, trial_numeric, subject) %>%
+      # filter time so that trials end when the person turnaround for the final time
+      mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+      mutate(event = replace(event, is.na(event), 0)) %>%
+      mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+      mutate(turnaround_time = max(turnaround_time)) %>%
+      filter(turnaround_time != 0) %>%
+      mutate(turn_time = trial_time - turnaround_time) %>%
+      ungroup() %>%
+      select(subject, elec_id, hfa, trial_numeric, trial_time, turn_time, turnaround_time) %>%
+      distinct()
+
+  # filter between 1.5 before and after turn, and create approach, avoid condition, average across trial
+  aac_df <- turn_df %>%
+    filter(turn_time <= 1.5 & turn_time >= -1.5) %>%
+    mutate(aac = if_else(turn_time <=0.75 & turn_time >=-0.75, "Close", "Far")) %>%
+    group_by(elec_id, aac, trial_numeric) %>%
+    mutate(trial_hfa = mean(hfa)) %>%
+    select(-trial_time, -hfa, -turn_time, -turnaround_time, -trial_time) %>%
+    distinct()  
+  
+  # run model with rnadom effects of subject and electrode  
+  model_tmp <- summary(lmer(trial_hfa ~ aac + (1 + aac|subject), data = aac_df))
+  pval <- model_tmp$coefficients[2, 5]
+  coef <- model_tmp$coefficients[2, 1]
+  tval <- model_tmp$coefficients[2, 4]
+  df <- model_tmp$coefficients[2, 3]
+  
+  
+  # Create visualization df, by averaging, across electrode, and subject
+  acc_df <- aac_df %>%
+    mutate(pvalue = pval) %>%
+    mutate(beta = coef) %>%
+    mutate(tvalue = tval)
+    
+  return(acc_df)
+  
+}
+
+
+```
+
+
+```{r plotting-functions}
+
+plot_conflict_trials <- function(aac_test_df, roi) {
+  
+  
+ aac_elec_test_df <- aac_test_df %>%
+    group_by(elec_id, aac, case) %>%
+    mutate(elec_hfa = mean(trial_hfa)) %>%
+    select(-trial_hfa, -trial_numeric) %>%
+    distinct()
+ 
+ 
+aac_sub_test_df <-  aac_elec_test_df %>%
+    group_by(subject, aac, case) %>%
+    mutate(sub_hfa = mean(elec_hfa)) %>%
+    select(-elec_hfa, -elec_id) %>%
+    distinct()
+
+pval_df <- aac_sub_test_df %>%
+    ungroup() %>%
+    select(case, pvalue) %>%
+    distinct() %>%
+    mutate(pvalue = if_else(pvalue < .05, sprintf("p = %.2g***", pvalue), sprintf("p = %.2g", pvalue)))
+  
+  app_av_plot <- aac_sub_test_df %>%
+    ggplot(.) +
+    geom_boxplot(aes(x = aac, y = sub_hfa, fill = aac), color = "#2D2327") +
+    geom_jitter(aes(x = aac, fill = aac, y = sub_hfa), color = "#2D2327", width = .1, size = 2, shape = 17) +
+    geom_line(aes(x = aac, y = sub_hfa, group = subject), size = .5, alpha = .5, color = "#2D2327") +
+    geom_jitter(data = aac_elec_test_df, aes(x = aac, fill = aac, y = elec_hfa), width = .1, size = 2, alpha = .5, shape = 21, color = "#2D2327") +
+    theme(panel.background = element_rect(fill = "white")) +
+    scale_fill_manual(values = c("#c2383a","#2c75b3")) +
+    scale_color_manual(values = c("#c2383a","#2c75b3")) +
+    ggsignif::geom_signif(data = pval_df, manual = T, aes(y_position=c(2, 2), xmin= c(1, 1), xmax = c(2, 2), annotations = pvalue),
+                family = "Gill Sans", color = "#2D2327", textsize = 5, vjust =-.5) +
+    theme(panel.background = element_rect(fill = "white"), 
+          legend.position = "none",
+          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+          legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+          strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 19, hjust = .5)) +
+    scale_color_manual(values = c("#c2383a","#2c75b3")) +
+    scale_fill_manual(values = c("#c2383a","#2c75b3")) +
+    labs(y = "Average hfa power (a.u.)", x = "", fill = "", color = "") +
+    ggtitle(roi) +
+    facet_wrap(~case, ncol = 2) +
+    ylim(-1.1, 2.5)
+  
+  return(app_av_plot)
+
+}
+
+
+```
+
+
+
+## MFG
+
+```{r plot-mfg, fig.width = 8, fig.height = 6, warning = F}
+
+# create df for conflict, no conflict trials
+mfg_conflict_df <- create_sig_test_df(mfg_behave_df)
+mfg_noconflict_df <- create_sig_test_df(mfg_ng_behave_df)
+
+# merge
+mfg_plot_df <- bind_rows(mfg_conflict_df %>% mutate(case = "Conflict Trials"),
+                        mfg_noconflict_df %>% mutate(case = "Conflict-Free Trials"))
+
+# create plot
+mfg_plot <- plot_conflict_trials(mfg_plot_df, "MFG")
+
+# plot it #
+mfg_plot
+
+# save plot
+ggsave(path(here(), "figures", "figure2_mfg_app_avoid_combined_hfa_plot.png"), plot = mfg_plot, width = 5.5, height = 3)
+
+
+```
+
+
+
+
+
+```{r brms-version, eval = F}
+
+library(brms)
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+## MFG
+# Fit the model
+mfg_model <- brm(
+  formula = trial_hfa ~ aac + (1 + aac | subject/elec_id),
+  data = mfg_conflict_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+summary(mfg_model)
+
+# save full model #
+save(mfg_model, file = path(here(), "results", "app_avd_mfg_hfa_model_brms.RData"))
+load(path(here(), "results", "app_avd_mfg_hfa_model_brms.RData"))
+summary(mfg_model)
+
+
+
+```

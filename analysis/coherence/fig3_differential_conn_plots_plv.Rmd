@@ -1,0 +1,504 @@
+---
+title: "Visualize Region Differences"
+output: html_document
+date: "2024-11-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(tidybayes)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(ggforce)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+# Functions
+
+
+```{r function-to-get-samples}
+
+compute_difference_samples <- function(region1, region2, cur_regions, posterior_samples) {
+  # Helper function to get coefficient name
+  get_coef_name <- function(region) {
+    if (region == "MFG" | (region == "OFC" & !any(grepl("MFG", cur_regions))))   {
+      return("b_Intercept")
+    } else {
+      return(paste0("b_second_region", region))
+    }
+  }
+  
+  coef1_name <- get_coef_name(region1)
+  coef2_name <- get_coef_name(region2)
+  
+  # Extract samples with chain and iteration information
+  coef1_samples <- if (coef1_name == "b_Intercept") {
+    posterior_samples[, , "b_Intercept"]
+  } else {
+    posterior_samples[, , coef1_name]
+  }
+  
+  coef2_samples <- if (coef2_name == "b_Intercept") {
+    posterior_samples[, , "b_Intercept"]
+  } else {
+    posterior_samples[, , coef2_name]
+  }
+  
+  # For the intercept (reference level), set coefficients to zero
+  if (coef1_name == "b_Intercept") coef1_samples <- coef1_samples * 0
+  if (coef2_name == "b_Intercept") coef2_samples <- coef2_samples * 0
+  
+  # Compute difference
+  difference_samples <- coef1_samples - coef2_samples
+  
+  return(difference_samples)
+}
+
+
+
+caclulate_results <- function(cur_model, cur_regions){
+  library(posterior)  # Load the posterior package
+  
+  # Extract posterior samples as a draws_array
+  posterior_samples <- as_draws_array(cur_model)
+  
+  # Create all possible pairs of regions
+  region_pairs <- expand.grid(Region1 = cur_regions, Region2 = cur_regions) %>%
+    filter(Region1 != Region2)
+  
+  # Remove duplicate pairs (e.g., keep only (A, B), not (B, A))
+  region_pairs <- region_pairs %>%
+    mutate(Pair = pmap_chr(list(Region1, Region2), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
+    distinct(Pair, .keep_all = TRUE) %>%
+    select(-Pair)
+  
+  # Compute intercept mean
+  intercept <- mean(as_draws_df(posterior_samples)$b_Intercept)
+  
+  # Initialize results data frame
+  results <- data.frame(
+    Region1 = character(),
+    Region2 = character(),
+    Mean = numeric(),
+    Std_Err = numeric(),
+    Rhat = numeric(),
+    Bulk_ESS = numeric(),
+    Tail_ESS = numeric(),
+    ci_lower = numeric(),
+    ci_upper = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in 1:nrow(region_pairs)) {
+    region1 <- region_pairs$Region1[i]
+    region2 <- region_pairs$Region2[i]
+    
+    # Compute difference samples (retaining chain info)
+    difference_samples <- compute_difference_samples(region1, region2, cur_regions, posterior_samples)
+    
+    # Convert difference_samples to draws_array
+    difference_draws <- as_draws_array(difference_samples)
+    
+    # Compute mean
+    mean_diff <- mean(difference_draws)
+    
+    # Compute standard error (standard deviation)
+    std_err <- sd(difference_draws)
+    
+    # Compute credible intervals
+    ci <- quantile(difference_draws, probs = c(0.025, 0.975))
+    ci_low <- ci[1]
+    ci_up <- ci[2]
+    
+    # Compute Rhat, Bulk ESS, Tail ESS
+    rhat_diff <- rhat(difference_draws)
+    ess_bulk_diff <- ess_bulk(difference_draws)
+    ess_tail_diff <- ess_tail(difference_draws)
+    
+    # Add to results
+    results <- rbind(results, data.frame(
+      Region1 = region1,
+      Region2 = region2,
+      Mean = mean_diff,
+      Std_Err = std_err,
+      Rhat = rhat_diff,
+      Bulk_ESS = ess_bulk_diff,
+      Tail_ESS = ess_tail_diff,
+      ci_lower = ci_low,
+      ci_upper = ci_up,
+      stringsAsFactors = FALSE
+    ))
+  }
+  return(results)
+}
+
+
+```
+
+
+
+# PPC
+
+```{r load-approach-results}
+
+# load data
+load(file = path(here(), "results", "imcoh_app_amyg_ppc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_ofc_ppc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_hc_ppc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_acc_ppc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_mfg_ppc_second_roi_model.RData"))
+
+summary(amyg_model)
+summary(hc_model)
+```
+```{r}
+
+## calculate regional differences
+amyg_results <- caclulate_results(amyg_model,  c('MFG', 'OFC', 'Ant.Cingulate', 'Hippocampus'))
+hc_results <- caclulate_results(hc_model,  c('MFG', "Amygdala", 'OFC', 'Ant.Cingulate'))
+ofc_results <- caclulate_results(ofc_model,  c('MFG', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+acc_results <- caclulate_results(acc_model,  c('MFG', "Amygdala", 'OFC',  'Hippocampus'))
+mfg_results <- caclulate_results(mfg_model,  c('OFC', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+
+```
+
+```{r result-tables}
+
+
+amyg_summary_df <- amyg_results %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper)) %>%
+  mutate_if(is.double, function(x) round(x, 2)) %>% 
+  select(Region1, Region2, Mean, ci_lower, ci_upper, Std_Err, Rhat, Bulk_ESS, Tail_ESS) %>%
+  arrange(desc(Region1), desc(Region2)) %>%
+  rename("Region 1" = Region1, "Region 2" = Region2, "Mean" = Mean, "Est.Error" = Std_Err, "l-95% CI" = ci_lower, "u-95% CI" = ci_upper) 
+
+hc_summary_df <- hc_results %>%
+  select(-sample_diff) %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+
+
+ofc_summary_df <- ofc_results %>%
+  select(-sample_diff) %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+
+
+acc_summary_df <- acc_results %>%
+  select(-sample_diff) %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+
+mfg_summary_df <- mfg_results %>%
+  select(-sample_diff) %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+
+
+
+```
+
+
+```{r, fig.width = 7, fig.height = 3}
+
+prepr_results_df <- function(results, region_list, roi){
+  
+  results_plot_df <- results %>%
+    mutate(direction = if_else(ci_lower <= 0 & 0 <= ci_upper, " ", 
+                               if_else(Mean > 0, "Larger", "Smaller"))) %>%
+    mutate(sig = if_else(ci_lower <= 0 & 0 <= ci_upper, " ", "*")) %>%
+    mutate(Region1 = if_else(Region1 == "Ant.Cingulate", "ACC", 
+                        if_else(Region1 == "Amygdala", "Amyg.", 
+                             if_else(Region1 == "Hippocampus", "Hipp.", Region1)))) %>%
+    mutate(Region2 = if_else(Region2 == "Ant.Cingulate", "ACC", 
+                        if_else(Region2 == "Amygdala", "Amyg.", 
+                           if_else(Region2 == "Hippocampus", "Hipp.", Region2)))) %>%
+    mutate(Region1 = factor(Region1, levels = region_list),
+           Region2 = factor(Region2, levels = region_list)) %>%
+    select(Region1, Region2, direction, sig) %>%
+    distinct() %>%
+    mutate(core_region = roi)
+  
+  return(results_plot_df)
+}
+
+fake_plot_df <- prepr_results_df(amyg_results, c( "Hipp.", "OFC", "ACC", "MFG"), "Afake")
+amyg_plot_df <- prepr_results_df(amyg_results, c( "Hipp.", "OFC", "ACC", "MFG"), "Amygdala")
+hc_plot_df <- prepr_results_df(hc_results, c("Amyg.", "OFC", "ACC", "MFG"), "Hippocampus")
+ofc_plot_df <- prepr_results_df(ofc_results, c("Amyg.", "Hipp.", "ACC", "MFG"), "OFC")
+acc_plot_df <- prepr_results_df(acc_results, c("Amyg.", "Hipp.", "OFC",  "MFG"), "ACC")
+mfg_plot_df <- prepr_results_df(mfg_results, c("Amyg.", "Hipp.", "OFC", "ACC"), "MFG")
+
+# merge together
+all_plot_df <- rbind(fake_plot_df, amyg_plot_df, hc_plot_df, ofc_plot_df, acc_plot_df, mfg_plot_df)
+
+
+```
+
+
+```{r, fig.width = 7, fig.height = 4.5}
+
+diff_connectivity_results <- all_plot_df %>%
+  mutate(core_region = if_else(core_region == "Ant.Cingulate", "ACC", core_region)) %>%
+  mutate(core_region = factor(core_region, levels = c("Afake", "Amygdala", "Hippocampus", "OFC", "ACC", "MFG"))) %>%
+  mutate(Region1 = factor(Region1, levels = c("Amyg.", "Hipp.", "OFC", "ACC", "MFG")),
+       Region2 = factor(Region2, levels = c("Amyg.", "Hipp.", "OFC", "ACC", "MFG"))) %>%
+  ggplot(.,) +
+  geom_tile(aes(x = Region1, y = Region2, fill = direction), color = "#2D2327", size = .5) +
+  scale_fill_manual(values = c("darkgrey", "#DBE317", "#28AE7E")) +
+  scale_color_manual(values = c("darkgrey","#DBE317", "#28AE7E")) +
+  scale_y_discrete(position = "right", limits = rev) +
+  scale_x_discrete(position = "top") +
+  labs(x = "", y = "") +
+  theme(panel.background = element_rect(fill = "white", color = "#2D2327"), 
+        panel.grid = element_blank(), 
+        plot.margin = unit(c(0, 0, 0, 0), "lines"),
+        panel.spacing = unit(0.1, "lines"),
+        strip.placement = "outside",
+        legend.position = "none",
+        plot.title.position = "plot",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 5, face = 'bold', margin = margin(t = 1, b = 0, l = 0, r = 0)),
+        plot.title = element_blank()) +
+  facet_wrap(~core_region, scales = "free", strip.position = "top") 
+
+
+ggsave(path(here(), "figures", "connectivity", "figure3_ppc_differential_theta_coherence_tiles.png"), 
+       plot = diff_connectivity_results, 
+       width = 3.5, height = 2.3, units = "in", dpi = 300)
+
+
+```
+
+
+
+
+# PLI
+
+```{r load-approach-results}
+
+# load data
+load(file = path(here(), "results", "imcoh_app_amyg_pli_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_ofc_pli_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_hc_pli_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_acc_pli_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_mfg_pli_second_roi_model.RData"))
+
+summary(amyg_model)
+summary(hc_model)
+```
+
+
+```{r}
+
+## calculate regional differences
+amyg_results <- caclulate_results(amyg_model,  c('MFG', 'OFC', 'Ant.Cingulate', 'Hippocampus'))
+hc_results <- caclulate_results(hc_model,  c('MFG', "Amygdala", 'OFC', 'Ant.Cingulate'))
+ofc_results <- caclulate_results(ofc_model,  c('MFG', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+acc_results <- caclulate_results(acc_model,  c('MFG', "Amygdala", 'OFC',  'Hippocampus'))
+mfg_results <- caclulate_results(mfg_model,  c('OFC', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+
+```
+
+```{r, fig.width = 7, fig.height = 3}
+
+prepr_results_df <- function(results, region_list, roi){
+  
+  results_plot_df <- results %>%
+    mutate(direction = if_else(ci_lower <= 0 & 0 <= ci_upper, " ", 
+                               if_else(Mean > 0, "Larger", "Smaller"))) %>%
+    mutate(sig = if_else(ci_lower <= 0 & 0 <= ci_upper, " ", "*")) %>%
+    mutate(Region1 = if_else(Region1 == "Ant.Cingulate", "ACC", 
+                        if_else(Region1 == "Amygdala", "Amyg.", 
+                             if_else(Region1 == "Hippocampus", "Hipp.", Region1)))) %>%
+    mutate(Region2 = if_else(Region2 == "Ant.Cingulate", "ACC", 
+                        if_else(Region2 == "Amygdala", "Amyg.", 
+                           if_else(Region2 == "Hippocampus", "Hipp.", Region2)))) %>%
+    mutate(Region1 = factor(Region1, levels = region_list),
+           Region2 = factor(Region2, levels = region_list)) %>%
+    select(Region1, Region2, direction, sig) %>%
+    distinct() %>%
+    mutate(core_region = roi)
+  
+  return(results_plot_df)
+}
+
+fake_plot_df <- prepr_results_df(amyg_results, c( "Hipp.", "OFC", "ACC", "MFG"), "Afake")
+amyg_plot_df <- prepr_results_df(amyg_results, c( "Hipp.", "OFC", "ACC", "MFG"), "Amygdala")
+hc_plot_df <- prepr_results_df(hc_results, c("Amyg.", "OFC", "ACC", "MFG"), "Hippocampus")
+ofc_plot_df <- prepr_results_df(ofc_results, c("Amyg.", "Hipp.", "ACC", "MFG"), "OFC")
+acc_plot_df <- prepr_results_df(acc_results, c("Amyg.", "Hipp.", "OFC",  "MFG"), "ACC")
+mfg_plot_df <- prepr_results_df(mfg_results, c("Amyg.", "Hipp.", "OFC", "ACC"), "MFG")
+
+# merge together
+all_plot_df <- rbind(fake_plot_df, amyg_plot_df, hc_plot_df, ofc_plot_df, acc_plot_df, mfg_plot_df)
+
+
+```
+
+
+```{r, fig.width = 7, fig.height = 4.5}
+
+diff_connectivity_results <- all_plot_df %>%
+  mutate(core_region = if_else(core_region == "Ant.Cingulate", "ACC", core_region)) %>%
+  mutate(core_region = factor(core_region, levels = c("Afake", "Amygdala", "Hippocampus", "OFC", "ACC", "MFG"))) %>%
+  mutate(Region1 = factor(Region1, levels = c("Amyg.", "Hipp.", "OFC", "ACC", "MFG")),
+       Region2 = factor(Region2, levels = c("Amyg.", "Hipp.", "OFC", "ACC", "MFG"))) %>%
+  ggplot(.,) +
+  geom_tile(aes(x = Region1, y = Region2, fill = direction), color = "#2D2327", size = .5) +
+  scale_fill_manual(values = c("darkgrey", "#DBE317", "#28AE7E")) +
+  scale_color_manual(values = c("darkgrey","#DBE317", "#28AE7E")) +
+  scale_y_discrete(position = "right", limits = rev) +
+  scale_x_discrete(position = "top") +
+  labs(x = "", y = "") +
+  theme(panel.background = element_rect(fill = "white", color = "#2D2327"), 
+        panel.grid = element_blank(), 
+        plot.margin = unit(c(0, 0, 0, 0), "lines"),
+        panel.spacing = unit(0.1, "lines"),
+        strip.placement = "outside",
+        legend.position = "none",
+        plot.title.position = "plot",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 5, face = 'bold', margin = margin(t = 1, b = 0, l = 0, r = 0)),
+        plot.title = element_blank()) +
+  facet_wrap(~core_region, scales = "free", strip.position = "top") 
+
+
+ggsave(path(here(), "figures", "connectivity", "figure3_pli_differential_theta_coherence_tiles.png"), 
+       plot = diff_connectivity_results, 
+       width = 3.5, height = 2.3, units = "in", dpi = 300)
+
+
+```
+
+
+```{r result-tables}
+
+
+amyg_summary_df <- amyg_results %>%
+  select(-sample_diff) %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+
+hc_summary_df <- hc_results %>%
+  select(-sample_diff) %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+
+
+ofc_summary_df <- ofc_results %>%
+  select(-sample_diff) %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+
+
+acc_summary_df <- acc_results %>%
+  select(-sample_diff) %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+
+mfg_summary_df <- mfg_results %>%
+  select(-sample_diff) %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+
+
+
+```

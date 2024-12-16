@@ -1,0 +1,629 @@
+---
+title: "Rising/Falling Connectivity - pli"
+output: html_document
+date: "2024-10-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(blme)
+library(brms)
+library(bayesplot)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+## Theta Coherence Dynamics During Approach & Avoidnance
+
+
+This script tests two hypotheses and visualizes the results. The first hypothesis is that theta coherence increases during the approach period, specifically during the 1.5 seconds before the turnaround. The second hypothesis is that theta coherence falls during avoidance, specifically in the 1.5 seconds after the turnaround. 
+
+I use brms to fit these models because of the detailed random effect structure. The general model for both periods is:
+
+`scaled_log_connectivity ~ time+ (1 + time | subject/key)`
+
+Finally, I visualize both these results for SFN 2024. 
+
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "pli_pli_pli", "combined_ghost_connectivity.csv"))
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
+```
+
+
+```{r split-mfg-sfg}
+
+## split the dlpfc electrodes into MFG and SFG ##
+
+regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
+
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+conn_detailed_df <- conn_df %>%
+  mutate(
+    first_pair = gsub("_to_.*", "", pairs),
+    second_pair = gsub(".*_to_", "", pairs),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(conn_detailed_df$detailed_first_region)
+table(conn_detailed_df$detailed_second_region)
+
+# final rename
+conn_detailed_df <- conn_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region)
+
+```
+
+
+
+
+```{r load-behvaioral-data}
+
+## load the behavioral data to see the min and average turn times ##
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+# combine ghost and no ghost #
+all_subs_dist <- all_subs_g_dist %>% 
+  select(colnames(all_subs_ng_dist))
+all_subs_dist <- rbind(all_subs_dist, all_subs_ng_dist)
+
+# read in data already merged with ieeg to get the good ieeg trials
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+used_trials <- hc_theta_data %>%
+  mutate(subject_trial = paste0(subject, "_", trial_numeric)) %>%
+  pull(subject_trial) %>%
+  unique()
+
+## create turn df ##
+turn_df <- all_subs_dist %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # exclude time before they started moving, may be good to look at not doing this as well
+  # filiter out ITI & trials with 0 dots
+  filter(reward_groups != 99 & dots_eaten > 0) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(trial_numeric, subject) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+  mutate(event = replace(event, is.na(event), 0)) %>%
+  mutate(turnaround_time = if_else(event == 1 & Eaten != 0, trial_time, 0)) %>%
+  mutate(turnaround_time = max(turnaround_time)) %>%
+  filter(turnaround_time != 0) %>%
+  mutate(turn_time = trial_time - turnaround_time) %>%
+  ungroup() %>%
+  select(subject, trial_numeric, turnaround_time, turn_time) %>%
+  distinct() %>%
+  mutate(time = round(turn_time, 1)) %>%
+  select(-turn_time) %>%
+  mutate(subject_trial = paste0(subject, "_", trial_numeric)) %>%
+  filter(subject_trial %in% used_trials)
+
+print(min(turn_df$turnaround_time))
+print(mean(turn_df$turnaround_time))
+
+```
+
+
+
+### Approach Dynamics
+
+```{r create-sig-df, fig.width=20, fig.height=15}
+
+# only use sig electrodes based on full dataset
+sig_df <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+# pull the sig electrode key ##
+sig_electrodes <- sig_df %>%
+  mutate(sig_key = paste0(subject, pairs, metric)) %>%
+  pull(sig_key)
+
+```
+
+
+# reset time back to 1.5!!
+
+```{r create-approach-df}
+
+## create the approach df ##
+
+app_sig_elec_df <- conn_detailed_df %>%
+  mutate(roi_pair = paste0(first_region, "_", second_region)) %>%
+  filter(time >= -2 & time <= 0) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  select(-percent_sig) %>%
+  distinct() 
+
+app_sig_avg_elec_df <- app_sig_elec_df %>%
+  group_by(metric, time, roi_pair, subject) %>%
+  mutate(average_sub_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(-pairs, -connectivity) %>%
+  distinct()
+
+```
+
+```{r pli-app-eda, fig.width = 10, fig.height = 5}
+
+## do some basic approach df EDA ##
+
+pli_app_sig_df <- app_sig_elec_df %>%
+  ungroup() %>%
+  filter(metric == "Phase Lag Index") %>%
+  filter(first_region != "SFG" & second_region != "SFG") %>%
+  filter(roi_pair != "mfg_mfg") %>%
+  mutate(scaled_log_connectivity = scale(log(connectivity))[,1]) %>%
+  select(subject, time, scaled_log_connectivity, connectivity, pairs, first_pair, second_pair, roi_pair, first_region, second_region, key) %>%
+  distinct()
+
+pli_app_sig_df %>%
+  ggplot(., aes(x = scaled_log_connectivity)) +
+  geom_density() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+pli_app_sig_df %>%
+  ggplot(., aes(x = time, y = scaled_log_connectivity)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y") 
+
+
+pli_app_sig_df %>%
+  ggplot(., aes(x = time, y = scaled_log_connectivity)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~roi_pair, scales = "free_y") 
+
+
+
+
+```
+```{r}
+
+summary(lmer(scaled_log_connectivity ~ time+ (1 + time | subject/key), data = pli_app_sig_df))
+
+```
+
+
+```{r approach-model}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+# Fit the model
+rising_model <- brm(
+  formula = scaled_log_connectivity ~ time+ (1 + time | subject/key),
+  data = pli_app_sig_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+# save rising model #
+save(rising_model, file = path(here(), "results", "rising_model_brms_pli.RData"))
+
+# load rising model #
+load(path(here(), "results", "rising_model_brms_pli.RData"))
+
+# summary #
+summary(rising_model)
+
+```
+
+
+```{r app-model-posterior, fig.width = 8, fig.height = 5}
+
+
+mcmc_areas(rising_model, regex_pars = c("b_")) + theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+
+```{r app-model-posterior, fig.width = 8, fig.height = 5}
+
+
+pli_dens_overlay(y = pli_app_sig_df$scaled_log_connectivity,
+                 yrep =  posterior_predict(rising_model, draws = 50))
+
+
+```
+
+```{r app-model-diagnostics, fig.width = 20, fig.height = 5}
+
+
+mcmc_trace(rising_model, regex_pars = c("b_"), facet_args = list(ncol = 1))
+
+
+```
+
+
+### Avoidance Dynamics
+
+```{r create-sig-df, fig.width=20, fig.height=15}
+
+
+ avd_sig_elec_df <- conn_detailed_df %>%
+   mutate(roi_pair = paste0(first_region, "_", second_region)) %>%
+  filter(time >= 0 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  select(-percent_sig) %>%
+  distinct() 
+
+
+avd_sig_avg_elec_df <- avd_sig_elec_df %>%
+  group_by(metric, time, roi_pair, subject) %>%
+  mutate(average_sub_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(-pairs, -connectivity) %>%
+  distinct()
+
+```
+
+
+
+
+```{r svg-sub-roi, fig.width = 10, fig.height = 8}
+
+pli_avd_sig_df <- avd_sig_elec_df %>%
+  ungroup() %>%
+  filter(metric == "Phase Lag Index") %>%
+  filter(first_region != "SFG" & second_region != "SFG") %>%
+  filter(roi_pair != "mfg_mfg") %>%
+  mutate(scaled_log_connectivity = scale(log(connectivity))[,1]) %>%
+  select(subject, time, scaled_log_connectivity, connectivity, pairs, first_pair, second_pair, roi_pair, first_region, second_region, key) %>%
+  distinct()
+
+pli_avd_sig_df %>%
+  ggplot(., aes(x = scaled_log_connectivity)) +
+  geom_density() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+pli_avd_sig_df %>%
+  ggplot(., aes(x = time, y = scaled_log_connectivity)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y") 
+
+
+pli_avd_sig_df %>%
+  ggplot(., aes(x = time, y = scaled_log_connectivity)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~roi_pair, scales = "free_y") 
+
+
+```
+
+```{r}
+
+summary(lmer(scaled_log_connectivity ~ time+ (1 + time | subject/key), data = pli_avd_sig_df))
+
+```
+
+```{r avoidance-model}
+
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+# Fit the model
+falling_model <- brm(
+  formula = scaled_log_connectivity ~ time+ (1 + time | subject/key),
+  data = pli_avd_sig_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+# save falling model #
+save(falling_model, file = path(here(), "results", "falling_model_brms_pli.RData"))
+
+# load rising model #
+load(path(here(), "results", "falling_model_brms_pli.RData"))
+
+# summary #
+summary(falling_model)
+
+```
+
+
+```{r app-model-posterior, fig.width = 8, fig.height = 5}
+
+
+mcmc_areas(falling_model, regex_pars = c("b_")) + theme(panel.background = element_rect(fill = "white"))
+
+
+```
+
+
+```{r app-model-posterior, fig.width = 8, fig.height = 5}
+
+
+pli_dens_overlay(y = pli_app_sig_df$scaled_log_connectivity,
+                 yrep =  posterior_predict(rising_model, draws = 50))
+
+
+```
+
+```{r app-model-diagnostics, fig.width = 20, fig.height = 5}
+
+
+mcmc_trace(rising_model, regex_pars = c("b_"), facet_args = list(ncol = 1))
+
+
+```
+
+## Plotting Results
+
+
+```{r plots, fig.width = 20, fig.height = 5}
+
+# prep dfs averaged across electrodes within subejcts and roi pairs
+pli_app_sig_avg_df <- app_sig_avg_elec_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  filter(first_region != "sfg" & second_region != "sfg") %>%
+  filter(roi_pair != "mfg_mfg") %>%
+  select(subject, time, average_sub_conn, roi_pair, first_region, second_region) %>%
+  distinct()
+
+pli_avd_sig_avg_df <- avd_sig_avg_elec_df %>%
+  filter(metric == "Phase Lag Index") %>%
+  filter(first_region != "sfg" & second_region != "sfg") %>%
+  filter(roi_pair != "mfg_mfg") %>%
+  select(subject, time, average_sub_conn, roi_pair, first_region, second_region) %>%
+  distinct()
+
+
+# plot #
+pli_app_sig_avg_df %>%
+  ggplot(., aes(x = time, y = log(average_sub_conn))) +
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", nrow = 1) +
+  ggtitle("Approach")
+
+
+pli_avd_sig_avg_df %>%
+  ggplot(., aes(x = time, y = log(average_sub_conn))) +
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y", nrow = 1) +
+  ggtitle("Avoid")
+
+
+
+```
+
+```{r sfn-plot-indv, fig.width = 12, fig.height = 15}
+ggthemr("solarized")
+
+# merge app and avd dfs #
+pli_sig_avg_df <- bind_rows(pli_avd_sig_avg_df %>% mutate(case = "Avoid"), 
+                              pli_app_sig_avg_df %>% mutate(case = "Approach"))
+
+# take the absolute value of time #
+indv_pli_sig_avg_plot_df <- pli_sig_avg_df %>%
+  mutate(plot_time = abs(time))
+
+# plot #
+indv_pli_sig_avg_plot <- indv_pli_sig_avg_plot_df %>%
+  ggplot(., aes(x = time, y = log(average_sub_conn), color = case, fill = case)) +
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", color = "black") +
+    theme(panel.background = element_rect(fill = "white"), 
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 19),
+      legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+      plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20)) +
+  labs(color = "", fill = "", y = "Subject and Region Pair Average Connectivity, Logged ", x = "Time from Turnaround") +
+  facet_wrap(~subject, scales = "free_y", nrow = 3) +
+  ggtitle("Theta Coherence Rises During Approach and Falls During Avoidance", subtitle = "Signficiance assessed using bayesian linear mixed effects models of Phase Lag Index")
+
+# save #
+ggsave(path(here(), "figures", "connectivity", "rising_falling_indv_plot_pli.png"), 
+       plot = indv_pli_sig_avg_plot, 
+       width = 12, height = 13, units = "in", dpi = 300)
+
+
+```
+
+
+```{r sfn-plot, fig.width = 5, fig.height = 5}
+
+# take the absolute value of time #
+pli_sig_avg_plot_df <- pli_sig_avg_df %>%
+  mutate(plot_time = abs(time)) %>%
+  group_by(time, roi_pair) %>%
+  mutate(average_conn = mean(average_sub_conn)) %>%
+  select(-subject, -average_sub_conn) %>%
+  distinct()
+
+# plot #
+pli_sig_avg_plot <- pli_sig_avg_df %>%
+  ggplot(., aes(x = time, y = log(average_sub_conn), color = case, fill = case)) +
+  geom_jitter(alpha = .5) +
+  geom_smooth(method = "lm", color = "black") +
+  geom_text(aes(x = -.8, y = -1.2), label = "App. Coherence ~ Time:\n0.13 95%CI [0.08 - 0.18]", color = "#2D2327", size = 5, family = "Gill Sans") +
+  geom_text(aes(x = .8, y = -5.7), label = "Avd. Coherence ~ Time:\n-0.14 95%CI [-0.23 - -0.04]", color = "#2D2327", size = 5, family = "Gill Sans") +
+    theme(panel.background = element_rect(fill = "white"), 
+      legend.position = "none",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+      axis.title =  element_blank(),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20, hjust = .5, face = 'plain')) +
+  labs(color = "", fill = "", y = "", x = "") +
+  ggtitle("Across All Subjects")
+
+# save #
+ggsave(path(here(), "figures", "connectivity", "rising_falling_plot_pli.png"), 
+       plot = pli_sig_avg_plot, 
+       width = 4.75, height = 7.5, units = "in", dpi = 300)
+
+
+```
+
+

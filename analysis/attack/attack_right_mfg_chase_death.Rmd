@@ -1,0 +1,407 @@
+---
+title: "Attack Chase Death"
+output: html_document
+date: "2024-10-29"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(blme)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+library(brms)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+## Testing for elevated theta power during approach compared to avoidance
+
+This script tests for elevated theta power during approach in the hippocampus, amygdala, OFC, ACC, Insula, MFG, & SFG in both conflict and no-conflict trials. The window of interest is from 1.5 seconds before turning until 1.5 seconds after turning. I average this window within trials, electrodes, and subjects and then compare the approach vs avoiding sections using the following equation:
+
+lmer(trial_theta ~ aac + (1 + aac|subject), data = aac_df)
+
+I tried to first use:
+
+lmer(trial_theta ~ aac + (1 + aac|subject/elec_id), data = aac_df)
+
+But this resulted in singular fits for the no conflict trials. Removing the random slope drastically changed the degrees of freedom and a model with slopes was significantly better than a model without slopes as assessed by an anova.
+
+Meanwhile, removing the nested random effect of electrode did not change the fixed effects estimate hardly at all, and there was no sig difference when I compared the models via anova. The effects in the conflict trials also hold if I include the nested effect of electrode.
+
+Therefore, I believe the best model to assess the affecr of approaching vs avoiding (`aac`) is the one without the nested random effect of electrode, but with a random intercept and slope for subject. I will use this model for all the analyses.
+
+
+
+```{r load-data}
+
+## HFA ##
+dlpfc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+
+# separate dlpfc into sfg and mfg
+dlpfc_hfa_data <- dlpfc_hfa_data %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+dlpfc_hfa_data <- separate_mfg_sfg(dlpfc_hfa_data)
+sfg_hfa_data <- dlpfc_hfa_data %>% filter(sfg == 1) %>% select(-sfg, -mfg)
+mfg_hfa_data <- dlpfc_hfa_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
+
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_g_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_g_dist, behavior_iti_df)
+
+
+```
+
+
+```{r}
+
+# load MNI data
+mni_data <- read_csv(path(here(), "munge", "mni_coordinates_all_subs.csv"))
+
+# create left/right pairs
+leftright_data <- mni_data %>%
+  mutate(left_right = if_else(X <= 0, "Left", "Right")) %>%
+  select(subject, left_right, Electrode)
+
+
+```
+
+
+```{r merge-ieeg-hfa-data-behave-data}
+
+mfg_hfa_clean_data <- mfg_hfa_data %>%
+  mutate(freq = "hfa") %>%
+  mutate(region = "MFG") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  mutate(first_elec = gsub("-.*", "", electrode)) %>%
+  mutate(second_elec = gsub(".*-", "", electrode))  %>% 
+  mutate(trial_time = trial_time - 3)  %>%
+  filter(trial_time >= -1)
+
+
+# merge with anatomy
+mfg_hfa_clean_data <- left_join(mfg_hfa_clean_data, leftright_data, by = c("subject" = "subject", "first_elec" = "Electrode"))
+
+# bind with behavioral data #
+mfg_hfa_behave_df <- inner_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               mfg_hfa_clean_data %>% mutate(trial_time = round(trial_time, 2)))
+
+# right only
+mfgr_hfa_behave_df <- mfg_hfa_behave_df %>%
+  filter(left_right == "Right")
+
+```
+
+
+```{r read-in-attack-tables}
+
+## load and compile attack tables ##
+for(sub in unique(all_subs_dist$subject)){
+  
+  tmp <- read_csv(path(here(), "data", "ieeg_behave", paste0(sub, "_attack_events.csv")))
+  tmp <- tmp %>%
+    mutate(subject = sub)
+  
+  if(exists("attack_events")){
+    attack_events <- bind_rows(attack_events, tmp)
+  } else {
+    attack_events <- tmp
+  }
+  
+}
+
+## modify to get trials of interest ##
+attack_events <- attack_events %>%
+  mutate(trial_numeric = neural_trial_numeric + 1) %>%
+  mutate(attacks_ids = paste0(subject, "_", trial_numeric))
+
+attatck_events_coutn <- attack_events %>%
+  filter(subject != "LL14" & subject != "BJH016")
+
+mean(table(attatck_events_coutn$subject))
+sd(table(attatck_events_coutn$subject))
+
+
+```
+
+
+```{r shift-to-attack}
+
+# merge attack df
+mfgr_attack_hfa_df <- left_join(mfgr_hfa_behave_df, attack_events %>% rename(attack_begin = event) %>% select(subject, trial_numeric, sample, attack_begin))
+mfgr_attack_hfa_df <- mfgr_attack_hfa_df %>%
+  mutate(attack_begin = if_else(is.na(attack_begin), 0, 1)) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(attacked = if_else(sum(attack_begin) != 0, 1, 0)) %>%
+  ungroup()
+
+# shift to center around turnaround  #
+hfa_end_centered_df <- mfgr_attack_hfa_df %>%
+  filter(attacked == 1) %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  # shift the time so that time 0 is the start of trial end
+  group_by(elec_id, trial_numeric, subject, freq, region) %>%
+  mutate(attack_time = if_else(attack_begin == 1, trial_time, -999)) %>%
+  mutate(attack_time = max(attack_time)) %>%
+  filter(attack_time > 0) %>%
+  mutate(end_time = trial_time - trial_length) %>%
+  mutate(end_time = round(end_time, 2)) %>%
+  filter(trial_time >= attack_time -.5) %>%
+  ungroup() 
+
+behavior_check <- hfa_end_centered_df %>%
+  select(subject, trial_numeric, sample, trial_time, attack_time, end_time, trial_length, died) %>%
+  distinct()
+
+```
+
+
+
+```{r plot-chase, fig.height = 6, fig.width = 8}
+
+
+chase_df <- hfa_end_centered_df %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(chase_trial = any(Chase)) %>%
+  filter(chase_trial == T & died == 0) %>%
+  select(subject, trial_numeric, sample, trial_time, attack_time, end_time, trial_length, died, chase_trial, elec_id, power) %>%
+  rowwise() %>%
+  mutate(attack_length = trial_length - attack_time) %>%
+  mutate(attack_end_time = -1* attack_length) %>%
+  arrange(desc(attack_length)) %>%
+  mutate(elec_trial_id = factor(paste0(elec_id, "_", trial_numeric)))
+
+
+chase_df %>%
+  ggplot(.,aes (x = end_time, y = elec_trial_id, color = power)) +
+  geom_tile(aes(fill = power)) +
+  geom_text(aes(x = attack_end_time), label = "*", size = 4, color = "white") +
+  theme_minimal() +
+  scale_fill_viridis_b(limits = c(-3, 3), oob = scales::squish, option = "C") +
+  scale_color_viridis_b(limits = c(-3, 3), oob = scales::squish, option = "C")  +
+  theme(panel.background = element_rect(fill = "white"), axis.text.y = element_blank()) 
+  
+
+
+```
+
+
+```{r plot-chase, fig.height = 5, fig.width =6}
+
+
+died_df <- hfa_end_centered_df %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(chase_trial = any(Chase)) %>%
+  filter(died == 1 & chase_trial == F) %>%
+  mutate(min_time = max(end_time)) %>%
+  filter(min_time == 0) %>%
+  select(subject, trial_numeric, sample, trial_time, attack_time, end_time, trial_length, died, elec_id, power, min_time) %>%
+  rowwise() %>%
+  mutate(attack_length = trial_length - attack_time) %>%
+  mutate(attack_end_time = -1* attack_length) %>%
+  arrange(desc(attack_length)) %>%
+  mutate(elec_trial_id = factor(paste0(elec_id, "_", trial_numeric)))
+
+
+died_df %>%
+  ggplot(.,aes (x = end_time, y = elec_trial_id, color = power)) +
+  geom_tile(aes(fill = power)) +
+  geom_text(aes(x = attack_end_time), label = "*", size = 4, color = "white") +
+  theme_minimal() +
+  scale_fill_viridis_b(limits = c(-5, 5), oob = scales::squish, option = "C") +
+  scale_color_viridis_b(limits = c(-5, 5), oob = scales::squish, option = "C")  +
+  theme(panel.background = element_rect(fill = "white"), axis.text.y = element_blank()) 
+  
+
+
+```
+
+```{r, fig.height = 5, fig.width =10}
+
+chase_died_df <- bind_rows(chase_df %>% mutate(case = "Chase trial"),
+                           died_df %>% mutate(case = "Strike trial"))
+
+chase_died_plot <- chase_died_df %>%
+  ggplot(.,aes (x = end_time, y = elec_trial_id, color = power)) +
+  geom_tile(aes(fill = power)) +
+  geom_text(aes(x = attack_end_time), label = "*", size = 4, color = "white") +
+  theme_minimal() +
+  scale_fill_viridis_b(limits = c(-3, 3), oob = scales::squish, option = "C") +
+  scale_color_viridis_b(limits = c(-3, 3), oob = scales::squish, option = "C")  +
+  labs(x = "Time (s), locked to trial end", y = "rMFG Electrode and Trial stacks", fill = "Power (z)", color = "Power (z)") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "right",
+        panel.grid =  element_blank(),
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        axis.text.y = element_blank(),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20, face = 'bold')) + 
+  facet_wrap(~case, nrow = 1, scales = "free") +
+  ggtitle("Right MFG activity during Chase vs Strike trials")
+
+ggsave(path(here(), "figures", "attack", "figure6_chase_death_rmfg_plot.png"), 
+       plot = chase_died_plot, 
+       width = 9, height = 5.5, units = "in", dpi = 300)
+
+```
+
+
+```{r}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+attack_duration_df <- hfa_end_centered_df %>%
+  group_by(subject, trial_numeric) %>%
+  filter(trial_time >= attack_time) %>%
+  select(subject, trial_numeric, sample, trial_time, attack_time, end_time, trial_length, died, elec_id, distance_to_ghost, power) %>%
+  rowwise() %>%
+  mutate(attack_length = trial_length - attack_time) %>%
+  mutate(attack_end_time = -1* attack_length) %>%
+  ungroup() %>%
+  arrange(desc(attack_length)) %>%
+  mutate(elec_trial_id = factor(paste0(elec_id, "_", trial_numeric))) %>%
+  mutate(distance_to_ghost_scaled = scale(distance_to_ghost)[,1])
+
+
+# Fit the model
+attack_hfa_model <- brm(
+  formula = power ~ distance_to_ghost_scaled + (1 + distance_to_ghost_scaled | subject/elec_id),
+  data = attack_duration_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+summary(attack_hfa_model)
+
+# save full model #
+save(attack_hfa_model, file = path(here(), "results", "attack_hc_hfa_trial_level_model_brms.RData"))
+
+
+```
+
+
+
+```{r}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+attack_duration_df <- hfa_end_centered_df %>%
+  group_by(subject, trial_numeric) %>%
+  filter(trial_time >= attack_time) %>%
+  select(subject, trial_numeric, sample, trial_time, attack_time, end_time, trial_length, died, elec_id, distance_to_ghost, power) %>%
+  rowwise() %>%
+  mutate(attack_length = trial_length - attack_time) %>%
+  mutate(attack_end_time = -1* attack_length) %>%
+  ungroup() %>%
+  arrange(desc(attack_length)) %>%
+  mutate(elec_trial_id = factor(paste0(elec_id, "_", trial_numeric))) %>%
+  mutate(distance_to_ghost_scaled = scale(distance_to_ghost)[,1]) %>%
+  mutate(died = if_else(died == 1, "attack", "chase"))
+
+
+# Fit the model
+attack_died_hfa_model <- brm(
+  formula = power ~ died*end_time + (1 + end_time | subject/elec_id),
+  data = attack_duration_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+summary(attack_died_hfa_model)
+
+# save full model #
+save(attack_died_hfa_model, file = path(here(), "results", "attack_hc_hfa_trial_time_model_brms.RData"))
+
+
+```

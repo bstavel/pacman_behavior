@@ -49,6 +49,30 @@ bjh16 = load('~/Projects/pacman/behavioral_analyses/data/ieeg_mni/BJH016_MNI_bra
 bjh16_table = table(repmat({'BJH016'}, length(bjh16.electrodeNames), 1), bjh16.electrodeNames, bjh16.tala.electrodes(:,1), bjh16.tala.electrodes(:,2), bjh16.tala.electrodes(:,3), ...
     'VariableNames', {'subject', 'Electrode', 'X', 'Y', 'Z'});
 
+%% BJH017 table %%
+
+bjh17 = load('~/Projects/knight_server/remote/WashU/data/_VERA/VERA_BJH017/BJH017_MNI_brain.mat')
+bjh17_table = table(repmat({'BJH017'}, length(bjh17.electrodeNames), 1), bjh17.electrodeNames, bjh17.tala.electrodes(:,1), bjh17.tala.electrodes(:,2), bjh17.tala.electrodes(:,3), ...
+    'VariableNames', {'subject', 'Electrode', 'X', 'Y', 'Z'});
+
+%% BJH046 table %%
+
+bjh46 = load('~/Projects/knight_server/remote/WashU/data/_VERA/VERA_BJH046/BJH046_MNI.mat')
+bjh46_table = table(repmat({'BJH046'}, length(bjh46.electrodeNames), 1), bjh46.electrodeNames, bjh46.tala.electrodes(:,1), bjh46.tala.electrodes(:,2), bjh46.tala.electrodes(:,3), ...
+    'VariableNames', {'subject', 'Electrode', 'X', 'Y', 'Z'});
+
+%% BJH050 table %%
+
+bjh50 = load('~/Projects/knight_server/remote/WashU/data/_VERA/VERA_BJH050/BJH050_MNI.mat')
+bjh50_table = table(repmat({'BJH050'}, length(bjh50.electrodeNames), 1), bjh50.electrodeNames, bjh50.tala.electrodes(:,1), bjh50.tala.electrodes(:,2), bjh50.tala.electrodes(:,3), ...
+    'VariableNames', {'subject', 'Electrode', 'X', 'Y', 'Z'});
+
+%% BJH051 table %%
+
+bjh51 = load('~/Projects/knight_server/remote/WashU/data/_VERA/VERA_BJH051/BJH051_MNI_brain.mat')
+bjh51_table = table(repmat({'BJH051'}, length(bjh51.electrodeNames), 1), bjh51.electrodeNames, bjh51.tala.electrodes(:,1), bjh51.tala.electrodes(:,2), bjh51.tala.electrodes(:,3), ...
+    'VariableNames', {'subject', 'Electrode', 'X', 'Y', 'Z'});
+
 %% SLCH002 table %%
 
 slch2 = load('~/Projects/pacman/behavioral_analyses/data/ieeg_mni/SLCH002_MNI_brain.mat')
@@ -56,7 +80,7 @@ slch2_table = table(repmat({'SLCH002'}, length(slch2.electrodeNames), 1), slch2.
     'VariableNames', {'subject', 'Electrode', 'X', 'Y', 'Z'});
 %% combine %%
 
-washu_mni_table = [bjh21_table; bjh25_table; bjh26_table; bjh27_table; bjh29_table; bjh39_table; bjh41_table; bjh16_table; slch2_table]
+washu_mni_table = [bjh21_table; bjh25_table; bjh26_table; bjh27_table; bjh29_table; bjh39_table; bjh41_table; bjh46_table; bjh50_table; bjh51_table; bjh16_table; bjh17_table; slch2_table]
 
 %% Export the table to a CSV file
 filename = '../data/ieeg_mni/washu_mni_table.csv';

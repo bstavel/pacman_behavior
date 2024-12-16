@@ -1,0 +1,411 @@
+---
+title: "Rising Falling"
+output: html_document
+date: "2024-11-26"
+---
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_ghost_connectivity_newsubs.csv"))
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
+```
+
+
+```{r split-mfg-sfg}
+
+## split the dlpfc electrodes into MFG and SFG ##
+
+regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
+
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+conn_detailed_df <- conn_df %>%
+  mutate(
+    first_pair = gsub("_to_.*", "", pairs),
+    second_pair = gsub(".*_to_", "", pairs),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(conn_detailed_df$detailed_first_region)
+table(conn_detailed_df$detailed_second_region)
+
+# final rename
+conn_detailed_df <- conn_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region)
+
+```
+
+
+### Approach Dynamics
+
+```{r create-sig-df, fig.width=20, fig.height=15}
+
+# only use sig electrodes based on full dataset
+sig_df <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+# pull the sig electrode key ##
+sig_electrodes <- sig_df %>%
+  mutate(sig_key = paste0(subject, pairs, metric)) %>%
+  pull(sig_key)
+
+```
+
+
+```{r create-approach-df}
+
+## create the approach df ##
+
+avd_time_window <- 1.5
+app_time_window <- -1.5
+
+app_sig_elec_df <- conn_detailed_df %>%
+  mutate(roi_pair = paste0(first_region, "_", second_region)) %>%
+  filter(time >= app_time_window & time <= 0) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  select(-percent_sig) %>%
+  distinct() %>%
+  # get rid of unused regions
+  filter(!grepl("sfg", roi_pair)) %>%
+  filter(!grepl("insula", roi_pair)) %>%
+  filter(first_region != second_region) %>%
+  ## unify roi names
+  mutate(
+    roi_pair = case_when(
+      grepl("ofc", roi_pair) & grepl("hc", roi_pair) ~ "ofc_hc",
+      grepl("ofc", roi_pair) & grepl("amyg", roi_pair) ~ "ofc_amyg",
+      grepl("ofc", roi_pair) & grepl("mfg", roi_pair) ~ "ofc_mfg",
+      grepl("ofc", roi_pair) & grepl("cing", roi_pair) ~ "ofc_cing",
+      grepl("hc", roi_pair) & grepl("amyg", roi_pair) ~ "hc_amyg",
+      grepl("hc", roi_pair) & grepl("mfg", roi_pair) ~ "hc_mfg",
+      grepl("hc", roi_pair) & grepl("cing", roi_pair) ~ "hc_cing",
+      grepl("amyg", roi_pair) & grepl("mfg", roi_pair) ~ "amyg_mfg",
+      grepl("amyg", roi_pair) & grepl("cing", roi_pair) ~ "amyg_cing",
+      grepl("mfg", roi_pair) & grepl("cing", roi_pair) ~ "mfg_cing"
+    ))
+
+app_sig_avg_elec_df <- app_sig_elec_df %>%
+  group_by(metric, time, roi_pair, subject) %>%
+  mutate(average_sub_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(-pairs, -connectivity) %>%
+  distinct()
+
+```
+
+```{r imcoh-app-eda, fig.width = 10, fig.height = 5}
+
+## do some basic approach df EDA ##
+
+imcoh_app_sig_df <- app_sig_elec_df %>%
+  ungroup() %>%
+  filter(metric == "Imaginary Coherence") %>%
+  mutate(scaled_log_connectivity = scale(log(connectivity))[,1]) %>%
+  select(subject, time, scaled_log_connectivity, connectivity, pairs, first_pair, second_pair, roi_pair, first_region, second_region, key) %>%
+  distinct()
+
+imcoh_app_sig_df %>%
+  ggplot(., aes(x = scaled_log_connectivity)) +
+  geom_density() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+imcoh_app_sig_df %>%
+  ggplot(., aes(x = time, y = scaled_log_connectivity)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y") 
+
+
+imcoh_app_sig_df %>%
+  ggplot(., aes(x = time, y = scaled_log_connectivity)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~roi_pair, scales = "free_y") 
+
+
+
+
+```
+
+```{r approach-model}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),   # Prior for the intercept
+  prior(normal(0, 2), class = "b"),           # Prior for fixed effects
+  prior(exponential(1), class = "sd"),        # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor"),               # Prior for random effects correlations
+  prior(normal(0, 5), class = "alpha")        # Prior for skewness parameter
+)
+
+
+# Fit the model
+rising_model <- brm(
+  formula = scaled_log_connectivity ~ time + (1 + time | subject/key),
+  data = imcoh_app_sig_df,
+  prior = priors,
+  family = skew_normal(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+# save rising model #
+save(rising_model, file = path(here(), "results", paste0(avd_time_window, "_skew_rising_model_brms.RData")))
+
+# load rising model #
+load(path(here(), "results", paste0(avd_time_window, "_skew_rising_model_brms.RData")))
+
+# summary #
+summary(rising_model)
+
+```
+
+
+```{r app-model-posterior, fig.width = 8, fig.height = 5}
+
+
+mcmc_areas(rising_model, regex_pars = c("b_")) + theme(panel.background = element_rect(fill = "white"))
+
+
+```
+```{r, fig.width=8, fig.height=6}
+
+# Generate replicated datasets
+y_rep <- posterior_predict(rising_model, ndraws = 100)
+
+ppc_dens_overlay(imcoh_app_sig_df$scaled_log_connectivity, y_rep) 
+
+
+```
+
+
+```{r}
+
+ppc_scatter_avg(imcoh_app_sig_df$scaled_log_connectivity, y_rep[1:50, ])
+
+
+```
+```{r}
+
+ppc_stat(imcoh_app_sig_df$scaled_log_connectivity, y_rep, stat = "mean")
+ppc_stat(imcoh_app_sig_df$scaled_log_connectivity, y_rep, stat = "sd")
+ppc_stat(imcoh_app_sig_df$scaled_log_connectivity, y_rep, stat = "min")
+
+```
+
+
+
+```{r, fig.height = 6, fig.width = 15}
+
+# Example stratification by a variable
+ppc_violin_grouped(imcoh_app_sig_df$scaled_log_connectivity, y_rep[1:25, ], group = imcoh_app_sig_df$subject)
+
+
+```
+#### Region Specific
+
+```{r rising-model-roi, eval = F}
+
+
+# Fit the model
+roi_rising_model <- brm(
+  formula = scaled_log_connectivity ~ time*roi_pair + (1 + time | subject/key),
+  data = imcoh_app_sig_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 5000,
+  warmup = 2000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+# save rising model #
+save(roi_rising_model, file = path(here(), "results", "roirising_model_brms.RData"))
+
+# load rising model #
+load(path(here(), "results", "roirising_model_brms.RData"))
+
+# summary #
+summary(roi_rising_model)
+
+```
+
+
+
+### Avoidance Dynamics
+
+```{r create-sig-df, fig.width=20, fig.height=15}
+
+
+ avd_sig_elec_df <- conn_detailed_df %>%
+   mutate(roi_pair = paste0(first_region, "_", second_region)) %>%
+  filter(time >= 0 & time <= 2) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  filter(key %in% sig_electrodes) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(key, time) %>%
+  mutate(connectivity = mean(abs(connectivity))) %>%
+  select(-percent_sig) %>%
+  distinct() %>%
+  # get rid of unused regions
+  filter(!grepl("sfg", roi_pair)) %>%
+  filter(!grepl("insula", roi_pair)) %>%
+  filter(first_region != second_region) %>%
+  ## unify roi names
+  mutate(
+    roi_pair = case_when(
+      grepl("ofc", roi_pair) & grepl("hc", roi_pair) ~ "ofc_hc",
+      grepl("ofc", roi_pair) & grepl("amyg", roi_pair) ~ "ofc_amyg",
+      grepl("ofc", roi_pair) & grepl("mfg", roi_pair) ~ "ofc_mfg",
+      grepl("ofc", roi_pair) & grepl("cing", roi_pair) ~ "ofc_cing",
+      grepl("hc", roi_pair) & grepl("amyg", roi_pair) ~ "hc_amyg",
+      grepl("hc", roi_pair) & grepl("mfg", roi_pair) ~ "hc_mfg",
+      grepl("hc", roi_pair) & grepl("cing", roi_pair) ~ "hc_cing",
+      grepl("amyg", roi_pair) & grepl("mfg", roi_pair) ~ "amyg_mfg",
+      grepl("amyg", roi_pair) & grepl("cing", roi_pair) ~ "amyg_cing",
+      grepl("mfg", roi_pair) & grepl("cing", roi_pair) ~ "mfg_cing"
+    ))
+
+
+avd_sig_avg_elec_df <- avd_sig_elec_df %>%
+  group_by(metric, time, roi_pair, subject) %>%
+  mutate(average_sub_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(-pairs, -connectivity) %>%
+  distinct()
+
+```
+
+
+
+
+```{r svg-sub-roi, fig.width = 10, fig.height = 8}
+
+imcoh_avd_sig_df <- avd_sig_elec_df %>%
+  ungroup() %>%
+  filter(metric == "Imaginary Coherence") %>%
+  mutate(scaled_log_connectivity = scale(log(connectivity))[,1]) %>%
+  select(subject, time, scaled_log_connectivity, connectivity, pairs, first_pair, second_pair, roi_pair, first_region, second_region, key) %>%
+  distinct()
+
+imcoh_avd_sig_df %>%
+  ggplot(., aes(x = scaled_log_connectivity)) +
+  geom_density() +
+  theme(panel.background = element_rect(fill = "white")) 
+
+imcoh_avd_sig_df %>%
+  ggplot(., aes(x = time, y = scaled_log_connectivity)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, scales = "free_y") 
+
+
+imcoh_avd_sig_df %>%
+  ggplot(., aes(x = time, y = scaled_log_connectivity)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~roi_pair, scales = "free_y") 
+
+
+```
+
+```{r avoidance-model}
+
+
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),   # Prior for the intercept
+  prior(normal(0, 2), class = "b"),           # Prior for fixed effects
+  prior(exponential(1), class = "sd"),        # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor"),               # Prior for random effects correlations
+  prior(normal(0, 5), class = "alpha")        # Prior for skewness parameter
+)
+
+
+# Fit the model
+falling_model <- brm(
+  formula = scaled_log_connectivity ~ time + (1 + time | subject/key),
+  data = imcoh_avd_sig_df,
+  prior = priors,
+  family = skew_normal(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+# save falling model #
+save(falling_model, file = path(here(), "results", paste0(avd_time_window, "_skew_falling_model_brms.RData")))
+
+# load falling model #
+load(path(here(), "results", paste0(avd_time_window, "_skew_falling_model_brms.RData")))
+
+# summary #
+summary(falling_model)
+
+```

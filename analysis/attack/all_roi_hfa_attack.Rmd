@@ -1,0 +1,857 @@
+---
+title: "All ROI HFA Ghost Attack"
+output: html_document
+date: "2024-10-29"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(blme)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+library(brms)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+## Testing for elevated theta power during approach compared to avoidance
+
+This script tests for elevated theta power during approach in the hippocampus, amygdala, OFC, ACC, Insula, MFG, & SFG in both conflict and no-conflict trials. The window of interest is from 1.5 seconds before turning until 1.5 seconds after turning. I average this window within trials, electrodes, and subjects and then compare the approach vs avoiding sections using the following equation:
+
+lmer(trial_theta ~ aac + (1 + aac|subject), data = aac_df)
+
+I tried to first use:
+
+lmer(trial_theta ~ aac + (1 + aac|subject/elec_id), data = aac_df)
+
+But this resulted in singular fits for the no conflict trials. Removing the random slope drastically changed the degrees of freedom and a model with slopes was significantly better than a model without slopes as assessed by an anova.
+
+Meanwhile, removing the nested random effect of electrode did not change the fixed effects estimate hardly at all, and there was no sig difference when I compared the models via anova. The effects in the conflict trials also hold if I include the nested effect of electrode.
+
+Therefore, I believe the best model to assess the affecr of approaching vs avoiding (`aac`) is the one without the nested random effect of electrode, but with a random intercept and slope for subject. I will use this model for all the analyses.
+
+
+
+```{r load-data}
+
+## Gamma ##
+# ieeg limbic data #
+# cing_gamma_data <- read_csv( path(here(), "munge", "gamma_ieeg_cing_all_subs_logged_iti_onset.csv"))
+# ofc_gamma_data <- read_csv( path(here(), "munge", "gamma_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+# amyg_gamma_data <- read_csv( path(here(), "munge", "gamma_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+# hc_gamma_data <- read_csv( path(here(), "munge", "gamma_ieeg_hc_all_subs_logged_iti_onset.csv"))
+# insula_gamma_data <- read_csv( path(here(), "munge", "gamma_ieeg_insula_all_subs_logged_iti_onset.csv"))
+# dlpfc_gamma_data <- read_csv( path(here(), "munge", "gamma_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+# 
+# # separate dlpfc into sfg and mfg
+# dlpfc_gamma_data <- dlpfc_gamma_data %>%
+#   mutate(electrode = gsub("_.*", "", electrode))
+# dlpfc_gamma_data <- separate_mfg_sfg(dlpfc_gamma_data)
+# sfg_gamma_data <- dlpfc_gamma_data %>% filter(sfg == 1) %>% select(-sfg, -mfg)
+# mfg_gamma_data <- dlpfc_gamma_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
+
+
+## HFA ##
+# ieeg limbic data #
+cing_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_cing_all_subs_logged_iti_onset.csv"))
+ofc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_ofc_all_subs_logged_iti_onset.csv"))
+amyg_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_amyg_all_subs_logged_iti_onset.csv"))
+hc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_hc_all_subs_logged_iti_onset.csv"))
+insula_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_insula_all_subs_logged_iti_onset.csv"))
+dlpfc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+
+# separate dlpfc into sfg and mfg
+dlpfc_hfa_data <- dlpfc_hfa_data %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+dlpfc_hfa_data <- separate_mfg_sfg(dlpfc_hfa_data)
+sfg_hfa_data <- dlpfc_hfa_data %>% filter(sfg == 1) %>% select(-sfg, -mfg)
+mfg_hfa_data <- dlpfc_hfa_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
+
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_g_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_g_dist, behavior_iti_df)
+
+
+```
+
+```{r merge-ieeg-hfa-data-behave-data}
+
+# prep hfa data #
+cing_data <- cing_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "Ant. Cingulate") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+ofc_data <- ofc_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "OFC") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+hc_data <- hc_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "Hippocampus") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+amyg_data <- amyg_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "Amygdala") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+insula_data <- insula_hfa_data %>% 
+  mutate(freq = "hfa") %>%
+  mutate(region = "Insula") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+
+mfg_data <- mfg_hfa_data %>%
+  mutate(freq = "hfa") %>%
+  mutate(region = "MFG") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+# bind ieeg data #
+ieeg_hfa_data <- bind_rows(cing_data, ofc_data, hc_data, amyg_data, insula_data, mfg_data)
+
+# crop time 
+ieeg_hfa_data <- ieeg_hfa_data %>% 
+  mutate(trial_time = trial_time - 3)  %>%
+  filter(trial_time >= -1)
+
+
+# bind with behavioral data #
+ieeg_hfa_behave_df <- inner_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               ieeg_hfa_data %>% mutate(trial_time = round(trial_time, 2)))
+
+```
+
+
+```{r read-in-attack-tables}
+
+## load and compile attack tables ##
+for(sub in unique(all_subs_dist$subject)){
+  
+  tmp <- read_csv(path(here(), "data", "ieeg_behave", paste0(sub, "_attack_events.csv")))
+  tmp <- tmp %>%
+    mutate(subject = sub)
+  
+  if(exists("attack_events")){
+    attack_events <- bind_rows(attack_events, tmp)
+  } else {
+    attack_events <- tmp
+  }
+  
+}
+
+## modify to get trials of interest ##
+attack_events <- attack_events %>%
+  mutate(trial_numeric = neural_trial_numeric + 1) %>%
+  mutate(attacks_ids = paste0(subject, "_", trial_numeric))
+
+
+```
+
+
+```{r shift-to-attack}
+
+# merge attack df
+ieeg_attack_hfa_df <- left_join(ieeg_hfa_behave_df, attack_events %>% rename(attack_begin = event) %>% select(subject, trial_numeric, sample, attack_begin))
+ieeg_attack_hfa_df <- ieeg_attack_hfa_df %>%
+  mutate(attack_begin = if_else(is.na(attack_begin), 0, 1)) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(attacked = if_else(sum(attack_begin) != 0, 1, 0)) %>%
+  ungroup()
+
+# shift to center around turnaround  #
+attack_hfa_centered_df <- ieeg_attack_hfa_df %>%
+  filter(attacked == 1) %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  # shift the time so that time 0 is the start of movement onset
+  group_by(elec_id, trial_numeric, subject, freq, region) %>%
+  # filter time so that trials end when the person turnaround for the final time
+  mutate(attack_time = if_else(attack_begin == 1, trial_time, 0)) %>%
+  mutate(attack_time = max(attack_time)) %>%
+  mutate(time = trial_time - attack_time) %>%
+  ungroup() 
+
+
+
+```
+
+```{r sig-test-df-prep-function}
+
+
+create_sig_test_df <- function(behave_df){
+
+
+  # filter between 1.5 before and after turn, and create approach, avoid condition, average across trial
+  attack_df <- behave_df %>%
+    mutate(time = round(time, 2)) %>%
+    filter(time <= 1 & time >= -1) %>%
+    mutate(attack = if_else(time <=0, "Pre-Attack", "Post-Attack")) %>%
+    group_by(elec_id, attack, trial_numeric) %>%
+    mutate(trial_hfa = mean(power)) %>%
+    select(trial_hfa, elec_id, trial_numeric, subject, attack) %>%
+    distinct()  
+  
+  # run model with rnadom effects of subject and electrode  
+  model_tmp <- summary(lmer(trial_hfa ~ attack + (1 + attack|subject), data = attack_df))
+  pval <- model_tmp$coefficients[2, 5]
+  
+  
+  # Create visualization df, by averaging, across electrode, and subject
+  acc_df <- attack_df %>%
+    mutate(pvalue = pval) 
+    
+  return(acc_df)
+  
+}
+
+
+```
+
+```{r plot-mfg, fig.width = 8, fig.height = 7, warning = F}
+
+
+# create df for conflict, no conflict trials
+mfg_attack_plot_df <- create_sig_test_df(attack_hfa_centered_df %>% filter(region == "MFG"))
+
+
+# # create plot
+# mfg_plot <- plot_pre_post_attack(mfg_attack_plot_df, "MFG")
+# 
+# # print plot
+# mfg_plot
+# 
+# # save plot
+# ggsave(path(here(), "figures", "figure6_mfg_attack_hfa_plot.png"), plot = mfg_plot, width = 5.5, height = 3)
+
+```
+
+### Left/Right Differences
+
+
+```{r}
+
+# load MNI data
+mni_data <- read_csv(path(here(), "munge", "mni_coordinates_all_subs.csv"))
+
+# separate out the bipolar pairs
+mfg_attack_plot_df <- mfg_attack_plot_df %>%
+  mutate(electrode = gsub(paste0(subject, "_"), "", elec_id)) %>%
+  mutate(first_elec = gsub("-.*", "", electrode)) %>%
+  mutate(second_elec = gsub(".*-", "", electrode)) 
+
+attack_hfa_centered_df <- attack_hfa_centered_df %>%
+  mutate(first_elec = gsub("-.*", "", electrode)) %>%
+  mutate(second_elec = gsub(".*-", "", electrode))   
+
+# merge with anatomy
+leftright_data <- mni_data %>%
+  mutate(left_right = if_else(X <= 0, "Left", "Right")) %>%
+  select(subject, left_right, Electrode)
+
+mfg_attack_plot_df <- left_join(mfg_attack_plot_df, leftright_data, by = c("subject" = "subject", "first_elec" = "Electrode"))
+attack_hfa_centered_df <- left_join(attack_hfa_centered_df, leftright_data, by = c("subject" = "subject", "first_elec" = "Electrode"))
+
+
+```
+
+
+```{r plot-mfg, fig.width = 8, fig.height = 7, warning = F}
+
+
+# create df for conflict, no conflict trials
+mfgr_attack_plot_df <- create_sig_test_df(attack_hfa_centered_df %>% filter(region == "MFG" & left_right == "Right"))
+
+
+# # create plot
+# mfgr_plot <- plot_pre_post_attack(mfgr_attack_plot_df, "Right MFG")
+# 
+# # print plot
+# mfgr_plot
+# 
+# # save plot
+# ggsave(path(here(), "figures", "figure6_rmfg_attack_hfa_plot.png"), plot = mfgr_plot, width = 5.5, height = 3)
+
+```
+
+```{r brms-hc}
+
+library(brms)
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+# Fit the model
+mfg_lr_model <- brm(
+  formula = trial_hfa ~ attack*left_right + (1 + attack | subject/elec_id),
+  data = mfg_attack_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+summary(mfg_lr_model)
+
+# save full model #
+save(mfg_lr_model, file = path(here(), "results", "attack_mfg_lr_hfa_model_brms.RData"))
+load(path(here(), "results", "attack_mfg_lr_hfa_model_brms.RData"))
+summary(mfg_lr_model)
+```
+
+
+
+
+
+```{r plotting-functions}
+
+plot_pre_post_attack <- function(attack_test_df, roi) {
+  
+  
+ attack_elec_test_df <- attack_test_df %>%
+    group_by(elec_id, attack) %>%
+    mutate(elec_hfa = mean(trial_hfa)) %>%
+    select(-trial_hfa, -trial_numeric) %>%
+    distinct()
+ 
+ 
+attack_sub_test_df <-  attack_elec_test_df %>%
+    group_by(subject, attack) %>%
+    mutate(sub_hfa = mean(elec_hfa)) %>%
+    select(-elec_hfa, -elec_id) %>%
+    distinct() %>%
+    mutate(attack = factor(attack, levels = c("Pre-Attack", "Post-Attack")))
+
+pval_df <- attack_sub_test_df %>%
+    ungroup() %>%
+    select(pvalue) %>%
+    distinct() %>%
+    mutate(pvalue = if_else(pvalue < .05, sprintf("p = %.2g***", pvalue), sprintf("p = %.2g", pvalue)))
+  
+  attack_plot <- attack_sub_test_df %>%
+    ggplot(.) +
+    geom_boxplot(aes(x = attack, y = sub_hfa, fill = attack), color = "#2D2327") +
+    geom_jitter(aes(x = attack, fill = attack, y = sub_hfa), color = "#2D2327", width = .1, size = 2, shape = 17) +
+    geom_line(aes(x = attack, y = sub_hfa, group = subject), size = .5, alpha = .5, color = "#2D2327") +
+    geom_jitter(data = attack_elec_test_df, aes(x = attack, fill = attack, y = elec_hfa), width = .1, size = 2, alpha = .5, shape = 21, color = "#2D2327") +
+    theme(panel.background = element_rect(fill = "white")) +
+    scale_fill_manual(values = c("#2c75b3", "#c2383a")) +
+    scale_color_manual(values = c("#2c75b3", "#c2383a")) +
+    ggsignif::geom_signif(data = pval_df, manual = T, aes(y_position=c(2), xmin= c(1), xmax = c(2), annotations = pvalue),
+                family = "Gill Sans", color = "#2D2327", textsize = 5, vjust =-.5) +
+    theme(panel.background = element_rect(fill = "white"), 
+          legend.position = "none",
+          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+          legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
+          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+          strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 19, hjust = .5)) +
+    labs(y = "Average hfa power (a.u.)", x = "", fill = "", color = "") +
+    ggtitle(roi) 
+  
+  return(attack_plot)
+
+}
+
+
+```
+```{r brms-version}
+
+library(brms)
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+# Fit the model
+hc_model <- brm(
+  formula = trial_theta ~ aac + (1 + aac | subject/elec_id),
+  data = hc_conflict_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+summary(hc_model)
+
+# save full model #
+save(hc_model, file = path(here(), "results", "app_avd_hc_theta_model_brms.RData"))
+```
+
+## Conflict Trials
+
+## Hippocampus
+
+
+```{r plot-both-hc, fig.width = 8, fig.height = 7, warning = F}
+
+
+# create df for conflict, no conflict trials
+hc_attack_plot_df <- create_sig_test_df(attack_hfa_centered_df %>% filter(region == "Hippocampus"))
+
+
+# create plot
+hc_plot <- plot_pre_post_attack(hc_attack_plot_df, "Hippocampus")
+
+# print plot
+hc_plot
+
+# save plot
+ggsave(path(here(), "figures", "figure6_hc_attack_hfa_plot.png"), plot = hc_plot, width = 5.5, height = 3)
+
+```
+
+```{r brms-hc}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+# Fit the model
+hc_model <- brm(
+  formula = trial_hfa ~ attack + (1 + attack | subject/elec_id),
+  data = hc_attack_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+summary(hc_model)
+
+# save full model #
+save(hc_model, file = path(here(), "results", "attack_hc_hfa_model_brms.RData"))
+
+```
+
+## Amygdala
+
+```{r plot-amyg, fig.width = 8, fig.height = 7, warning = F}
+
+
+# create df for conflict, no conflict trials
+amyg_attack_plot_df <- create_sig_test_df(attack_hfa_centered_df %>% filter(region == "Amygdala"))
+
+
+# create plot
+amyg_plot <- plot_pre_post_attack(amyg_attack_plot_df, "Amygdala")
+
+# print plot
+amyg_plot
+
+# save plot
+ggsave(path(here(), "figures", "figure6_amyg_attack_hfa_plot.png"), plot = amyg_plot, width = 5.5, height = 3)
+
+```
+
+## OFC
+
+```{r plot-ofc, fig.width = 8, fig.height = 7, warning = F}
+
+
+# create df for conflict, no conflict trials
+ofc_attack_plot_df <- create_sig_test_df(attack_hfa_centered_df %>% filter(region == "OFC"))
+
+
+# create plot
+ofc_plot <- plot_pre_post_attack(ofc_attack_plot_df, "OFC")
+
+# print plot
+ofc_plot
+
+# save plot
+ggsave(path(here(), "figures", "figure6_ofc_attack_hfa_plot.png"), plot = ofc_plot, width = 5.5, height = 3)
+
+```
+
+
+## Anterior Cingulate
+
+```{r plot-cing, fig.width = 8, fig.height = 7, warning = F}
+
+
+# create df for conflict, no conflict trials
+cing_attack_plot_df <- create_sig_test_df(attack_hfa_centered_df %>% filter(region == "Ant. Cingulate"))
+
+
+# create plot
+cing_plot <- plot_pre_post_attack(cing_attack_plot_df, "Ant. Cingulate")
+
+# print plot
+cing_plot
+
+# save plot
+ggsave(path(here(), "figures", "figure6_cing_attack_hfa_plot.png"), plot = cing_plot, width = 5.5, height = 3)
+
+```
+
+
+## Insula
+
+```{r plot-insula, fig.width = 8, fig.height = 7, warning = F}
+
+
+# create df for conflict, no conflict trials
+insula_attack_plot_df <- create_sig_test_df(attack_hfa_centered_df %>% filter(region == "Insula"))
+
+
+# create plot
+insula_plot <- plot_pre_post_attack(insula_attack_plot_df, "Insula")
+
+# print plot
+insula_plot
+
+# save plot
+ggsave(path(here(), "figures", "figure6_insula_attack_hfa_plot.png"), plot = insula_plot, width = 5.5, height = 3)
+
+```
+
+## MFG
+
+```{r plot-mfg, fig.width = 8, fig.height = 7, warning = F}
+
+
+# create df for conflict, no conflict trials
+mfg_attack_plot_df <- create_sig_test_df(attack_hfa_centered_df %>% filter(region == "MFG"))
+
+
+# create plot
+mfg_plot <- plot_pre_post_attack(mfg_attack_plot_df, "MFG")
+
+# print plot
+mfg_plot
+
+# save plot
+ggsave(path(here(), "figures", "figure6_mfg_attack_hfa_plot.png"), plot = mfg_plot, width = 5.5, height = 3)
+
+```
+
+```{r brms-hc}
+
+# Fit the model
+mfg_model <- brm(
+  formula = trial_hfa ~ attack + (1 + attack | subject/elec_id),
+  data = mfg_attack_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+summary(mfg_model)
+
+# save full model #
+save(mfg_model, file = path(here(), "results", "attack_mfg_hfa_model_brms.RData"))
+
+
+load(path(here(), "results", "attack_mfg_hfa_model_brms.RData"))
+
+```
+
+
+```{r random-effects}
+library(posterior)
+
+# pull random efftcs
+subject_random_effects <- ranef(mfg_model, groups = "subject")
+
+# Extract posterior samples of random effects
+posterior_ranef_subject <- as_draws_df(mfg_model) %>%
+  select(starts_with("r_subject["))
+
+posterior_ranef_electrode <- as_draws_df(mfg_model) %>%
+  select(starts_with("r_subject:elec_id["))
+
+# Extract posterior samples of the fixed effect
+posterior_fixed <- as_draws_df(mfg_model, variable = "b_attackPreMAttack")
+
+# Get the list of subjects
+subjects <- unique(mfg_model$data$subject)
+
+# Initialize a list to store subject-specific effect samples
+subject_effects <- list()
+
+# Loop over each subject
+for (subject in subjects) {
+  # Create the variable name for the random effect
+  ranef_var <- paste0("r_subject[", subject, ",attackPreMAttack]")
+  
+  # Check if the variable exists in the posterior samples
+  if (ranef_var %in% names(posterior_ranef_subject)) {
+    ranef_samples <- posterior_ranef_subject[[ranef_var]]
+  } else {
+    stop(paste("Random effect variable", ranef_var, "not found in posterior samples."))
+  }
+  
+  # Combine fixed and random effects
+  subject_specific_samples <- posterior_fixed$b_attackPreMAttack + ranef_samples
+  
+  # Store the samples
+  subject_effects[[as.character(subject)]] <- subject_specific_samples
+}
+
+```
+
+
+```{r, subject-ci}
+
+# Initialize a data frame to store the results
+subject_ci <- data.frame(
+  subject = character(),
+  mean = numeric(),
+  lower = numeric(),
+  upper = numeric(),
+  significant = logical(),
+  stringsAsFactors = FALSE
+)
+
+for (subject in names(subject_effects)) {
+  # Get the samples
+  samples <- subject_effects[[subject]]
+  
+  # Calculate mean and credible intervals
+  mean_effect <- mean(samples)
+  ci_lower <- quantile(samples, probs = 0.025)
+  ci_upper <- quantile(samples, probs = 0.975)
+  
+  # Determine if CI includes zero
+  significant <- ci_lower > 0 | ci_upper < 0
+  
+  # Add to the data frame
+  subject_ci <- rbind(subject_ci, data.frame(
+    subject = subject,
+    mean = mean_effect,
+    lower = ci_lower,
+    upper = ci_upper,
+    significant = significant,
+    stringsAsFactors = FALSE
+  ))
+}
+
+
+```
+
+
+```{r elec-ranef}
+
+# Extract unique combinations of subject and elec_id from the model data
+electrode_info <- unique(mfg_model$data[, c("subject", "elec_id")])
+
+# Create a unique identifier for electrodes (subject_elec_id)
+electrode_info$subject_elec_id <- paste0(electrode_info$subject, "_", electrode_info$elec_id)
+
+# Initialize a list to store electrode-specific effect samples
+electrode_effects <- list()
+
+# Loop over each electrode
+for (i in 1:nrow(electrode_info)) {
+  subject <- electrode_info$subject[i]
+  elec_id <- electrode_info$elec_id[i]
+  subject_elec_id <- electrode_info$subject_elec_id[i]
+  
+  # Create variable names for random effects
+  ranef_subject_var <- paste0("r_subject[", subject, ",attackPreMAttack]")
+  ranef_electrode_var <- paste0("r_subject:elec_id[", subject_elec_id, ",attackPreMAttack]")
+  
+  # Check if variables exist in the posterior samples
+  if (ranef_subject_var %in% names(posterior_ranef_subject)) {
+    ranef_subject_samples <- posterior_ranef_subject[[ranef_subject_var]]
+  } else {
+    stop(paste("Random effect variable", ranef_subject_var, "not found in posterior samples."))
+  }
+  
+  if (ranef_electrode_var %in% names(posterior_ranef_electrode)) {
+    ranef_electrode_samples <- posterior_ranef_electrode[[ranef_electrode_var]]
+  } else {
+    stop(paste("Random effect variable", ranef_electrode_var, "not found in posterior samples."))
+  }
+  
+  # Combine fixed effect, subject random effect, and electrode random effect
+  electrode_specific_samples <- posterior_fixed$b_attackPreMAttack + ranef_subject_samples + ranef_electrode_samples
+  
+  # Store the samples
+  electrode_effects[[subject_elec_id]] <- electrode_specific_samples
+}
+
+
+```
+
+```{r elec-ci}
+
+# Initialize a data frame to store the results
+electrode_ci <-  data.frame(
+  subject_elec_id = character(),
+  subject = character(),
+  elec_id = character(),
+  mean = numeric(),
+  lower = numeric(),
+  upper = numeric(),
+  significant = logical(),
+  stringsAsFactors = FALSE
+)
+
+for (subject_elec_id in names(electrode_effects)) {
+  # Get the samples
+  samples <- electrode_effects[[subject_elec_id]]
+  
+  # Calculate mean and credible intervals
+  mean_effect <- mean(samples)
+  ci_lower <- quantile(samples, probs = 0.025)
+  ci_upper <- quantile(samples, probs = 0.975)
+  
+  # Determine if CI includes zero
+  significant <- ci_lower > 0 | ci_upper < 0
+  
+  # Extract subject and elec_id from subject_elec_id
+  parts <- strsplit(subject_elec_id, "_")[[1]]
+  subject <- parts[1]
+  elec_id <- parts[2]
+  
+  # Add to data frame
+  electrode_ci <- rbind(electrode_ci, data.frame(
+    subject_elec_id = subject_elec_id,
+    subject = subject,
+    elec_id = elec_id,
+    mean = mean_effect,
+    lower = ci_lower,
+    upper = ci_upper,
+    significant = significant,
+    stringsAsFactors = FALSE
+  ))
+}
+
+electrode_ci <- electrode_ci %>%
+  rowwise() %>%
+  mutate(subject_names = paste0(subject, "_", subject, "_")) %>%
+  mutate(electrode = gsub(subject_names, "", subject_elec_id)) %>%
+  select(-subject_names, -elec_id) %>%
+  mutate(first_elec = gsub("-.*", "", electrode)) %>%
+  mutate(second_elec = gsub(".*-", "", electrode)) %>%
+  mutate(big_attack_effect = if_else(significant, "yes", "no"))
+
+write_csv(electrode_ci, path(here(), "munge", "sig_electrodes_ci_mfg_attack_diff.csv"))
+
+electrode_ci <- read_csv(path(here(), "munge", "sig_electrodes_ci_mfg_attack_diff.csv"))
+```
+```{r}
+
+# load MNI data
+mni_data <- read_csv(path(here(), "munge", "mni_coordinates_all_subs.csv"))
+
+# merge with anatomy
+leftright_data <- mni_data %>%
+  mutate(left_right = if_else(X <= 0, "Left", "Right")) %>%
+  select(subject, left_right, Electrode)
+
+electrode_ci <- left_join(electrode_ci, leftright_data, by = c("subject" = "subject", "first_elec" = "Electrode"))
+
+table(electrode_ci$left_right, electrode_ci$big_attack_effect)
+
+```
+
+

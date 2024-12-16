@@ -1,0 +1,129 @@
+---
+title: "Anxiety Plots"
+output: html_document
+date: "2023-11-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(rcartocolor)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+```{r load-data}
+
+
+pilot_behave_data_clean <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior.csv"))
+
+
+```
+
+```{r plot-phenom}
+
+experienced_plot <- pilot_behave_data_clean %>%
+  select(starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  mutate(experienced = if_else(experienced == "Click to write Choice 7", "Anger", 
+                              if_else(experienced == "Click to write Choice 8", "Suspense", 
+                                      if_else(experienced == "Click to write Choice 9", "Frusteration", experienced)))) %>%
+  mutate(emotion_count = if_else(!is.na(experienced), 1, 0)) %>%
+  filter(emotion_count == 1) %>%
+  filter(!experienced %in% c("fear", "It was fun", "i have a phobia of ghosts now")) %>%
+  mutate(experienced = factor(experienced)) %>%
+  mutate(experienced = factor(experienced, levels = c(levels(experienced), "Boredom"), labels = c(levels(experienced), "Boredom"))) %>%
+  add_count(experienced) %>%
+  select(experienced, n) %>%
+  distinct() %>%
+  ggplot(., aes(x = experienced, y = 100 *n/69, fill = experienced)) +
+  geom_col(alpha = .8, color = "black") +
+  xlab("") +
+  ylab("Percent of Prolific Participants") +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "none",
+        plot.margin = margin(t = 1, r = 1, b = 1, l = 1),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18, angle = 45, vjust = 1, hjust = 1),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold")) +
+  ggtitle("Most players report feeling anxiety during the task", subtitle = "Responses to: 'What did you experience when the ghost was close to catching you?'") +
+  scale_fill_carto_d(palette = "Prism")
+
+
+ggsave(path(here(), "figures", "behavior", "experienced_emotions_pilot_plot.png"),
+         plot = experienced_plot,
+         width = 9.5,
+         height = 8,
+         units = "in",
+         dpi = 300)
+
+```
+
+
+
+
+
+

@@ -1,0 +1,310 @@
+---
+title: "Fig 3 Rising Falling Plots"
+output: html_document
+date: "2024-11-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(blme)
+library(brms)
+library(bayesplot)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+```{r load-model}
+
+# load rising model #
+load(path(here(), "results", "rising_model_brms.RData"))
+
+# summary #
+summary(rising_model)
+
+
+# load falling model #
+load(path(here(), "results", "falling_model_brms.RData"))
+
+# summary #
+summary(falling_model)
+
+
+```
+
+
+```{r get-posterior}
+
+# values to find CI intervals in the density function
+closest_value <- function(x, v) {
+  # Calculate the absolute differences between each element in v and x
+  differences <- abs(v - x)
+  
+  # Find the index of the minimum difference
+  index_of_min <- which.min(differences)
+  
+  # Return the value in v at the index of the minimum difference
+  closest <- v[index_of_min]
+  return(closest)
+}
+
+
+summarize_posterior <- function(samples) {
+  mean_val <- mean(samples)
+  sd_val <- sd(samples)
+  ci_lower <- quantile(samples, 0.025)
+  ci_upper <- quantile(samples, 0.975)
+  max_density = max(density(samples)$y)
+  ci_lower_dens = density(samples)$y[density(samples)$x == closest_value(ci_lower, density(samples)$x)]
+  ci_upper_dens = density(samples)$y[density(samples)$x == closest_value(ci_upper, density(samples)$x)]
+  prob_positive <- mean(samples > 0)
+  tibble(
+    Mean = mean_val,
+    SD = sd_val,
+    CI_Lower = ci_lower,
+    CI_Upper = ci_upper,
+    Max_Density = max_density,
+    CI_Lower_Density = ci_lower_dens,
+    CI_Upper_Density = ci_upper_dens,
+    Prob_Positive = prob_positive
+  )
+
+}
+
+## Approach
+# get draws
+app_time_sample <- as_draws_df(rising_model)$b_time
+
+# summarize
+app_time_summary_df <- summarize_posterior(app_time_sample)
+
+# merge
+app_time_df <- app_time_sample %>% 
+  as_tibble() %>% 
+  mutate(Iteration = row_number()) %>% 
+  bind_cols(app_time_summary_df) 
+
+
+## Approach
+# get draws
+avd_time_sample <- as_draws_df(falling_model)$b_time
+
+# summarize
+avd_time_summary_df <- summarize_posterior(avd_time_sample)
+
+# merge
+avd_time_df <- avd_time_sample %>% 
+  as_tibble() %>% 
+  mutate(Iteration = row_number()) %>% 
+  bind_cols(avd_time_summary_df) 
+
+## Bind
+posterior_df <- bind_rows(app_time_df %>% mutate(case = "Approach"), 
+                          avd_time_df %>% mutate(case = "Avoid")) 
+
+```
+
+
+```{r plot-posterior, fig.width = 3, fig.height = 5, warning = F}
+
+ggthemr("solarized")
+
+rising_falling_dist_plot <- posterior_df  %>%
+  mutate(sig_x = if_else(case == "Approach", CI_Upper, CI_Lower)) %>%
+  pivot_wider(names_from = case, values_from = c(value, Mean, CI_Lower, CI_Upper, Max_Density, CI_Lower_Density, CI_Upper_Density)) %>%
+  ggplot(., aes()) +
+  geom_vline(xintercept = 0, color = "black") +
+  geom_density(aes(x = value_Approach, y = after_stat(density)), alpha = .75, fill = "#D75356", color = "#2D2327") +
+  geom_density(aes(x = value_Avoid, y = -1 *after_stat(density)), alpha = .75, fill = "#6390C8", color = "#2D2327") +
+  geom_segment(aes(x = Mean_Approach, xend = Mean_Approach, y = 0, yend = Max_Density_Approach), color = "#D75356",  linewidth = 1, linetype = "dotdash",) +
+  geom_segment(aes(x = Mean_Avoid, xend = Mean_Avoid, y = 0, yend = -Max_Density_Avoid), color = "#6390C8", linewidth = 1, linetype = "dotdash",) +
+  geom_segment(aes(x = CI_Upper_Approach, xend = CI_Upper_Approach, y = 0, yend = CI_Upper_Density_Approach), color = "#D75356",  linewidth = 1) +
+  geom_segment(aes(x = CI_Upper_Avoid, xend = CI_Upper_Avoid, y = 0, yend = -CI_Upper_Density_Avoid), color = "#6390C8",  linewidth = 1) +
+  geom_segment(aes(x = CI_Lower_Approach, xend = CI_Lower_Approach, y = 0, yend = CI_Lower_Density_Approach), color = "#D75356",  linewidth = 1) +
+  geom_segment(aes(x = CI_Lower_Avoid, xend = CI_Lower_Avoid, y = 0, yend = -CI_Lower_Density_Avoid), color = "#6390C8",  linewidth = 1) +
+  geom_text(aes(x = sig_x, y = Max_Density_Approach), color = "#2D2327", label = "*", size = 10, vjust = 1, show.legend = FALSE, check_overlap = T) +
+  geom_text(aes(x = sig_x, y = -Max_Density_Avoid), color = "#2D2327", label = "*", size = 10, vjust = 1, show.legend = FALSE, check_overlap = T) +
+  geom_text(aes(x = .2, y = -6.5), label = "Approach",  color = "#D75356", size = 4.75, vjust = 1, show.legend = FALSE, check_overlap = T) +
+  geom_text(aes(x = -.25, y = 10), color = "#6390C8", label = "Avoid", size = 4.75, vjust = 1, show.legend = FALSE, check_overlap = T) +
+  theme(panel.background = element_rect(fill = "white"), 
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11)) +
+  labs(y = "Density", x = "Beta estimate", color = "", fill = "") +
+  coord_flip() +
+  ggtitle("Posterior distributions:\ncoherence ~ time")
+
+rising_falling_dist_plot
+
+ggsave(path(here(), "figures", "connectivity", "figure3_rising_falling_posterior_distributions.png"), 
+       plot = rising_falling_dist_plot, 
+       width = 3, height = 4, units = "in", dpi = 600)
+
+
+```
+## Subject Slopes Plot
+
+
+```{r, fig.width = 2, fig.height = 3}
+
+# Extract subject-level intercept and slope estimates
+# coef(fit)$subject is a 3D array: dimensions: subject x parameter x summary_statistics
+subject_coefs <- coef(rising_model)$subject[,,"time"]       # Extract only "time" row
+subject_intercepts <- coef(rising_model)$subject[,,"Intercept"]
+slopes <- subject_coefs[,"Estimate"]
+intercepts <- subject_intercepts[,"Estimate"]
+
+subject_effects <- data.frame(
+  subject = rownames(coef(rising_model)$subject),
+  Intercept = intercepts,
+  Slope = slopes
+)
+
+# Create a time sequence spanning the observed range
+time_range <- range(rising_model$data$time)
+time_grid <- seq(time_range[1], time_range[2], length.out = 100)
+
+# Generate predicted values for each subject
+plot_data <- subject_effects %>%
+  tidyr::expand_grid(time = time_grid) %>%
+  mutate(pred = Intercept + Slope * time)
+
+# Plot:
+# 1. Raw data as points
+# 2. Fitted subject lines
+
+approach_sub_eff_plot <- ggplot() +
+  geom_line(data = plot_data, 
+            aes(x = time, y = pred, group = subject), 
+            color = "#D75356") +
+  theme(panel.background = element_rect(fill = "white"), 
+    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+    axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11, hjust = .5)) +
+  labs(x = "Time", y = "Scaled Log Coherence",
+       title = "Approach")
+
+ggsave(path(here(), "figures", "connectivity", "figure3_rising_sub_eff.png"), 
+       plot = approach_sub_eff_plot, 
+       width = 2.75, height = 4, units = "in", dpi = 600)
+
+```
+
+
+```{r, fig.width = 2, fig.height = 3}
+
+# Extract subject-level intercept and slope estimates
+# coef(fit)$subject is a 3D array: dimensions: subject x parameter x summary_statistics
+subject_coefs <- coef(falling_model)$subject[,,"time"]       # Extract only "time" row
+subject_intercepts <- coef(falling_model)$subject[,,"Intercept"]
+slopes <- subject_coefs[,"Estimate"]
+intercepts <- subject_intercepts[,"Estimate"]
+
+subject_effects <- data.frame(
+  subject = rownames(coef(falling_model)$subject),
+  Intercept = intercepts,
+  Slope = slopes
+)
+
+# Create a time sequence spanning the observed range
+time_range <- range(falling_model$data$time)
+time_grid <- seq(time_range[1], time_range[2], length.out = 100)
+
+# Generate predicted values for each subject
+plot_data <- subject_effects %>%
+  tidyr::expand_grid(time = time_grid) %>%
+  mutate(pred = Intercept + Slope * time)
+
+# Plot:
+# 1. Raw data as points
+# 2. Fitted subject lines
+
+avoid_sub_eff_plot <- ggplot() +
+  geom_line(data = plot_data, 
+            aes(x = time, y = pred, group = subject), 
+            color = "#6390C8") +
+  theme(panel.background = element_rect(fill = "white"), 
+    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+    axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11, hjust = .5)) +
+  scale_y_continuous(position = "right") +
+  labs(x = "Time", y = "Scaled Log Coherence",
+       title = "Avoid")
+
+ggsave(path(here(), "figures", "connectivity", "figure3_falling_sub_eff.png"), 
+       plot = avoid_sub_eff_plot, 
+       width = 2.75, height = 4, units = "in", dpi = 600)
+
+```
+

@@ -1,0 +1,541 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-11-26"
+---
+---
+title: "Differential Connectivity"
+output: html_document
+date: "2024-10-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(tidybayes)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+```{r load-data, eval = F}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_ghost_connectivity_newsubs.csv"))
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
+```
+
+
+```{r split-mfg-sfg}
+
+regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
+
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+conn_detailed_df <- conn_df %>%
+  mutate(
+    first_pair = gsub("_to_.*", "", pairs),
+    second_pair = gsub(".*_to_", "", pairs),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(conn_detailed_df$detailed_first_region)
+table(conn_detailed_df$detailed_second_region)
+
+# final rename
+conn_detailed_df <- conn_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region)
+
+
+## FDr correct/make symmetric
+conn_clean_df <- prep_detailed_conn_allsubs_plot_df(conn_detailed_df)
+
+```
+
+
+```{r prep-df, fig.width=20, fig.height=15}
+
+
+conn_clean_elec_df <- conn_clean_df %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(metric, time, pairs, subject) %>%
+  mutate(pair_conn = mean(abs(connectivity))) %>%
+  ungroup() 
+
+
+```
+
+
+## Phase Lag Index
+
+### Approach
+
+```{r, fig.height= 6, fig.width=10}
+
+aac_conn_avg_df <- conn_clean_elec_df %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  filter(metric == "Phase Lag Index" & !grepl("SFG", roi_pair)) %>%
+  mutate(aac = if_else(time <= 0, "Approach", "Avoid")) %>%
+  group_by(aac, key) %>%
+  mutate(average_aac_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(subject, aac, pairs, first_pair, second_pair, roi_pair, first_region, second_region, average_aac_conn, key) %>%
+  distinct() %>%
+  mutate(log_average_aac_conn = log(average_aac_conn)) %>%
+  mutate(key = factor(key)) %>%
+  mutate(subject = factor(subject))  %>%
+  mutate(first_pair_key = factor(paste0(subject, "_", first_pair)))
+
+
+```
+
+
+```{r approach-differences}
+
+time_df <- aac_conn_avg_df %>%
+  filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(second_region != "Insula" & first_region != "Insula") %>%
+  filter(aac == "Approach")
+
+
+amyg_time_df <- time_df %>%
+  filter(first_region == "Amygdala") 
+
+hc_time_df <- time_df %>%
+  filter(first_region == "Hippocampus") 
+
+ofc_time_df <- time_df %>%
+  filter(first_region == "OFC") 
+
+mfg_time_df <- time_df %>%
+  filter(first_region == "MFG")
+
+acc_time_df <- time_df %>%
+  filter(first_region == "Ant. Cingulate")
+
+
+
+```
+
+```{r brms-approach}
+library(brms)
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+## Amygdala ##
+amyg_time_df <- amyg_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("MFG",  "OFC", "Ant. Cingulate", "Hippocampus"))) 
+
+amyg_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = amyg_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(amyg_model)
+
+# save full model #
+save(amyg_model, file = path(here(), "results", "imcoh_app_amyg_pli_second_roi_model.RData"))
+
+## OFC ##
+ofc_time_df <- ofc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c( "MFG", "Amygdala", "Ant. Cingulate", "Hippocampus"))) 
+ofc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = ofc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(ofc_model)
+
+# save full model #
+save(ofc_model, file = path(here(), "results", "imcoh_app_ofc_pli_second_roi_model.RData"))
+
+
+## Hippocampus ##
+hc_time_df <- hc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("MFG",  "OFC", "Ant. Cingulate", "Amygdala"))) 
+
+hc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = hc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(hc_model)
+
+# save full model #
+save(hc_model, file = path(here(), "results", "imcoh_app_hc_pli_second_roi_model.RData"))
+
+
+## ACC ##
+acc_time_df <- acc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("MFG",  "OFC", "Hippocampus", "Amygdala"))) 
+
+acc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = acc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(acc_model)
+
+# save full model #
+save(acc_model, file = path(here(), "results", "imcoh_app_acc_pli_second_roi_model.RData"))
+
+## MFG ##
+mfg_time_df <- mfg_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("OFC",  "Ant. Cingulate", "Hippocampus", "Amygdala"))) 
+
+mfg_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = mfg_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(mfg_model)
+
+# save full model #
+save(mfg_model, file = path(here(), "results", "imcoh_app_mfg_pli_second_roi_model.RData"))
+
+
+
+```
+
+## Pairwise Phase Consistency
+
+### Approach
+
+```{r, fig.height= 6, fig.width=10}
+
+aac_conn_avg_df <- conn_clean_elec_df %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  filter(metric == "Pairwise Phase Consistency" & !grepl("SFG", roi_pair)) %>%
+  mutate(aac = if_else(time <= 0, "Approach", "Avoid")) %>%
+  group_by(aac, key) %>%
+  mutate(average_aac_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(subject, aac, pairs, first_pair, second_pair, roi_pair, first_region, second_region, average_aac_conn, key) %>%
+  distinct() %>%
+  mutate(log_average_aac_conn = log(average_aac_conn)) %>%
+  mutate(key = factor(key)) %>%
+  mutate(subject = factor(subject))  %>%
+  mutate(first_pair_key = factor(paste0(subject, "_", first_pair)))
+
+
+```
+
+
+```{r approach-differences}
+
+time_df <- aac_conn_avg_df %>%
+  filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(second_region != "Insula" & first_region != "Insula") %>%
+  filter(aac == "Approach")
+
+
+amyg_time_df <- time_df %>%
+  filter(first_region == "Amygdala") 
+
+hc_time_df <- time_df %>%
+  filter(first_region == "Hippocampus") 
+
+ofc_time_df <- time_df %>%
+  filter(first_region == "OFC") 
+
+mfg_time_df <- time_df %>%
+  filter(first_region == "MFG")
+
+acc_time_df <- time_df %>%
+  filter(first_region == "Ant. Cingulate")
+
+
+
+```
+
+```{r brms-approach}
+library(brms)
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+## Amygdala ##
+amyg_time_df <- amyg_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("MFG",  "OFC", "Ant. Cingulate", "Hippocampus"))) 
+
+amyg_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = amyg_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(amyg_model)
+
+# save full model #
+save(amyg_model, file = path(here(), "results", "imcoh_app_amyg_ppc_second_roi_model.RData"))
+
+## OFC ##
+ofc_time_df <- ofc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c( "MFG", "Amygdala", "Ant. Cingulate", "Hippocampus"))) 
+ofc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = ofc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(ofc_model)
+
+# save full model #
+save(ofc_model, file = path(here(), "results", "imcoh_app_ofc_ppc_second_roi_model.RData"))
+
+
+## Hippocampus ##
+hc_time_df <- hc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("MFG",  "OFC", "Ant. Cingulate", "Amygdala"))) 
+
+hc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = hc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(hc_model)
+
+# save full model #
+save(hc_model, file = path(here(), "results", "imcoh_app_hc_ppc_second_roi_model.RData"))
+
+
+## ACC ##
+acc_time_df <- acc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("MFG",  "OFC", "Hippocampus", "Amygdala"))) 
+
+acc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = acc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(acc_model)
+
+# save full model #
+save(acc_model, file = path(here(), "results", "imcoh_app_acc_ppc_second_roi_model.RData"))
+
+## MFG ##
+mfg_time_df <- mfg_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("OFC",  "Ant. Cingulate", "Hippocampus", "Amygdala"))) 
+
+mfg_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = mfg_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(mfg_model)
+
+# save full model #
+save(mfg_model, file = path(here(), "results", "imcoh_app_mfg_ppc_second_roi_model.RData"))
+
+
+
+```

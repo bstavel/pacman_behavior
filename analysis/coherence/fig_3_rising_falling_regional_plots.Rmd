@@ -1,0 +1,377 @@
+---
+title: "Fig 3 Roi Rising/Falling Plots"
+output: html_document
+date: "2024-11-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(blme)
+library(brms)
+library(bayesplot)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+```{r}
+
+# load rising model #
+load(path(here(), "results", "roirising_model_brms.RData"))
+
+# summary #
+summary(roi_rising_model)
+
+```
+
+```{r rising-roi-posterior-summary}
+
+# For each region pair
+roi_pairs <- unique(roi_rising_model$data$roi_pair)
+
+# values to find CI intervals in the density function
+closest_value <- function(x, v) {
+  # Calculate the absolute differences between each element in v and x
+  differences <- abs(v - x)
+  
+  # Find the index of the minimum difference
+  index_of_min <- which.min(differences)
+  
+  # Return the value in v at the index of the minimum difference
+  closest <- v[index_of_min]
+  return(closest)
+}
+
+# Function to summarize posterior samples
+summarize_posterior <- function(samples) {
+  mean_val <- mean(samples)
+  sd_val <- sd(samples)
+  ci_lower <- quantile(samples, 0.025)
+  ci_upper <- quantile(samples, 0.975)
+  max_density = max(density(samples)$y)
+  ci_lower_dens = density(samples)$y[density(samples)$x == closest_value(ci_lower, density(samples)$x)]
+  ci_upper_dens = density(samples)$y[density(samples)$x == closest_value(ci_upper, density(samples)$x)]
+  prob_positive <- mean(samples > 0)
+  tibble(
+    Mean = mean_val,
+    SD = sd_val,
+    CI_Lower = ci_lower,
+    CI_Upper = ci_upper,
+    Max_Density = max_density,
+    CI_Lower_Density = ci_lower_dens,
+    CI_Upper_Density = ci_upper_dens,
+    Prob_Positive = prob_positive
+  )
+}
+
+# Function to extract sample for each region pair
+get_samples_for_region <- function(region) {
+  if (region == "amyg_cing") {
+    slope <- as_draws_df(roi_rising_model)$b_time
+  } else {
+    interaction_term <- paste0("b_time:roi_pair", region)
+    slope <- as_draws_df(roi_rising_model)$b_time + as_draws_df(roi_rising_model)[[interaction_term]]
+  }
+}
+
+# Function to extract slopes for each region pair
+get_slope_for_region <- function(region) {
+  if (region == "amyg_cing") {
+    slope <- as_draws_df(roi_rising_model)$b_time
+  } else {
+    interaction_term <- paste0("b_time:roi_pair", region)
+    slope <- as_draws_df(roi_rising_model)$b_time + as_draws_df(roi_rising_model)[[interaction_term]]
+  }
+  summarize_posterior(slope)
+}
+
+# get all samples #
+full_sample <-  lapply(roi_pairs, get_samples_for_region)
+names(full_sample) <- roi_pairs
+full_sample_df <- as_tibble(full_sample)
+
+# Summarize slopes for all region pairs
+slopes_summary <- lapply(roi_pairs, get_slope_for_region)
+names(slopes_summary) <- roi_pairs
+
+# Combine summaries into a data frame
+slopes_summary_df <- bind_rows(slopes_summary, .id = "roi_pair")
+
+```
+
+"#c2383a","#2c75b3"
+
+```{r, fig.width = 8, fig.height = 3}
+
+
+approach_roi_plot <- slopes_summary_df %>%
+    mutate(roi_pair = case_when(
+    roi_pair == "amyg_cing" ~ "Amyg. ~ ACC",
+    roi_pair == "hc_amyg" ~ "HC ~ Amyg.",
+    roi_pair == "amyg_mfg" ~ "Amyg. ~ MFG",
+    roi_pair == "ofc_amyg" ~ "OFC ~ Amyg.",
+    roi_pair == "ofc_cing" ~ "OFC ~ ACC",
+    roi_pair == "ofc_hc" ~ "OFC ~ HC",
+    roi_pair == "ofc_mfg" ~ "OFC ~ MFG",
+    roi_pair == "hc_cing" ~ "HC ~ ACC",
+    roi_pair == "hc_mfg" ~ "HC ~ MFG",
+    roi_pair == "mfg_cing" ~ "MFG ~ ACC"
+    
+  ))  %>%
+  # mutate(roi_pair = factor(roi_pair,
+  #                           levels = c("Amyg. ~ ACC",  "Amyg. ~ MFG", "HC ~ Amyg.", "HC ~ ACC",  "HC ~ MFG",
+  #                                       "OFC ~ Amyg.", "OFC ~ HC", "OFC ~ ACC", "OFC ~ MFG", "MFG ~ ACC"))) %>%
+  mutate(sig = if_else(CI_Lower > 0 | CI_Upper < 0, "sig", "nsig")) %>%
+  ggplot(., aes(x = Mean, y  = roi_pair, color = sig)) +
+  geom_point(size =  2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = '#2D2327') +
+  geom_segment(aes(x = CI_Lower, xend = CI_Upper, y = roi_pair, yend = roi_pair), alpha = .7, size = 2) +
+  scale_color_manual(values = c( "darkgrey", "#c2383a"), guide = F) +
+  scale_x_continuous(breaks = c(-0.5, 0, 0.5)) +
+  labs(title = "    Regional contributions to rising coherence at approach") + 
+  theme(panel.background = element_rect(fill = "white"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.margin = margin(20, 5, 0, 5),
+        plot.title.position = "plot",
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 6),
+        strip.clip = 'on',
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 6, margin = margin()),
+        plot.title= element_text(family = "Gill Sans", color = "#2D2327", size = 6, face = 'bold', margin(0, 0, 0, 0)),
+        axis.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(),
+        legend.position = "none") +
+   facet_wrap(~roi_pair, scales = "free_y", nrow = 2) 
+
+
+approach_roi_plot
+
+ggsave(path(here(), "figures", "connectivity", "figure3_rising_falling_roi.png"), 
+       plot = approach_roi_plot, 
+       width = 3.5, height = 1.5, units = "in", dpi = 2000)
+
+
+```
+
+## Falling coherence
+
+
+```{r}
+
+# load falling model #
+load(path(here(), "results", "roifalling_model_brms.RData"))
+
+# summary #
+summary(roi_falling_model)
+
+```
+
+```{r falling-roi-posterior-summary}
+
+# For each region pair
+roi_pairs <- unique(roi_falling_model$data$roi_pair)
+
+# values to find CI intervals in the density function
+closest_value <- function(x, v) {
+  # Calculate the absolute differences between each element in v and x
+  differences <- abs(v - x)
+  
+  # Find the index of the minimum difference
+  index_of_min <- which.min(differences)
+  
+  # Return the value in v at the index of the minimum difference
+  closest <- v[index_of_min]
+  return(closest)
+}
+
+# Function to summarize posterior samples
+summarize_posterior <- function(samples) {
+  mean_val <- mean(samples)
+  sd_val <- sd(samples)
+  ci_lower <- quantile(samples, 0.025)
+  ci_upper <- quantile(samples, 0.975)
+  max_density = max(density(samples)$y)
+  ci_lower_dens = density(samples)$y[density(samples)$x == closest_value(ci_lower, density(samples)$x)]
+  ci_upper_dens = density(samples)$y[density(samples)$x == closest_value(ci_upper, density(samples)$x)]
+  prob_positive <- mean(samples > 0)
+  tibble(
+    Mean = mean_val,
+    SD = sd_val,
+    CI_Lower = ci_lower,
+    CI_Upper = ci_upper,
+    Max_Density = max_density,
+    CI_Lower_Density = ci_lower_dens,
+    CI_Upper_Density = ci_upper_dens,
+    Prob_Positive = prob_positive
+  )
+}
+
+# Function to extract sample for each region pair
+get_samples_for_region <- function(region) {
+  if (region == "amyg_cing") {
+    slope <- as_draws_df(roi_falling_model)$b_time
+  } else {
+    interaction_term <- paste0("b_time:roi_pair", region)
+    slope <- as_draws_df(roi_falling_model)$b_time + as_draws_df(roi_falling_model)[[interaction_term]]
+  }
+}
+
+# Function to extract slopes for each region pair
+get_slope_for_region <- function(region) {
+  if (region == "amyg_cing") {
+    slope <- as_draws_df(roi_falling_model)$b_time
+  } else {
+    interaction_term <- paste0("b_time:roi_pair", region)
+    slope <- as_draws_df(roi_falling_model)$b_time + as_draws_df(roi_falling_model)[[interaction_term]]
+  }
+  summarize_posterior(slope)
+}
+
+# get all samples #
+full_sample <-  lapply(roi_pairs, get_samples_for_region)
+names(full_sample) <- roi_pairs
+full_sample_df <- as_tibble(full_sample)
+
+# Summarize slopes for all region pairs
+slopes_summary <- lapply(roi_pairs, get_slope_for_region)
+names(slopes_summary) <- roi_pairs
+
+# Combine summaries into a data frame
+slopes_summary_df <- bind_rows(slopes_summary, .id = "roi_pair")
+
+```
+
+"#c2383a","#2c75b3"
+
+```{r, fig.width = 8, fig.height = 3}
+
+
+avoid_roi_plot <- slopes_summary_df %>%
+    mutate(roi_pair = case_when(
+    roi_pair == "amyg_cing" ~ "Amyg. ~ ACC",
+    roi_pair == "hc_amyg" ~ "HC ~ Amyg.",
+    roi_pair == "amyg_mfg" ~ "Amyg. ~ MFG",
+    roi_pair == "ofc_amyg" ~ "OFC ~ Amyg.",
+    roi_pair == "ofc_cing" ~ "OFC ~ ACC",
+    roi_pair == "ofc_hc" ~ "OFC ~ HC",
+    roi_pair == "ofc_mfg" ~ "OFC ~ MFG",
+    roi_pair == "hc_cing" ~ "HC ~ ACC",
+    roi_pair == "hc_mfg" ~ "HC ~ MFG",
+    roi_pair == "mfg_cing" ~ "MFG ~ ACC"
+    
+  ))  %>%
+  # mutate(roi_pair = factor(roi_pair,
+  #                           levels = c("Amyg. ~ ACC",  "Amyg. ~ MFG", "HC ~ Amyg.", "HC ~ ACC",  "HC ~ MFG",
+  #                                       "OFC ~ Amyg.", "OFC ~ HC", "OFC ~ ACC", "OFC ~ MFG", "MFG ~ ACC"))) %>%
+  mutate(sig = if_else(CI_Lower > 0 | CI_Upper < 0, "sig", "nsig")) %>%
+  ggplot(., aes(x = Mean, y  = roi_pair, color = sig)) +
+  geom_point(size =  2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = '#2D2327') +
+  geom_segment(aes(x = CI_Lower, xend = CI_Upper, y = roi_pair, yend = roi_pair), alpha = .7, size = 2) +
+  scale_color_manual(values = c( "darkgrey", "#2c75b3"), guide = F) +
+  scale_x_continuous(breaks = c(-0.5, 0, 0.5)) +
+  labs(title = "    Regional contributions to falling coherence at avoidance") + 
+  theme(panel.background = element_rect(fill = "white"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.margin = margin(20, 5, 0, 5),
+        plot.title.position = "plot",
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 5),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 6),
+        strip.clip = 'on',
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 6, margin = margin()),
+        plot.title= element_text(family = "Gill Sans", color = "#2D2327", size = 6, face = 'bold', vjust = 0, margin(0, 0, 0, 0)),
+        axis.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(),
+        legend.position = "none") +
+   facet_wrap(~roi_pair, scales = "free_y", nrow = 2) 
+
+
+avoid_roi_plot
+
+ggsave(path(here(), "figures", "connectivity", "figure3_falling_falling_roi.png"), 
+       plot = avoid_roi_plot, 
+       width = 3.5, height = 1.5, units = "in", dpi = 2000)
+
+
+```

@@ -1,0 +1,219 @@
+---
+title: "Behavioral Models"
+output: html_document
+date: "2024-10-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(rcartocolor)
+library(brms)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+```{r load-pilot-data}
+# load data #
+behave_data_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior.csv"))
+game_data_clean_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data.csv"))
+game_data_distance_pilot <- read_csv( path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+all_vars_df_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data.csv"))
+
+# add case #
+behave_data_pilot <- behave_data_pilot %>% mutate(case = "pilot")
+game_data_clean_pilot <- game_data_clean_pilot %>% mutate(case = "pilot")
+game_data_distance_pilot <- game_data_distance_pilot %>% mutate(case = "pilot")
+all_vars_df_pilot <- all_vars_df_pilot %>% mutate(case = "pilot")
+
+```
+
+
+```{r load-newsample-data}
+
+# load data #
+behave_data_ns <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior_newsample.csv"))
+game_data_clean_ns <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data_newsample.csv"))
+game_data_distance_ns <- read_csv( path(here(), "munge", "prolific", "cleaned_pilot_distance_data_newsample.csv"))
+all_vars_df_ns <-  read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data_newsample.csv"))
+
+# add case
+clinical_ids <- behave_data_ns %>% filter(case == "clinical") %>% pull(subject)
+all_vars_df_ns <- all_vars_df_ns %>% mutate(case = if_else(subject %in% clinical_ids, "clinical", "nonclinical"))
+
+```
+
+```{r merge-samples}
+
+behave_data <- bind_rows(behave_data_pilot, behave_data_ns %>% mutate(comp_7 = as.logical(comp_7)))
+game_data_clean <- bind_rows(game_data_clean_pilot, game_data_clean_ns)
+game_data_distance <- bind_rows(game_data_distance_pilot, game_data_distance_ns)
+all_vars_df <- bind_rows(all_vars_df_pilot, all_vars_df_ns)
+
+```
+
+
+
+```{r anxiety-data}
+
+
+anxiety_data <- behave_data %>%
+  rowwise() %>%
+  select(subject, starts_with("O")) %>%
+  mutate(across(starts_with("O"), function(x) as.numeric(gsub(" =.*", "", x)))) %>%
+  mutate(anxiety_score = O1 + O2 + O3 + O4 + O5) %>%
+  ungroup() %>%
+  select(subject, anxiety_score) %>%
+  distinct() %>%
+  mutate(anxiety_score = scale(anxiety_score)[,1])
+
+
+
+```
+
+
+```{r clean-distance-data}
+
+
+clean_data_distance <- game_data_distance %>%
+  select(subject, trial_numeric, trial_flip, dots_eaten, away_choice, last_away, attack_chase_bob, Score, Lives, died, distance_to_ghost, reward_groups, ghost_start_dir, case) %>%
+  distinct() %>%
+  # flag: last_away while ghost is bobbing (=1)
+  mutate(turn_bob_flip = ifelse(away_choice == last_away & away_choice != 0 & attack_chase_bob == "Bob", 1, 0)) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(turn_bob_trial = max(turn_bob_flip)) %>% 
+  # new variable: score at trial start 
+  mutate(initial_score = first(Score)) %>%
+  # flag: flip of last_away (=flip number)
+  mutate(last_away_flag = ifelse(away_choice == last_away & away_choice != 0, trial_flip, 0)) %>% 
+  mutate(last_away_flip = max(last_away_flag)) %>% # 
+  ungroup()  %>%
+  filter(turn_bob_trial == 1 & dots_eaten > 0 & last_away_flip == trial_flip) %>%
+  mutate(last_away = scale(last_away)[,1]) %>%
+  mutate(last_reward = if_else(reward_groups %in% c(3, 4), "Large", "Small")) %>%
+  mutate(initial_score = scale(initial_score)[,1]) %>%
+  mutate(Lives = Lives -1)
+
+
+# merge with anxiety
+clean_data_distance <- clean_data_distance %>% left_join(anxiety_data, by = "subject")
+
+
+```
+
+
+```{r bayesian-model}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+# Fit the model
+behavior_model <- brm(
+  formula = last_away ~ last_reward + ghost_start_dir + initial_score + Lives + anxiety_score + 
+    (1 + last_reward + ghost_start_dir + initial_score + Lives | subject),
+  data = clean_data_distance,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+```
+
+
+```{r model-output}
+
+summary(behavior_model)
+
+
+# save full model #
+save(behavior_model, file = path(here(), "results", "all_subs_behavioral_model_brms.RData"))
+
+load(path(here(), "results", "all_subs_behavioral_model_brms.RData"))
+
+summary(behavior_model)
+
+
+```
+
+
+
+
+
+

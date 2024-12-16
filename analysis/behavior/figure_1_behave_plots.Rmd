@@ -1,0 +1,442 @@
+---
+title: "Figure 1 Behavioral Data"
+output: html_document
+date: "2024-10-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(rcartocolor)
+library(brms)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+```
+
+
+```{r load-pilot-data}
+# load data #
+behave_data_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior.csv"))
+game_data_clean_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data.csv"))
+game_data_distance_pilot <- read_csv( path(here(), "munge", "prolific", "cleaned_pilot_distance_data.csv"))
+all_vars_df_pilot <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data.csv"))
+
+# add case #
+behave_data_pilot <- behave_data_pilot %>% mutate(case = "pilot")
+game_data_clean_pilot <- game_data_clean_pilot %>% mutate(case = "pilot")
+game_data_distance_pilot <- game_data_distance_pilot %>% mutate(case = "pilot")
+all_vars_df_pilot <- all_vars_df_pilot %>% mutate(case = "pilot")
+
+```
+
+
+```{r load-newsample-data}
+
+# load data #
+behave_data_ns <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_behavior_newsample.csv"))
+game_data_clean_ns <- read_csv(path(here(), "munge", "prolific", "cleaned_pilot_game_data_newsample.csv"))
+game_data_distance_ns <- read_csv( path(here(), "munge", "prolific", "cleaned_pilot_distance_data_newsample.csv"))
+all_vars_df_ns <-  read_csv(path(here(), "munge", "prolific", "cleaned_pilot_across_trial_data_newsample.csv"))
+
+# add case
+clinical_ids <- behave_data_ns %>% filter(case == "clinical") %>% pull(subject)
+all_vars_df_ns <- all_vars_df_ns %>% mutate(case = if_else(subject %in% clinical_ids, "clinical", "nonclinical"))
+
+```
+
+
+```{r load-ieeg-data}
+
+# load ieeg data
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+ieeg_clean_df <- read_csv(path(here(), "munge", "all_subs_complete_behavior_df.csv"))
+
+# add case
+all_subs_g_dist <- all_subs_g_dist %>% mutate(case = "ieeg")
+ieeg_clean_df <- ieeg_clean_df %>% mutate(case = "ieeg")
+
+```
+
+```{r ieeg_all_vars_df}
+
+
+ieeg_all_vars_df <- ieeg_clean_df %>%
+  group_by(subject) %>%
+  filter(!is.na(Score)) %>%
+  filter(Trial != "ITI") %>%
+  # calculate number of deaths
+  mutate(death_check = as.numeric(c(diff(Lives) < 0, FALSE))) %>%
+  mutate(total_deaths = sum(death_check)) %>%
+  mutate(max_trial = max(trial_numeric)) %>%
+  mutate(trial_in_block = trial_numeric %% 20) %>%
+  mutate(trial_in_block = if_else(trial_in_block == 0, 20, trial_in_block)) %>%
+  # new minigame
+  mutate(lives_check = as.numeric(c(diff(Lives) > 0, FALSE))) %>%
+  mutate(total_games = sum(lives_check) + 1) %>%
+  group_by(subject, Trial) %>%
+  mutate(dots_eaten = max(Eaten)) %>%
+  mutate(max_score = max(Score, na.rm = T)) %>%
+  filter(trial_length < 5) %>%
+  mutate(chase_trial = any(Chase)) %>%
+  mutate(attack_trial = any(Attack)) %>%
+  mutate(trial_died = sum(death_check)) %>%
+  mutate(last_trial_in_minigame = sum(lives_check)) %>% # if lose all lives, mark as last trial
+  mutate(last_trial_in_minigame = if_else(trial_in_block == 20, 1, last_trial_in_minigame)) %>% # 20 is always last trial 
+  group_by(subject) %>%
+  mutate(average_score = mean(max_score)) %>%
+  mutate(max_time = max(Time)) %>%
+  select(subject, Trial, trial_numeric, trial_in_block, TrialType, trial_length,
+         trial_died, last_trial_in_minigame, Lives, dots_eaten,
+         chase_trial, attack_trial, 
+         max_trial, total_deaths, average_score, max_time) %>%
+  distinct()
+
+# get trials in minigame
+round <- 1
+game <- 1
+ieeg_all_vars_df$trial_in_minigame <- 0
+ieeg_all_vars_df$minigame <- 0
+for(idx in 1:nrow(ieeg_all_vars_df)){
+  # add to df
+  ieeg_all_vars_df$trial_in_minigame[idx] <- round
+  ieeg_all_vars_df$minigame[idx] <- game
+  if(ieeg_all_vars_df$last_trial_in_minigame[idx] == 1){
+    round <- 1
+    game <- game + 1
+  } else {
+    round <- round + 1
+  }
+  
+  if(ieeg_all_vars_df$subject[idx + 1] != ieeg_all_vars_df$subject[idx] & idx != nrow(ieeg_all_vars_df)) {
+    round <- 1
+    game <- 1
+  }
+  
+}
+
+# max trials in minigame and such
+ieeg_all_vars_df <- ieeg_all_vars_df %>%
+  group_by(subject) %>%
+  mutate(longest_minigame = max(trial_in_minigame)) %>%
+  mutate(longest_minigame_under20 = max(trial_in_minigame[trial_in_minigame < 20])) %>%
+  mutate(number_of_minigames = max(minigame)) %>%
+  mutate(block = ceiling(trial_numeric/20)) %>%
+  group_by(subject, block) %>%
+  mutate(block_deaths = sum(trial_died)) %>%
+  mutate(average_dots_per_block = mean(dots_eaten))
+  
+```  
+  
+  
+
+```{r merge-samples}
+
+behave_data <- bind_rows(behave_data_pilot, behave_data_ns %>% mutate(comp_7 = as.logical(comp_7)))
+game_data_clean <- bind_rows(game_data_clean_pilot, game_data_clean_ns)
+all_vars_df <- bind_rows(all_vars_df_pilot %>% select(-Trial), 
+                         all_vars_df_ns %>% select(-Trial), 
+                         ieeg_all_vars_df%>% select(-Trial))
+
+# distance df
+game_data_distance <- bind_rows(game_data_distance_pilot, game_data_distance_ns)
+good_cols <- colnames(all_subs_g_dist)[colnames(all_subs_g_dist) %in% colnames(game_data_distance)]
+game_data_distance <- bind_rows(game_data_distance %>% select(all_of(good_cols), -Trial), 
+                                all_subs_g_dist %>% select(all_of(good_cols), -Trial))
+
+
+
+```
+
+## Dot Plot
+
+```{r game-level-time, echo = F, fig.width=9, fig.height=4.5}
+
+ieeg_dot_df <- ieeg_all_vars_df %>%
+  filter(block <= 12) 
+
+prolific_dots_df <- bind_rows(all_vars_df_pilot %>% select(-Trial), 
+                         all_vars_df_ns %>% select(-Trial))  %>%
+  filter(block <= 12) %>%
+  group_by(subject) %>%
+  mutate(avg_sub_dots = mean(dots_eaten)) %>%
+  distinct(subject, avg_sub_dots) %>%
+  ungroup() %>%
+  summarise(avg_dots = mean(avg_sub_dots), sd_dots = sd(avg_sub_dots))
+
+prolific_dots_df <- bind_rows(all_vars_df_pilot %>% select(-Trial), 
+                         all_vars_df_ns %>% select(-Trial))  %>%
+  filter(block <= 12) %>%
+  group_by(subject) %>%
+  mutate(avg_sub_dots = mean(dots_eaten)) %>%
+  distinct(subject, avg_sub_dots) %>%
+  ungroup() %>%
+  summarise(avg_dots = mean(avg_sub_dots), sd_dots = sd(avg_sub_dots))
+
+
+
+
+dots_plot <- all_vars_df %>%
+  filter(block <= 12) %>%
+  ggplot(., aes(x = factor(block), y = average_dots_per_block, fill = 'f')) +
+  geom_violin(alpha = .7, fill = "#FB6087") +
+  geom_boxplot(notch = T, width =.2, fill = "#FB6087") +
+  geom_point(data = ieeg_dot_df, aes(x = factor(block), y = average_dots_per_block), color = "#FB6087", fill = 'darkgrey', size = 3, shape = 23) +
+ theme(panel.background = element_rect(fill = "white"), 
+       legend.position = "none",
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold")) +
+  labs(subtitle = "Participants balanced the rewards against the risks by collecting most, but not all,\nof the reward on a given trial", x = "\nBlock (each block consists of twenty trials)", y = "Average dots collected\n") +
+  ggtitle("Average reward collected across blocks")
+
+dots_plot
+
+ggsave(path(here(), "figures", "behavior", "figure1_dots_plot.png"), 
+       plot = dots_plot, width = 9.5, height = 7)
+
+```
+
+
+
+## Turning Distance Plot
+
+```{r last_away_min_dist, warning=F, fig.width=9, fig.height=4.5, echo = F}
+
+
+# last away #
+last_away_df_prolific <- game_data_distance %>%
+  # filters #
+  filter(case != "ieeg") %>%
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, last_away, case) %>%
+  distinct() %>%
+  filter(subject %in% sample(subject, 15))
+
+last_away_df_ieeg <- game_data_distance %>%
+  # filters #
+  filter(case == "ieeg") %>%
+  filter(number_of_runs > 0) %>%
+  # distinct #
+  select(trial_numeric, subject, last_away, case) %>%
+  distinct() %>%
+  filter(subject %in% sample(subject, 5))
+  
+last_away_df <- bind_rows(last_away_df_prolific, last_away_df_ieeg)  
+  
+last_away_plot <- last_away_df %>%
+  mutate(ieeg = if_else(case == "ieeg", "iEEG", "Prolific")) %>%
+  arrange(desc(case)) %>%
+  mutate(subject = factor(subject)) %>%
+  ggplot(., aes(x = subject, y = last_away)) +
+  geom_jitter(alpha = .5, color = "grey") +
+  geom_boxplot(aes(fill = ieeg), notch = T, show.legend = F) +
+  geom_vline(xintercept = 4.5, color = "darkgrey") +
+  ylab("Distance to ghost at final turnaround (a.u.)") + xlab("\n") +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "top",
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold"),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank()) +
+  scale_fill_manual(values = c("#B9DFD5", "#61BBA5")) +
+  ggtitle("Variability in risk tolderance", subtitle = "Random sample of 20 participants shows across- and within- subject variability\nin the degree of risk incurred on a given trial")
+
+last_away_plot
+
+ggsave(path(here(), "figures", "behavior", "figure1_last_away_plot.png"), 
+       plot = last_away_plot, width = 9.5, height = 7)
+
+```
+
+## Turning Distance vs Last Reward Plot
+
+```{r df-reward-turning-distance}
+
+turn_reward_df <- game_data_distance %>%
+  select(reward_groups, last_away, trial_numeric, subject, case) %>%
+  filter(last_away != 0) %>%
+  mutate(large_reward = if_else(reward_groups %in% c(3, 4), "Large", "Small")) %>%
+  select(-reward_groups) %>%
+  distinct() %>%
+  group_by(large_reward, subject) %>%
+  mutate(avg_last_away = mean(last_away)) %>%
+  ungroup() %>%
+  mutate(last_away = scale(last_away)) %>%
+  mutate(avg_last_away = scale(avg_last_away)) %>%
+  mutate(ieeg = if_else(case == "ieeg", "iEEG", "Prolific"))
+
+summary(lmer(last_away ~ large_reward + (1|subject), data = turn_reward_df))
+summary(lmer(avg_last_away ~ large_reward + (1|subject), 
+             data = turn_reward_df %>% select(avg_last_away, subject, large_reward) %>% distinct()))
+
+```
+
+
+```{r plot-reward-turning-dist, fig.height = 7, fig.width = 9}
+
+
+turn_reward_plot <- turn_reward_df %>%
+  select(avg_last_away, subject, large_reward, ieeg) %>%
+  distinct() %>% 
+  ggplot(., aes(x = large_reward, y = avg_last_away)) +
+  geom_hline(yintercept = 0, color = "#2D2327", linetype = "dashed", size = 1) +
+  geom_boxplot(aes(, fill = large_reward), notch = T, show.legend = F) +
+  geom_jitter(aes(color = ieeg)) +
+  ylim(-1.25, 1.25) +
+  coord_flip() +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = c(.87, 1),
+        legend.direction = 'horizontal',
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold")) +
+  scale_fill_manual(values = c("#31ABED", "#A1D9F7")) +
+  scale_color_manual(values = c("#2D2327", "darkgrey")) +
+  labs(x = "Last Reward", y = "\nDistance to ghost at turnaround, scaled (a.u.)", color = "", title = "Turnaround Distance by Reward Groups", subtitle = 
+         "Participants were willing to get closer to the ghost when the last reward\nwas large")
+
+turn_reward_plot
+
+
+ 
+ggsave(path(here(), "figures", "behavior", "figure1_turnaround_reward_plot.png"),
+         plot = turn_reward_plot,
+         width = 9.5,
+         height = 7,
+         units = "in",
+         dpi = 300)
+
+```
+
+
+
+## Face Validity Plot
+
+
+```{r plot-phenom}
+
+expected_options <- c("Stress", "Hope", "Bordeom", "Anxiety", "Excitement", "Disinterest", "Anger", "Suspense", "Frustration", "Other")
+reported_options <- behave_data %>%
+  select(subject, starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  pull(experienced) %>%
+  unique()
+other_options <- reported_options[(!reported_options %in% expected_options) & !grepl(",", reported_options)]
+
+phenom_df <- behave_data %>%
+  select(subject, starts_with("pilot_5")) %>%
+  pivot_longer(cols = starts_with("pilot"), values_to = "experienced", names_to = "emotion") %>%
+  group_by(subject) %>%
+  mutate(stress = if_else(any(grepl("Stress", experienced)), 1, 0)) %>%
+  mutate(hope = if_else(any(grepl("Hope", experienced)), 1, 0)) %>%
+  mutate(boredom = if_else(any(grepl("Boredom", experienced)), 1, 0)) %>%
+  mutate(anxiety = if_else(any(grepl("Anxiety", experienced)), 1, 0)) %>%
+  mutate(excited = if_else(any(grepl("Excitement", experienced)), 1, 0)) %>%
+  mutate(disinterest = if_else(any(grepl("Disinterest", experienced)), 1, 0)) %>%
+  mutate(anger = if_else(any(grepl("Anger", experienced)), 1, 0)) %>%
+  mutate(suspense = if_else(any(grepl("Suspense", experienced)), 1, 0)) %>%
+  mutate(frustration = if_else(any(grepl("Frustration", experienced)), 1, 0)) %>%
+  mutate(fear = if_else(any(grepl("fear", experienced, ignore.case = T)), 1, 0)) %>%
+  mutate(nostalgia = if_else(any(grepl("nostalgia", experienced, ignore.case = T)), 1, 0)) %>%
+  select(-emotion, -experienced) %>%
+  distinct() %>%
+  ungroup() 
+
+
+experienced_plot <- phenom_df %>%
+  pivot_longer(cols = -subject, values_to = "experienced", names_to = "emotion") %>%
+  group_by(emotion) %>%
+  summarize(count = sum(experienced)) %>%
+  mutate(count = 100 * count / length(unique(behave_data$subject))) %>%
+  ggplot(., aes(x = emotion, y = count, fill = emotion)) +
+  geom_col(alpha = .8, color = "black") +
+  xlab("") +
+  ylab("Percent of Prolific Participants (n = 191)") +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "none",
+        plot.margin = margin(t = 1, r = 1, b = 1, l = 1),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16, angle = 45, vjust = 1, hjust = 1),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = "bold")) +
+  ggtitle("Most players report feeling anxiety during the task", subtitle = "Responses to: 'What did you experience when the ghost was close to catching you?'") +
+  scale_fill_carto_d(palette = "Prism")
+
+experienced_plot
+
+
+ggsave(path(here(), "figures", "behavior", "figure1_experienced_emotions_plot.png"),
+         plot = experienced_plot,
+         width = 9.5,
+         height = 7,
+         units = "in",
+         dpi = 300)
+
+```

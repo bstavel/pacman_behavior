@@ -1,0 +1,165 @@
+---
+title: "dlPFC Reaction Times"
+output: html_document
+date: "2023-08-09"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo <- FALSE,  # don't print the code chunk
+  warning <- FALSE,  # don't print warnings
+  message <- FALSE,  # don't print messages
+  fig.width <- 5,  # set default width of figures
+  fig.height <- 8,  # set default height of figures
+  fig.align <- "center",  # always align figure in center
+  fig.pos <- "H",  # always plot figure at the exact location of the code chunk
+  cache <- FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(ggeffects)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lmerTest)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(scales)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# ## parallelization ##
+# nCores <- 2
+# registerDoParallel(nCores)
+
+
+
+```
+
+
+```{r load-data}
+
+
+# HFA Data #
+dlpfc_away_df <- read_csv(path(here(), "munge", "hfa_dlpfc_all_subs_turnaround.csv"))
+
+dlpfc_away_df <- dlpfc_away_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(subject, electrode, trial_numeric, trial_time) %>%
+  rename(hfa = theta) %>%
+  mutate(hfa = mean(hfa)) %>%
+  distinct() %>%
+  ungroup() %>%
+  mutate(trial_time = trial_time - 1)
+
+
+# behavior data #
+all_subs_dist_clean <- read_csv(path(here(), "munge", "all_subs_distance_df.csv"))
+
+# join data #
+hfa_behavior_df <- inner_join(dlpfc_away_df, all_subs_dist_clean)
+
+hfa_behavior_df <- hfa_behavior_df %>%
+  mutate(ghost = if_else(grepl("noghost", electrode), "noghost", "ghost")) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+```
+
+
+```{r}
+
+dlpfc_away_df %>%
+  filter(subject == "BJH016") %>%
+  mutate(ghost = if_else(grepl("noghost", electrode), "noghost", "ghost")) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(trial_time, electrode, ghost) %>%
+  mutate(mean_hfa = mean(hfa)) %>%
+  ggplot(., aes(x = trial_time, y = mean_hfa, color=  ghost)) +
+  geom_point() + 
+  geom_line() + 
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))+
+  facet_wrap(~electrode)
+
+
+```
+
+```{r load-data}
+
+
+# HFA Data #
+hfa_onset_df <- read_csv(path(here(), "munge", "hfa_behavior_dlpfc_all_subs_onset.csv"))
+
+hfa_onset_df <- hfa_onset_df %>%
+  mutate(trial_time = round(trial_time, 2)) %>%
+  group_by(subject, electrode, trial_numeric, trial_time) %>%
+  rename(hfa = theta) %>%
+  mutate(hfa = mean(hfa)) %>%
+  distinct() %>%
+  ungroup() %>%
+  mutate(trial_time = trial_time - 1)
+
+```
+
+
+```{r}
+
+hfa_onset_df %>%
+  filter(subject == "BJH016") %>%
+  mutate(ghost = if_else(grepl("noghost", electrode), "noghost", "ghost")) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  group_by(trial_time, electrode, ghost) %>%
+  mutate(mean_hfa = mean(hfa)) %>%
+  ggplot(., aes(x = trial_time, y = mean_hfa, color=  ghost)) +
+  geom_point() + 
+  geom_line() + 
+  geom_vline(xintercept = 0, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))+
+  facet_wrap(~electrode)
+
+
+```
+

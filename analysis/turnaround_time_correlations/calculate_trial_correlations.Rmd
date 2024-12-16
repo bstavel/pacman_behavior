@@ -1,5 +1,5 @@
 ---
-title: "Correlation ~ Turn Times"
+title: "Calculate Correlations for Turn Time Analysis"
 output: html_document
 date: "2024-04-29"
 ---
@@ -71,6 +71,12 @@ all_subs_theta_data <- bind_rows(ofc_theta_data %>% mutate(region = "ofc"),
                                  dlpfc_theta_data %>% mutate(region = "dlpfc"),
                                  insula_theta_data %>% mutate(region = "insula")) 
 
+# crop time 
+all_subs_theta_data <- all_subs_theta_data %>% 
+  mutate(trial_time = trial_time - 3)  %>%
+  filter(trial_time >= -1)
+
+
 # behavioral data #
 all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
 
@@ -126,8 +132,25 @@ turn_time_df <- onset_lme_df %>%
 
 ```
 
+```{r save-out-power-analyses}
 
-```{r, fig.height = 6, fig.width = 12}
+theta_power_df <- onset_lme_df %>%
+  group_by(subject, trial_numeric, elec_id, region) %>%
+  mutate(approach_power = mean(theta)) %>%
+  rename(trial = trial_numeric) %>%
+  select(-theta, -move_time) %>%
+  distinct()
+
+theta_turn_time_power_df <- left_join(theta_power_df, turn_time_df)
+
+write_csv(theta_turn_time_power_df, path(here(), "results", paste0(freq, "_trial_power_newsubs.csv")))
+
+
+```
+
+
+
+```{r, fig.height = 6, fig.width = 12, eval = F}
 
 full_ofc_iti_df <- ofc_theta_data %>%
   filter(trial_time <= 0) %>%
@@ -176,94 +199,137 @@ t.test(cor_half_mat, cor_full_mat)
 
 ```
 
+```{r}
 
+# Detect the number of cores available
+no_cores <- detectCores() - 1  # Leave one core free
 
-```{r calculate-correlation}
+# Initialize the cluster
+cl <- makeCluster(no_cores)
 
-results <- tibble("subject" = character(),
-                  "first_region" = character(),
-                  "second_region" = character(),
-                  "elec1" = character(),
-                  "elec2" = character(),
-                  "trial" = numeric(),
-                  "correlation" = numeric())
+# Register the parallel backend
+registerDoParallel(cl)
 
+# Initialize the results list
+results_list <- list()
 
+# Get all unique regions
+regions <- unique(onset_lme_df$region)
 
-completed_roi <- c()
-for(first_roi in unique(onset_lme_df$region)) {
+# Generate all unique pairs of regions without redundancy
+region_pairs <- t(combn(regions, 2))
+colnames(region_pairs) <- c('first_region', 'second_region')
+region_pairs <- as.data.frame(region_pairs, stringsAsFactors = FALSE)
+
+# Loop over each pair of regions
+for (i in 1:nrow(region_pairs)) {
+  first_roi <- region_pairs$first_region[i]
+  second_roi <- region_pairs$second_region[i]
   
-  print(paste0("First region: ", first_roi))
+  print(paste0("Processing regions: ", first_roi, " and ", second_roi))
   
-  first_roi_df <- onset_lme_df %>%
-    filter(region == first_roi)
+  first_roi_df <- onset_lme_df %>% filter(region == first_roi)
+  second_roi_df <- onset_lme_df %>% filter(region == second_roi)
   
-  completed_roi <- c(completed_roi, first_roi)
+  subs_with_both_rois <- intersect(first_roi_df$subject, second_roi_df$subject)
   
-  other_roi_df <- onset_lme_df %>%
-    filter(!region %in% completed_roi)
-  
-  for(second_roi in unique(other_roi_df$region)) {
-    
-    print(paste0("Second region: ", second_roi))
-    
-    second_roi_df <- other_roi_df %>%
-      filter(region == second_roi)
-    
-    subs_with_both_rois <- intersect(first_roi_df$subject, second_roi_df$subject)
-    
-    for(sub in unique(subs_with_both_rois)){
+  # Parallelize over subjects
+  results_sub <- foreach(
+    sub = subs_with_both_rois, 
+    .combine = 'bind_rows', 
+    .packages = c('dplyr'),
+    .errorhandling = 'pass'  # Continue even if errors occur
+  ) %dopar% {
+    tryCatch({
+      first_roi_sub_df <- first_roi_df %>% filter(subject == sub)
+      second_roi_sub_df <- second_roi_df %>% filter(subject == sub)
       
-      print(sub)
+      result_rows <- list()
+      row_counter <- 1
       
-      first_roi_sub_df <- first_roi_df %>%
-        filter(subject == sub)
-      
-      second_roi_sub_df <- second_roi_df %>%
-        filter(subject == sub)
-
-      for(roi1_elec in unique(first_roi_sub_df$elec_id)){
-        
+      # Loop over electrodes in the first region
+      for (roi1_elec in unique(first_roi_sub_df$elec_id)) {
         first_elec_df <- first_roi_sub_df %>%
           filter(elec_id == roi1_elec) %>%
           select(trial_numeric, move_time, theta) %>%
           distinct()
         
-        for(roi2_elec in unique(second_roi_sub_df$elec_id)){
-          
+        # Loop over electrodes in the second region
+        for (roi2_elec in unique(second_roi_sub_df$elec_id)) {
           second_elec_df <- second_roi_sub_df %>%
             filter(elec_id == roi2_elec) %>%
             select(trial_numeric, move_time, theta) %>%
             distinct()
           
-          for(trial in unique(second_roi_sub_df$trial_numeric)) {
+          # Loop over trials
+          for (trial in unique(second_roi_sub_df$trial_numeric)) {
+            roi1_trial_df <- first_elec_df %>% filter(trial_numeric == trial)
+            roi2_trial_df <- second_elec_df %>% filter(trial_numeric == trial)
             
-            roi1_trial_df <- first_elec_df %>%
-              filter(trial_numeric == trial)
-            
-            roi2_trial_df <- second_elec_df %>%
-              filter(trial_numeric == trial)
-            
-            correlation <- cor(roi1_trial_df$theta, roi2_trial_df$theta)
-            
-            results <- results %>%
-              add_row(subject = sub, 
-                      first_region = first_roi, 
-                      second_region = second_roi, 
-                      elec1 = roi1_elec, 
-                      elec2 = roi2_elec, 
-                      trial = trial, 
-                      correlation = correlation)
-            
+            # Check for non-empty data frames
+            if (nrow(roi1_trial_df) > 0 && nrow(roi2_trial_df) > 0) {
+              # Align data based on move_time
+              merged_df <- merge(
+                roi1_trial_df, roi2_trial_df, 
+                by = c('move_time'), 
+                suffixes = c('_roi1', '_roi2')
+              )
+              
+              # Ensure there are enough data points
+              if (nrow(merged_df) > 1) {
+                # Compute correlation
+                correlation <- tryCatch({
+                  cor(merged_df$theta_roi1, merged_df$theta_roi2, use = "complete.obs")
+                }, error = function(e) {
+                  NA  # Return NA if correlation fails
+                })
+              } else {
+                correlation <- NA
+              }
+            } else {
+              correlation <- NA
             }
+            
+            # Store the results
+            result_rows[[row_counter]] <- data.frame(
+              subject = sub,
+              first_region = first_roi,
+              second_region = second_roi,
+              elec1 = roi1_elec,
+              elec2 = roi2_elec,
+              trial = trial,
+              correlation = correlation,
+              stringsAsFactors = FALSE
+            )
+            row_counter <- row_counter + 1
           }
         }
       }
-    }
+      
+      # Combine results into a data frame
+      if (length(result_rows) > 0) {
+        result_rows_df <- bind_rows(result_rows)
+      } else {
+        result_rows_df <- data.frame()
+      }
+      
+      return(result_rows_df)
+    }, error = function(e) {
+      # Handle any errors that occur within the tryCatch block
+      warning(paste("Error processing subject", sub, ":", e$message))
+      return(NULL)  # Return NULL so that bind_rows can handle it
+    })
+  }
+  
+  # Collect results for each region pair
+  results_list[[i]] <- results_sub
 }
 
+# Stop the cluster
+stopCluster(cl)
 
-
+# Combine all results into a single data frame
+results <- bind_rows(results_list)
 
 
 ```
@@ -278,7 +344,7 @@ results <- results %>%
 pairs_turn_df <- left_join(results, turn_time_df, by = c("subject", "trial"))
 
 
-write_csv(pairs_turn_df, path(here(), "results", paste0(freq, "_correlations.csv")))
+write_csv(pairs_turn_df, path(here(), "results", paste0(freq, "_correlations_newsubs.csv")))
 
 ```
 

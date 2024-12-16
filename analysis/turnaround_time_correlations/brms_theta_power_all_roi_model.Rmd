@@ -1,0 +1,260 @@
+---
+title: "Bayesian Power Models"
+output: html_document
+date: "2024-11-02"
+---
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(brms)
+library(RColorBrewer)
+library(broom.mixed)
+library(bayesplot)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+
+
+```{r load-data}
+
+# load powers #
+freq <- "theta"
+power_df <- read_csv(path(here(), "results", paste0(freq, "_trial_power_newsubs.csv")))
+
+# separate electrodes
+power_df <- power_df %>%
+  mutate(electrode = gsub(paste0(subject, "_"), "", elec_id)) %>%
+  mutate(elec1 = gsub("-.*", "", electrode)) %>%
+  mutate(elec2 = gsub(".*-", "", electrode)) 
+
+power_df <- separate_mfg_sfg(power_df)
+mfg_df <- power_df %>%
+  filter(mfg == 1) %>%
+  mutate(region = "mfg") %>%
+  select(-mfg, -sfg)
+
+power_df <- bind_rows(power_df %>% filter(region != "dlpfc") %>% select(-mfg, -sfg),
+                      mfg_df)
+
+```
+
+
+
+```{r only-sig-elecs}
+
+# load sig pairs by coherence analysis #
+sig_pairs <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+sig_pairs <- sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  mutate(elec1 = gsub("_to_.*", "", pairs)) %>%
+  mutate(elec2 = gsub(".*_to_", "", pairs)) %>%
+  select(subject, elec1, elec2) %>%
+  pivot_longer(cols = c(elec1, elec2), names_to = "elec_num", values_to = "electrode") %>%
+  select(-elec_num) %>%
+  distinct() %>%
+  mutate(elec_id = paste0(subject, "_", electrode))
+
+# filter ofc_turnDf to sig pairs
+power_sig_df <- power_df %>%
+  filter(elec_id %in% sig_pairs$elec_id) %>%
+  filter(!is.na(approach_power)) %>%
+  filter(!is.infinite(logged_times)) %>%
+  mutate(scale_power = scale(approach_power)[,1]) %>%
+  mutate(scale_logged_times = scale(logged_times)[,1]) %>%
+  ungroup() 
+
+
+```
+
+
+```{r distribution-shapes}
+
+power_sig_df %>%
+  ggplot(., aes(x = scale_logged_times)) +
+  geom_histogram() +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+power_sig_df %>%
+  ggplot(., aes(x = scale_power)) +
+  geom_histogram() +
+  theme(panel.background = element_rect(fill = "white"))
+
+
+table(power_sig_df$region)
+table(power_sig_df$subject)
+
+
+```
+
+
+```{r}
+
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects powers
+)
+
+
+# Fit the model
+power_model <- brm(
+  formula = scale_power ~ scale_logged_times * region + (1 + scale_logged_times | subject/elec_id),
+  data = power_sig_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+# save full model #
+save(power_model, file = path(here(), "results", "full_all_roi_power_model_brms_newsubs.RData"))
+
+# load full model #
+load(path(here(), "results", "full_all_roi_power_model_brms_newsubs.RData"))
+
+```
+
+
+```{r model-summary}
+
+# summary #
+summary(power_model)
+
+```
+
+
+```{r trace-plot, fig.height = 50, fig.width = 8}
+
+# plot #
+mcmc_trace(power_model, regex_pars = c("b_"), facet_args = list(ncol = 1))
+
+
+```
+
+
+```{r, eval = F}
+
+# For each region pair
+regions <- unique(power_sig_df$region)
+
+# values to find CI intervals in the density function
+closest_value <- function(x, v) {
+  # Calculate the absolute differences between each element in v and x
+  differences <- abs(v - x)
+  
+  # Find the index of the minimum difference
+  index_of_min <- which.min(differences)
+  
+  # Return the value in v at the index of the minimum difference
+  closest <- v[index_of_min]
+  return(closest)
+}
+
+# Function to summarize posterior samples
+summarize_posterior <- function(samples) {
+  mean_val <- mean(samples)
+  sd_val <- sd(samples)
+  ci_lower <- quantile(samples, 0.025)
+  ci_upper <- quantile(samples, 0.975)
+  max_density = max(density(samples)$y)
+  ci_lower_dens = density(samples)$y[density(samples)$x == closest_value(ci_lower, density(samples)$x)]
+  ci_upper_dens = density(samples)$y[density(samples)$x == closest_value(ci_upper, density(samples)$x)]
+  prob_positive <- mean(samples > 0)
+  tibble(
+    Mean = mean_val,
+    SD = sd_val,
+    CI_Lower = ci_lower,
+    CI_Upper = ci_upper,
+    Max_Density = max_density,
+    CI_Lower_Density = ci_lower_dens,
+    CI_Upper_Density = ci_upper_dens,
+    Prob_Positive = prob_positive
+  )
+}
+
+# Function to extract sample for each region pair
+get_samples_for_region <- function(region) {
+  if (region == "amyg") {
+    slope <- as_draws_df(power_model)$b_scale_logged_times
+  } else {
+    interaction_term <- paste0("b_scale_logged_times:region", region)
+    slope <- as_draws_df(power_model)$b_scale_logged_times + as_draws_df(power_model)[[interaction_term]]
+  }
+}
+
+# Function to extract slopes for each region pair
+get_slope_for_region <- function(region) {
+  if (region == "amyg") {
+    slope <- as_draws_df(power_model)$b_scale_logged_times
+  } else {
+    interaction_term <- paste0("b_scale_logged_times:region", region)
+    slope <- as_draws_df(power_model)$b_scale_logged_times + as_draws_df(power_model)[[interaction_term]]
+  }
+  summarize_posterior(slope)
+}
+
+# get all samples #
+full_sample <-  lapply(regions, get_samples_for_region)
+names(full_sample) <- regions
+full_sample_df <- as_tibble(full_sample)
+
+# Summarize slopes for all region pairs
+slopes_summary <- lapply(regions, get_slope_for_region)
+names(slopes_summary) <- regions
+
+# Combine summaries into a data frame
+slopes_summary_df <- bind_rows(slopes_summary, .id = "Region")
+
+```

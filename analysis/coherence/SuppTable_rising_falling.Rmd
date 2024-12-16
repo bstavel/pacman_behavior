@@ -1,0 +1,164 @@
+---
+title: "Rising Falling Supplementary Tables"
+output: html_document
+date: "2024-12-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(blme)
+library(brms)
+library(bayesplot)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+```{r load-model}
+
+# load rising models #
+load(path(here(), "results", "1.5_rising_model_brms.RData"))
+rising_model_15 <- summary(rising_model)
+load(path(here(), "results", "1.6_rising_model_brms.RData"))
+rising_model_16 <- summary(rising_model)
+load(path(here(), "results", "1.7_rising_model_brms.RData"))
+rising_model_17 <- summary(rising_model)
+load(path(here(), "results", "1.8_rising_model_brms.RData"))
+rising_model_18 <- summary(rising_model)
+load(path(here(), "results", "2_rising_model_brms.RData"))
+rising_model_2 <- summary(rising_model)
+
+# load falling models #
+load(path(here(), "results", "1.5_falling_model_brms.RData"))
+falling_model_15 <- summary(falling_model)
+load(path(here(), "results", "1.6_falling_model_brms.RData"))
+falling_model_16 <- summary(falling_model)
+load(path(here(), "results", "1.7_falling_model_brms.RData"))
+falling_model_17 <- summary(falling_model)
+load(path(here(), "results", "1.8_falling_model_brms.RData"))
+falling_model_18 <- summary(falling_model)
+load(path(here(), "results", "2_falling_model_brms.RData"))
+falling_model_2 <- summary(falling_model)
+
+
+```
+
+
+```{r concat-results}
+
+# rising
+rising_results <- bind_rows(round(rising_model_15$fixed[2, ], 2) %>% mutate(Timepoint = "1.5 (s)"),
+                            round(rising_model_16$fixed[2, ], 2) %>% mutate(Timepoint = "1.6 (s)"),
+                            round(rising_model_17$fixed[2, ], 2) %>% mutate(Timepoint = "1.7 (s)"),
+                            round(rising_model_18$fixed[2, ], 2) %>% mutate(Timepoint = "1.8 (s)"),
+                            round(rising_model_2$fixed[2, ], 2) %>% mutate(Timepoint = "2 (s)"))
+
+# falling
+falling_results <- bind_rows(round(falling_model_15$fixed[2, ], 2) %>% mutate(Timepoint = "1.5 (s)"),
+                            round(falling_model_16$fixed[2, ], 2) %>% mutate(Timepoint = "1.6 (s)"),
+                            round(falling_model_17$fixed[2, ], 2) %>% mutate(Timepoint = "1.7 (s)"),
+                            round(falling_model_18$fixed[2, ], 2) %>% mutate(Timepoint = "1.8 (s)"),
+                            round(falling_model_2$fixed[2, ], 2) %>% mutate(Timepoint = "2 (s)"))
+
+coherence_time_results <- bind_rows(rising_results %>% mutate(period = "Approach"), falling_results %>% mutate(period = "Avoid"))
+
+```
+
+
+```{r create-table}
+
+coherence_time_table <- coherence_time_results %>%
+  select(Timepoint, Estimate, Est.Error, `l-95% CI`, `u-95% CI`, Rhat, Bulk_ESS, Tail_ESS,period) %>%
+    group_by(period) %>%
+    gt() %>%
+    tab_options(
+      table.font.names = "Gill Sans",
+      table.font.size = px(12),
+      data_row.padding = px(4)
+    ) %>%
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_row_groups()
+    ) %>%
+    tab_style(
+      style = cell_text(style = "italic"), # Apply italics to the first column
+      locations = cells_body(columns = 1)  # Apply only to the first column
+    ) %>%
+    tab_header(title = md(paste0("**Effect of Time on Theta Coherence**")))
+
+coherence_time_table
+
+```
+
+
+

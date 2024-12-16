@@ -1,0 +1,150 @@
+---
+title: "Posterior Pred Rising/Falling"
+output: html_document
+date: "2024-11-25"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(brms)
+library(RColorBrewer)
+library(broom.mixed)
+library(gt)
+library(bayestestR)
+library(bayesplot)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+
+```{r approach-model}
+
+
+# load rising model #
+load(path(here(), "results", paste0("rising_model_brms.RData")))
+
+# summary #
+summary(rising_model)
+
+```
+
+
+```{r avoidance-model}
+
+
+# load falling model #
+load(path(here(), "results",  paste0("falling_model_brms.RData")))
+
+# summary #
+summary(falling_model)
+
+```
+
+
+```{r, fig.width=8, fig.height=6}
+
+# Generate replicated datasets
+y_rep <- posterior_predict(rising_model, ndraws = 100)
+
+y_true <- rising_model$data$scaled_log_connectivity
+
+ppc_dens_overlay_grouped(y_true, y_rep, rising_model$data$subject) 
+
+
+```
+
+```{r}
+
+plot(rising_model, type = "residuals")
+```
+
+```{r}
+
+ppc_ecdf_overlay(y_true, y_rep[1:25, ])
+
+```
+
+
+```{r, fig.wdith = 12, fig.height = 12}
+
+ppc_scatter_avg_grouped(y_true, y_rep, group = rising_model$data$subject) + xlim(-4, 2) + ylim(-4, 2)
+
+```
+
+
+```{r}
+
+ppc_stat(y_true, y_rep, stat = "mean")
+ppc_stat(y_true, y_rep, stat = "sd")
+ppc_stat(y_true, y_rep, stat = "min")
+ppc_stat(y_true, y_rep, stat = "max")
+
+observed_mean <- mean(y_true)
+replicated_means <- rowMeans(y_rep)
+bayesian_p_value <- mean(replicated_means >= observed_mean)
+
+predictive_intervals <- apply(y_rep, 2, quantile, probs = c(0.025, 0.975))
+within_interval <- y_true >= predictive_intervals[1, ] &
+                   y_true <= predictive_intervals[2, ]
+coverage_rate <- mean(within_interval)
+
+```
+
+```{r, fig.height = 6, fig.width = 15}
+
+# Example stratification by a variable
+ppc_violin_grouped(y_true, y_rep, group = rising_model$data$subject)
+
+
+```
+
+
+```{r}
+
+library(loo)
+loo_result <- loo(rising_model)
+
+
+```
+
+
+

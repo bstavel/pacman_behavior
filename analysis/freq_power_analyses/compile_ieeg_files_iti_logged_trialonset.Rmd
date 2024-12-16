@@ -88,22 +88,28 @@ Run by knitting
 ```{r lists}
 
 ## region lists ##
-hc_list <- c('BJH021', 'BJH025', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH039', 'BJH041', 
+hc_list <- c('BJH017', 'BJH046', 'BJH050', 'SLCH018', 'BJH051', 
+             'BJH021', 'BJH025', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH039', 'BJH041', 
               'LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
-ofc_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH039', 'BJH041', 
+ofc_list <- c('BJH017', 'BJH046', 'BJH050', 'SLCH018', 'BJH051',
+              'BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH039', 'BJH041', 
               'LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
-amyg_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH039', 'BJH041', 
+amyg_list <- c('BJH017', 'BJH046', 'BJH050', 'SLCH018', 'BJH051',
+               'BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH039', 'BJH041', 
               'LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
-cing_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002',  'BJH039', 
+cing_list <- c('BJH017', 'BJH046', 'BJH050', 'BJH051',
+               'BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002',  'BJH039', 
               'LL10', 'LL12', 'LL13',  'LL17', 'LL19')
 
-dlpfc_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH039',
+dlpfc_list <- c('BJH046', 'BJH050', 'BJH051',
+                'BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH039',
               'LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
-insula_list <- c('BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH041', 'LL12')
+insula_list <- c('BJH046', 'BJH050',  'BJH051',
+                 'BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH041', 'LL12')
 
 ## loma linda list ##
 ll_list <- c('LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
@@ -115,7 +121,7 @@ freq_list <- c("delta", "theta", "alpha", "beta", "gamma", "hfa")
 
 ## Merge HC
 
-```{r merge-and-combine-hc}
+```{r merge-and-combine-hc, eval = F}
 
 for(frq in freq_list){
 
@@ -167,7 +173,7 @@ for(frq in freq_list){
 
 ## Merge Amygdala
 
-```{r merge-and-combine-amyg}
+```{r merge-and-combine-amyg, eval = F}
 
 for(frq in freq_list){
 
@@ -219,7 +225,7 @@ for(frq in freq_list){
 
 ## Merge OFC
 
-```{r merge-and-combine-ofc}
+```{r merge-and-combine-ofc, eval = F}
 
 for(frq in freq_list){
 
@@ -271,7 +277,7 @@ for(frq in freq_list){
 
 ## Merge Ant. Cingulate
 
-```{r merge-and-combine-cing}
+```{r merge-and-combine-cing, eval = F}
 
 for(frq in freq_list){
 
@@ -324,9 +330,9 @@ for(frq in freq_list){
 
 ## Merge dlPFC
 
-```{r merge-and-combine-dlpfc}
+```{r merge-and-combine-dlpfc, eval = F}
 
-for(frq in freq_list){
+for(frq in freq_list[5:6]){
 
     onset_df <- NULL
     

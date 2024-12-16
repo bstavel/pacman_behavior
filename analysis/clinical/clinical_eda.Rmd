@@ -104,6 +104,22 @@ clinical_ids <- behave_data_ns %>% filter(case == "clinical") %>% pull(subject)
 all_vars_df_ns <- all_vars_df_ns %>% mutate(case = if_else(subject %in% clinical_ids, "clinical", "nonclinical"))
 
 ```
+```{r demo-data}
+
+# load demo csvs #
+demo1 <- read_csv(path(here(), "data", "prolific_demo_data", "prolific_export_60ff154e51069859d67df389.csv")) #7/26
+demo2 <- read_csv(path(here(), "data", "prolific_demo_data", "prolific_export_6108206c70f2a687c67aeb75.csv")) #8/2
+demo3 <- read_csv(path(here(), "data", "prolific_demo_data", "prolific_export_6108311f4aaf6dcde3eb34f7.csv")) #8/2
+demo4 <- read_csv(path(here(), "data", "prolific_demo_data", "prolific_export_6154a7eec36324b9687f1ac6.csv")) #9/29
+
+  
+# use rbind to combine 4 demo dfs
+combined_demo <- bind_rows(demo1, demo2, demo3, demo4)
+colnames(combined_demo)[2] = "ID"
+
+
+```
+
 
 ```{r merge}
 
@@ -111,6 +127,9 @@ behave_data <- bind_rows(behave_data_pilot, behave_data_ns %>% mutate(comp_7 = a
 game_data_clean <- bind_rows(game_data_clean_pilot, game_data_clean_ns)
 game_data_distance <- bind_rows(game_data_distance_pilot, game_data_distance_ns)
 all_vars_df <- bind_rows(all_vars_df_pilot, all_vars_df_ns)
+
+# join with demo_data
+behave_data <- left_join(behave_data, combined_demo, by = "ID")
 
 ```
 
@@ -402,6 +421,262 @@ masq_data %>%
   facet_wrap(~subscale, scales = "free")
 
 ```
+### Approach Times
+
+```{r approach-times-eda}
+
+
+# get subject level distance data
+turn_time_df <- game_data_distance %>%
+    # round time so that we can loop over time later
+    mutate(trial_time = round(trial_time, 2)) %>%
+    # exclude time before they started moving, may be good to look at not doing this as well
+    filter(Direction != "Still") %>%
+    # shift the time so that time 0 is the start of movement onset
+    group_by(subject, trial_numeric) %>%
+    mutate(move_time = round(trial_time - first(trial_time), 2)) %>%
+    # filter time so that trials end when the person turnaround for the final time
+    mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+    mutate(event = replace(event, is.na(event), 0)) %>%
+    mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+    filter(move_time <= max(turnaround_time)) %>%
+    mutate(turn_time = last(move_time)) %>%
+    select(subject, trial_numeric, turn_time, case) %>%
+    distinct() %>%
+    mutate(logged_times = log(turn_time)) %>%
+    filter(!is.infinite(logged_times)) %>% # remove trials where they ran into the ghost %>%
+    group_by(subject) %>%
+    mutate(average_logged_turn_time = median(logged_times)) %>%
+    select(subject, average_logged_turn_time, case) %>%
+    distinct()
+    
+turn_time_df %>%
+  ggplot(., aes(x = average_logged_turn_time, fill = case)) +
+  geom_density(alpha = .7, color = "black") +
+  theme(panel.background = element_rect(fill = "white"))
+
+```
+```{r bind-clinical-turn-time}
+
+
+# bind clinical data 
+clinical_data <- full_join(masq_data, oasis_data, by = c("subject", "case"))
+clinical_data <- clinical_data %>%
+  select(subject, case, oasis_total, masq_aa, masq_gd_anx, masq_ad, masq_gd_dep)
+
+# bind clinical data with distance data
+clinical_turn_data <- left_join(turn_time_df, clinical_data, by = c("subject", "case"))
+
+# add demo data
+demo_clean_data <- behave_data %>%
+  select(subject, case, Age, Sex) %>%
+  mutate(Age = as.numeric(Age))
+clinical_turn_data <- left_join(clinical_turn_data, demo_clean_data, by = c("subject", "case"))
+
+```
+
+```{r last_away-clinical-symptoms}
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = masq_aa)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anxious Arousal")
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = masq_gd_anx)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Anxiety")
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = masq_gd_dep)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Depression")
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = masq_ad)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anhedonia")
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = oasis_total)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Oasis Anxiety") 
+
+summary(lm(masq_gd_anx ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+summary(lm(masq_aa ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+summary(lm(masq_gd_dep ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+summary(lm(masq_ad ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+summary(lm(oasis_total ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+
+
+## Effect sizes ##
+effectsize(lm(masq_gd_anx ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+effectsize(lm(masq_aa ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+effectsize(lm(masq_gd_dep ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+effectsize(lm(masq_ad ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+effectsize(lm(oasis_total ~ average_logged_turn_time + Age + Sex, data = clinical_turn_data))
+
+```
+
+```{r last_away-clinical-symptoms}
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = masq_aa, color = case)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anxious Arousal") +
+  facet_wrap(~case)
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = masq_gd_anx, color = case)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Anxiety") +
+  facet_wrap(~case)
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = masq_gd_dep, color = case)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("General Distress - Depression") +
+  facet_wrap(~case)
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = masq_ad, color = case)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Anhedonia") +
+  facet_wrap(~case)
+
+clinical_turn_data %>%
+  ggplot(., aes(x = average_logged_turn_time, y = oasis_total, color = case)) +
+  geom_point() +
+  geom_smooth(method = "lm", fill = "grey") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("Oasis Anxiety") +
+  facet_wrap(~case)
+
+clinical_only_turn_data <- clinical_turn_data %>%
+  filter(case != "nonclinical")
+
+summary(lm(masq_gd_anx ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+summary(lm(masq_aa ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+summary(lm(masq_gd_dep ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+summary(lm(masq_ad ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+summary(lm(oasis_total ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+
+
+## Effect sizes ##
+effectsize(lm(masq_gd_anx ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+effectsize(lm(masq_aa ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+effectsize(lm(masq_gd_dep ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+effectsize(lm(masq_ad ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+effectsize(lm(oasis_total ~ average_logged_turn_time + Age + Sex, data = clinical_only_turn_data))
+
+```
+```{r}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b")                    # Prior for fixed effects
+)
+
+
+# Fit the model
+masq_gd_anx_model <- brm(
+  formula = masq_gd_anx ~ average_logged_turn_time,
+  data = clinical_turn_data,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+# Fit the model
+masq_aa_anx_model <- brm(
+  formula = masq_aa ~ average_logged_turn_time,
+  data = clinical_turn_data,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+# Fit the model
+masq_gd_dep_anx_model <- brm(
+  formula = masq_gd_dep ~ average_logged_turn_time,
+  data = clinical_turn_data,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+# Fit the model
+masq_ad_anx_model <- brm(
+  formula = masq_ad ~ average_logged_turn_time,
+  data = clinical_turn_data,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+# Fit the model
+oasis_anx_model <- brm(
+  formula = oasis_total ~ average_logged_turn_time,
+  data = clinical_turn_data,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(masq_gd_anx_model)
+summary(masq_aa_anx_model)
+summary(masq_gd_dep_anx_model)
+summary(masq_ad_anx_model)
+summary(oasis_anx_model)
+
+
+```
+
+### Distance to Ghost
+
+
 
 ```{r distance-to-ghost-eda}
 
@@ -452,19 +727,16 @@ distance_summary_df %>%
 ```
 
 
-
 ```{r bind-clinical-distance}
-
-
-# bind clinical data 
-clinical_data <- full_join(masq_data, oasis_data, by = c("subject", "case"))
-clinical_data <- clinical_data %>%
-  select(subject, case, oasis_total, masq_aa, masq_gd_anx, masq_ad, masq_gd_dep)
 
 # bind clinical data with distance data
 clinical_distance_data <- left_join(distance_summary_df, clinical_data, by = c("subject", "case"))
 
+# add demo data
+clinical_distance_data <- left_join(clinical_distance_data, demo_clean_data, by = c("subject", "case"))
+
 ```
+
 
 
 ```{r last_away-clinical-symptoms}
@@ -504,19 +776,19 @@ clinical_distance_data %>%
   theme(panel.background = element_rect(fill = "white")) +
   ggtitle("Oasis Anxiety")
 
-summary(lm(masq_gd_anx ~ average_last_away, data = clinical_distance_data))
-summary(lm(masq_aa ~ average_last_away, data = clinical_distance_data))
-summary(lm(masq_gd_dep ~ average_last_away, data = clinical_distance_data))
-summary(lm(masq_ad ~ average_last_away, data = clinical_distance_data))
-summary(lm(oasis_total ~ average_last_away, data = clinical_distance_data))
+summary(lm(masq_gd_anx ~ average_last_away + Age + Sex, data = clinical_distance_data))
+summary(lm(masq_aa ~ average_last_away + Age + Sex, data = clinical_distance_data))
+summary(lm(masq_gd_dep ~ average_last_away + Age + Sex, data = clinical_distance_data))
+summary(lm(masq_ad ~ average_last_away + Age + Sex, data = clinical_distance_data))
+summary(lm(oasis_total ~ average_last_away + Age + Sex, data = clinical_distance_data))
 
 
 ## Effect sizes ##
-effectsize(lm(masq_gd_anx ~ average_last_away, data = clinical_distance_data))
-effectsize(lm(masq_aa ~ average_last_away, data = clinical_distance_data))
-effectsize(lm(masq_gd_dep ~ average_last_away, data = clinical_distance_data))
-effectsize(lm(masq_ad ~ average_last_away, data = clinical_distance_data))
-effectsize(lm(oasis_total ~ average_last_away, data = clinical_distance_data))
+effectsize(lm(masq_gd_anx ~ average_last_away + Age + Sex, data = clinical_distance_data))
+effectsize(lm(masq_aa ~ average_last_away + Age + Sex, data = clinical_distance_data))
+effectsize(lm(masq_gd_dep ~ average_last_away + Age + Sex, data = clinical_distance_data))
+effectsize(lm(masq_ad ~ average_last_away + Age + Sex, data = clinical_distance_data))
+effectsize(lm(oasis_total ~ average_last_away + Age + Sex, data = clinical_distance_data))
 
 ```
 
@@ -558,11 +830,11 @@ clinical_distance_data %>%
   theme(panel.background = element_rect(fill = "white")) +
   ggtitle("Oasis Anxiety")
 
-summary(lm(masq_gd_anx ~ average_dist, data = clinical_distance_data))
-summary(lm(masq_aa ~ average_dist, data = clinical_distance_data))
-summary(lm(masq_gd_dep ~ average_dist, data = clinical_distance_data))
-summary(lm(masq_ad ~ average_dist, data = clinical_distance_data))
-summary(lm(oasis_total ~ average_dist, data = clinical_distance_data))
+summary(lm(masq_gd_anx ~ average_dist + Age + Sex, data = clinical_distance_data))
+summary(lm(masq_aa ~ average_dist + Age + Sex, data = clinical_distance_data))
+summary(lm(masq_gd_dep ~ average_dist + Age + Sex, data = clinical_distance_data))
+summary(lm(masq_ad ~ average_dist + Age + Sex, data = clinical_distance_data))
+summary(lm(oasis_total ~ average_dist + Age + Sex, data = clinical_distance_data))
 
 
 ## Effect sizes ##
@@ -621,19 +893,19 @@ clinical_distance_data %>%
 clinical_only_distance_data <- clinical_distance_data %>%
   filter(case != "nonclinical")
 
-summary(lm(masq_gd_anx ~ average_dist, data = clinical_only_distance_data))
-summary(lm(masq_aa ~ average_dist, data = clinical_only_distance_data))
-summary(lm(masq_gd_dep ~ average_dist, data = clinical_only_distance_data))
-summary(lm(masq_ad ~ average_dist, data = clinical_only_distance_data))
-summary(lm(oasis_total ~ average_dist, data = clinical_only_distance_data))
+summary(lm(masq_gd_anx ~ average_dist + Age + Sex, data = clinical_only_distance_data))
+summary(lm(masq_aa ~ average_dist + Age + Sex, data = clinical_only_distance_data))
+summary(lm(masq_gd_dep ~ average_dist + Age + Sex, data = clinical_only_distance_data))
+summary(lm(masq_ad ~ average_dist + Age + Sex, data = clinical_only_distance_data))
+summary(lm(oasis_total ~ average_dist + Age + Sex, data = clinical_only_distance_data))
 
 
 ## Effect sizes ##
-effectsize(lm(masq_gd_anx ~ average_dist, data = clinical_only_distance_data))
-effectsize(lm(masq_aa ~ average_dist, data = clinical_only_distance_data))
-effectsize(lm(masq_gd_dep ~ average_dist, data = clinical_only_distance_data))
-effectsize(lm(masq_ad ~ average_dist, data = clinical_only_distance_data))
-effectsize(lm(oasis_total ~ average_dist, data = clinical_only_distance_data))
+effectsize(lm(masq_gd_anx ~ average_dist + Age + Sex, data = clinical_only_distance_data))
+effectsize(lm(masq_aa ~ average_dist + Age + Sex, data = clinical_only_distance_data))
+effectsize(lm(masq_gd_dep ~ average_dist + Age + Sex, data = clinical_only_distance_data))
+effectsize(lm(masq_ad ~ average_dist + Age + Sex, data = clinical_only_distance_data))
+effectsize(lm(oasis_total ~ average_dist + Age + Sex, data = clinical_only_distance_data))
 
 ```
 
@@ -677,14 +949,17 @@ clinical_distance_data %>%
   theme(panel.background = element_rect(fill = "white")) +
   ggtitle("Oasis Anxiety")
 
-summary(lm(masq_gd_anx ~ average_eaten, data = clinical_distance_data))
-summary(lm(masq_aa ~ average_eaten, data = clinical_distance_data))
-summary(lm(masq_gd_dep ~ average_eaten, data = clinical_distance_data))
-summary(lm(masq_ad ~ average_eaten, data = clinical_distance_data))
-summary(lm(oasis_total ~ average_eaten, data = clinical_distance_data))
+summary(lm(masq_gd_anx ~ average_eaten + Age + Sex, data = clinical_distance_data))
+summary(lm(masq_aa ~ average_eaten + Age + Sex, data = clinical_distance_data))
+summary(lm(masq_gd_dep ~ average_eaten + Age + Sex, data = clinical_distance_data))
+summary(lm(masq_ad ~ average_eaten + Age + Sex, data = clinical_distance_data))
+summary(lm(oasis_total ~ average_eaten + Age + Sex, data = clinical_distance_data))
 
 
 ```
+
+
+
 ```{r eaten-clinical-symptoms}
 
 clinical_distance_data %>%

@@ -75,10 +75,35 @@ There is a matlab script in the matlab_helpers folder which compiles the MNI coo
 # load washu data #
 washu_mni_data <- read_csv(path(here(), 'data/ieeg_mni/washu_mni_table.csv'))
 
+# handle SLCH018 separately because the labels are wrong #
+slch18_data <- readxl::read_xlsx(path(here(), "data/ieeg_mni/SLCH018_anatomy.xlsx"))
+slch18_data <- slch18_data %>%
+  mutate(subject = "SLCH018") %>%
+  separate(coordinates, into = c("X", "Y", "Z"), sep = "     ") %>%
+  rename(Electrode = electrode) %>%
+  mutate_at(vars(X, Y, Z), ~as.numeric(.)) %>%
+  mutate(Electrode = gsub("-", "^", Electrode)) %>%
+  mutate(Electrode = sub("\\^", "-", Electrode)) %>%
+  select(subject, Electrode, X, Y, Z)
+washu_mni_data <- bind_rows(washu_mni_data, slch18_data)
+
+## NOTE -- I manually changed BJH046 LL series because WashU had them as 101, 102, instead of 1, 2 and I only caught this later
+
 # clean electrode names #
 washu_mni_data_clean <- washu_mni_data %>%
   mutate(Electrode = if_else(subject == "BJH039", gsub("-", "", Electrode), Electrode)) %>%
   mutate(Electrode = if_else(subject == "BJH041", gsub("'", "L", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH046" & !grepl("'", Electrode), sub("\\^", "R^", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH046", gsub("'", "L", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH050", gsub("'", "L", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH051" & !grepl("'", Electrode), sub("\\^", "R^", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH051", gsub("'", "L", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH017", sub("\\^", "-", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH050", gsub("'", "L", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH050", gsub("-", "999", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH050", gsub("^", "-", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH050", gsub("999", "R^", Electrode), Electrode)) %>%
+  mutate(Electrode = if_else(subject == "BJH050", gsub("LR", "L", Electrode), Electrode)) %>%
   mutate(elec_clean = if_else(grepl("\\^", Electrode), gsub("([^^]*)\\^.*?(\\d+)$", "\\1\\2", Electrode),
                                     gsub("([^-]*)-.*?(\\d+)$", "\\1\\2", Electrode))) %>% # fix weird Washu naming
   filter(!grepl("lesion", Electrode)) %>% # exclude lesion elecs

@@ -1,0 +1,283 @@
+---
+title: "Posterior Predictive Checks ~ Second Region"
+output: html_document
+date: "2024-12-02"
+---
+---
+title: "Posterior Pred Rising/Falling"
+output: html_document
+date: "2024-11-25"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(brms)
+library(RColorBrewer)
+library(broom.mixed)
+library(gt)
+library(bayestestR)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_ghost_connectivity_newsubs.csv"))
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
+```
+
+
+```{r split-mfg-sfg}
+
+regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
+
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+conn_detailed_df <- conn_df %>%
+  mutate(
+    first_pair = gsub("_to_.*", "", pairs),
+    second_pair = gsub(".*_to_", "", pairs),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(conn_detailed_df$detailed_first_region)
+table(conn_detailed_df$detailed_second_region)
+
+# final rename
+conn_detailed_df <- conn_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region)
+
+
+## FDr correct/make symmetric
+conn_clean_df <- prep_detailed_conn_allsubs_plot_df(conn_detailed_df)
+
+```
+
+
+```{r prep-df, fig.width=20, fig.height=15}
+
+
+conn_clean_elec_df <- conn_clean_df %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(metric, time, pairs, subject) %>%
+  mutate(pair_conn = mean(abs(connectivity))) %>%
+  ungroup() 
+
+
+```
+
+
+## Imaginary Coherence
+
+### Approach
+
+```{r, fig.height= 6, fig.width=10}
+
+aac_conn_avg_df <- conn_clean_elec_df %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  filter(metric == "Imaginary Coherence" & !grepl("SFG", roi_pair)) %>%
+  mutate(aac = if_else(time <= 0, "Approach", "Avoid")) %>%
+  group_by(aac, key) %>%
+  mutate(average_aac_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(subject, aac, pairs, first_pair, second_pair, roi_pair, first_region, second_region, average_aac_conn, key) %>%
+  distinct() %>%
+  mutate(log_average_aac_conn = log(average_aac_conn)) %>%
+  mutate(key = factor(key)) %>%
+  mutate(subject = factor(subject))  %>%
+  mutate(first_pair_key = factor(paste0(subject, "_", first_pair)))
+
+
+```
+
+
+```{r approach-differences}
+
+time_df <- aac_conn_avg_df %>%
+  filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(second_region != "Insula" & first_region != "Insula") %>%
+  filter(aac == "Approach")
+
+
+amyg_time_df <- time_df %>%
+  filter(first_region == "Amygdala") 
+
+hc_time_df <- time_df %>%
+  filter(first_region == "Hippocampus") 
+
+ofc_time_df <- time_df %>%
+  filter(first_region == "OFC") 
+
+mfg_time_df <- time_df %>%
+  filter(first_region == "MFG")
+
+acc_time_df <- time_df %>%
+  filter(first_region == "Ant. Cingulate")
+
+
+
+```
+
+
+```{r load-models}
+
+# load data
+load(file = path(here(), "results", "imcoh_app_amyg_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_ofc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_hc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_acc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_mfg_second_roi_model.RData"))
+
+```
+
+## Amygdala
+
+```{r, fig.width=8, fig.height=6}
+
+# Generate replicated datasets
+y_rep <- posterior_predict(amyg_model, ndraws = 100)
+
+y_true <- amyg_model$data$`log(average_aac_conn)`
+
+ppc_dens_overlay(y_true, y_rep) 
+
+
+```
+
+```{r}
+
+ppc_hist(y_true, y_rep[1:5, ])
+
+```
+
+```{r}
+
+ppc_ecdf_overlay(y_true, y_rep)
+
+```
+
+
+```{r}
+
+ppc_boxplot(y_true, y_rep[1:5, ])
+
+```
+
+
+```{r}
+
+ppc_stat(y_true, y_rep, stat = "mean")
+ppc_stat(y_true, y_rep, stat = "sd")
+
+observed_mean <- mean(y_true)
+replicated_means <- rowMeans(y_rep)
+bayesian_p_value <- mean(replicated_means >= observed_mean)
+
+predictive_intervals <- apply(y_rep, 2, quantile, probs = c(0.025, 0.975))
+within_interval <- y_true >= predictive_intervals[1, ] &
+                  y_true <= predictive_intervals[2, ]
+coverage_rate <- mean(within_interval)
+
+```
+
+```{r, fig.height = 6, fig.width = 15}
+
+# Example stratification by a variable
+ppc_violin_grouped(y_true, y_rep, group = amyg_model$data$subject)
+
+
+```
+```{r, fig.width = 10, fig.height = 10}
+
+ppc_dens_overlay_grouped(y_true, y_rep, group = amyg_model$data$subject)
+
+
+```
+
+

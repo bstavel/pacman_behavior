@@ -1,0 +1,980 @@
+---
+title: "Differential Connectivity"
+output: html_document
+date: "2024-10-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(tidybayes)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+```{r load-data}
+## load data ##
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_ghost_connectivity_newsubs.csv"))
+
+
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
+```
+
+
+```{r split-mfg-sfg}
+
+regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
+
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+conn_detailed_df <- conn_df %>%
+  mutate(
+    first_pair = gsub("_to_.*", "", pairs),
+    second_pair = gsub(".*_to_", "", pairs),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(conn_detailed_df$detailed_first_region)
+table(conn_detailed_df$detailed_second_region)
+
+# final rename
+conn_detailed_df <- conn_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region)
+
+
+## FDr correct/make symmetric
+conn_clean_df <- prep_detailed_conn_allsubs_plot_df(conn_detailed_df)
+
+```
+
+
+```{r prep-df, fig.width=20, fig.height=15}
+
+
+conn_clean_elec_df <- conn_clean_df %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  mutate(key = paste0(subject, pairs, metric)) %>%
+  mutate(time = round(time, 1)) %>%
+  group_by(metric, time, pairs, subject) %>%
+  mutate(pair_conn = mean(abs(connectivity))) %>%
+  ungroup() 
+
+
+```
+
+
+## Imaginary Coherence
+
+### Approach
+
+```{r, fig.height= 6, fig.width=10}
+
+aac_conn_avg_df <- conn_clean_elec_df %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  filter(metric == "Imaginary Coherence" & !grepl("SFG", roi_pair)) %>%
+  mutate(aac = if_else(time <= 0, "Approach", "Avoid")) %>%
+  group_by(aac, key) %>%
+  mutate(average_aac_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(subject, aac, pairs, first_pair, second_pair, roi_pair, first_region, second_region, average_aac_conn, key) %>%
+  distinct() %>%
+  mutate(log_average_aac_conn = log(average_aac_conn)) %>%
+  mutate(key = factor(key)) %>%
+  mutate(subject = factor(subject))  %>%
+  mutate(first_pair_key = factor(paste0(subject, "_", first_pair)))
+
+
+```
+
+
+```{r approach-differences}
+
+time_df <- aac_conn_avg_df %>%
+  filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(second_region != "Insula" & first_region != "Insula") %>%
+  filter(aac == "Approach")
+
+
+amyg_time_df <- time_df %>%
+  filter(first_region == "Amygdala") 
+
+hc_time_df <- time_df %>%
+  filter(first_region == "Hippocampus") 
+
+ofc_time_df <- time_df %>%
+  filter(first_region == "OFC") 
+
+mfg_time_df <- time_df %>%
+  filter(first_region == "MFG")
+
+acc_time_df <- time_df %>%
+  filter(first_region == "Ant. Cingulate")
+
+
+
+```
+
+```{r brms-approach}
+library(brms)
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+## Amygdala ##
+amyg_time_df <- amyg_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("MFG",  "OFC", "Ant. Cingulate", "Hippocampus"))) 
+
+amyg_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = amyg_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(amyg_model)
+
+# save full model #
+save(amyg_model, file = path(here(), "results", "imcoh_app_amyg_second_roi_model.RData"))
+
+## OFC ##
+ofc_time_df <- ofc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c( "MFG", "Amygdala", "Ant. Cingulate", "Hippocampus"))) 
+ofc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = ofc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(ofc_model)
+
+# save full model #
+save(ofc_model, file = path(here(), "results", "imcoh_app_ofc_second_roi_model.RData"))
+
+
+## Hippocampus ##
+hc_time_df <- hc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("MFG",  "OFC", "Ant. Cingulate", "Amygdala"))) 
+
+hc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = hc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(hc_model)
+
+# save full model #
+save(hc_model, file = path(here(), "results", "imcoh_app_hc_second_roi_model.RData"))
+
+
+## ACC ##
+acc_time_df <- acc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("MFG",  "OFC", "Hippocampus", "Amygdala"))) 
+
+acc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = acc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(acc_model)
+
+# save full model #
+save(acc_model, file = path(here(), "results", "imcoh_app_acc_second_roi_model.RData"))
+
+## MFG ##
+mfg_time_df <- mfg_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("OFC",  "Ant. Cingulate", "Hippocampus", "Amygdala"))) 
+
+mfg_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = mfg_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(mfg_model)
+
+# save full model #
+save(mfg_model, file = path(here(), "results", "imcoh_app_mfg_second_roi_model.RData"))
+
+
+# ## Insula ##
+# insula_time_df <- insula_time_df %>%
+#   mutate(second_region = factor(second_region, 
+#                                 levels = c("OFC", "MFG", "Ant. Cingulate", "Hippocampus", "Amygdala"))) 
+# 
+# insula_model <- brm(
+#   formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+#   data = insula_time_df,
+#   family = gaussian(),
+#   prior = priors,
+#   chains = 4,
+#   iter = 4000,
+#   warmup = 1000,
+#   cores = 4,
+#   seed = 123
+# )
+# 
+# summary(insula_model)
+# 
+# # save full model #
+# save(insula_model, file = path(here(), "results", "imcoh_app_insula_second_roi_model.RData"))
+
+```
+
+```{r load-approach-results}
+
+# load data
+load(file = path(here(), "results", "imcoh_app_amyg_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_ofc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_hc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_acc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_mfg_second_roi_model.RData"))
+# load(file = path(here(), "results", "imcoh_app_insula_second_roi_model.RData"))
+
+
+# summary
+summary(amyg_model)
+summary(ofc_model)
+summary(hc_model)
+summary(acc_model)
+summary(mfg_model)
+# summary(insula_model)
+
+
+hypothesis(hc_model, "second_regionAnt.Cingulate - second_regionOFC = 0")
+hypothesis(amyg_model, "second_regionAnt.Cingulate - second_regionOFC = 0")
+
+```
+
+```{r}
+
+regions <-  c('Amygdala', 'MFG', 'OFC', 'Ant. Cingulate', 'Hippocampus')
+models <- list(amyg_model, mfg_model, ofc_model, acc_model, hc_model)
+
+idx <- 1
+  
+cur_model <- models[[idx]]
+cur_regions <- regions[regions != regions[idx]]
+
+# Create new data frame
+new_data <- data_frame(second_region = cur_regions)
+
+# pull the samples
+posterior_samples <- posterior_linpred(
+  cur_model,
+  newdata = new_data,
+  re_formula = NA,   # Exclude random effects for population-level estimates
+  transform = FALSE   # Set to TRUE if you want samples on the original scale
+)
+
+# calculate the mean and credible intervals, & density values
+results <- data.frame(
+  Region = cur_regions,
+  Mean = NA,
+  Mode = NA,
+  ci_upper = NA,
+  ci_lower = NA,
+  lower_density = NA,
+  upper_density = NA
+)
+
+for (i in seq_along(cur_regions)) {
+  # Extract posterior samples for the region
+  samples <- posterior_samples[, i]
+  
+  # Compute mean
+  mean_value <- mean(samples)
+  
+  # Compute mode (max density)
+  # We'll estimate the mode using density estimation
+  density_estimate <- density(samples)
+  mode_value <- density_estimate$x[which.max(density_estimate$y)]
+  
+  # Compute credible intervals
+  ci_lower <- quantile(samples, probs = 0.025)
+  ci_upper <- quantile(samples, probs = 0.975)
+  
+  # Get density values at credible interval bounds
+  # We'll use the density estimate to find the density at the CI bounds
+  density_lower <- approx(density_estimate$x, density_estimate$y, xout = ci_lower)$y
+  density_upper <- approx(density_estimate$x, density_estimate$y, xout = ci_upper)$y
+  
+  # Store results
+  results$Mean[i] <- exp(mean_value)
+  results$Mode[i] <- exp(mode_value)
+  results$ci_lower[i] <- exp(ci_lower)
+  results$ci_upper[i] <- exp(ci_upper)
+  results$lower_density[i] <- density_lower
+  results$upper_density[i] <- density_upper
+}
+
+
+```
+
+```{r}
+
+regions <-  c('Amygdala', 'MFG', 'OFC', 'Ant. Cingulate', 'Hippocampus')
+models <- list(amyg_model, mfg_model, ofc_model, acc_model, hc_model)
+
+for(idx in 1:length(regions)){
+  
+  cur_model <- models[[idx]]
+  cur_regions <- regions[regions != regions[idx]]
+  
+  # Create new data frame
+  new_data <- data_frame(second_region = cur_regions)
+  
+  # Get fitted values on the log scale
+  fitted_results <- fitted(cur_model, newdata = new_data, re_formula = NA, scale = "linear")
+  
+  if(idx == 1){
+    # Exponentiate the estimates and credible intervals
+    estimates <- data_frame(
+      first_region = regions[idx],
+      second_region = new_data$second_region,
+      Estimate = exp(fitted_results[, "Estimate"]),
+      `l-95% CI` = exp(fitted_results[, "Q2.5"]),
+      `u-95% CI` = exp(fitted_results[, "Q97.5"])
+    )
+  } else{
+    estimates <- bind_rows(estimates, 
+                           data_frame(
+                             first_region = regions[idx],
+                             second_region = new_data$second_region,
+                              Estimate = exp(fitted_results[, "Estimate"]),
+                              `l-95% CI` = exp(fitted_results[, "Q2.5"]),
+                              `u-95% CI` = exp(fitted_results[, "Q97.5"])
+                           ))
+  
+    
+  }
+
+}
+
+
+
+```
+
+```{r plot,  fig.height = 6, fig.width = 10}
+
+approach_coh_plot <- estimates %>%
+  mutate(second_region = if_else(second_region == "Ant. Cingulate", "ACC", second_region)) %>%
+  mutate(first_region = if_else(first_region == "Ant. Cingulate", "ACC", first_region)) %>%
+  mutate(first_region = factor(first_region, levels = c("Amygdala", "Hippocampus", "OFC",  "MFG", "ACC"))) %>%
+  mutate(second_region = factor(second_region, levels = c("Amygdala", "Hippocampus", "OFC",  "MFG", "ACC"))) %>%
+  mutate(second_region_text = case_when(
+    second_region == "Amygdala" ~ "Amyg.", 
+    second_region == "Hippocampus" ~ "Hipp.",
+    second_region == "OFC" ~ "OFC",
+    .default = second_region)) %>%
+  mutate(second_region_text = reorder_within(second_region_text, Estimate, first_region)) %>%
+  ggplot(., aes(x=second_region_text, , y = Estimate, color = second_region, fill = second_region)) +
+  geom_col(alpha = .5) +
+  geom_errorbar(aes(x = second_region_text, ymin = `l-95% CI`, ymax = `u-95% CI`), width = .2) +
+  scale_color_manual(values = roi_colors) + 
+  scale_fill_manual(values = roi_colors) + 
+  scale_x_reordered() +
+  guides(alpha = F, color = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16, face = "italic"),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17, face = 'bold')) + 
+  labs(x = "Pair Region", y = "Estimated imaginary coherence", color = "", fill = "") +
+  ggtitle("OFC as a hub in the PFC-subcortical theta circuit") +
+  facet_wrap(~first_region, scales = "free_x", nrow = 1)
+
+approach_coh_plot
+
+
+```
+
+
+
+```{r relevel-against-mfg}
+
+# Amygdala
+hc_amyg_result <- hypothesis(amyg_model, "second_regionHippocampus - second_regionMFG = 0")
+acc_amyg_result <- hypothesis(amyg_model, "second_regionAnt.Cingulate - second_regionMFG = 0")
+insula_amyg_result <- hypothesis(amyg_model, "second_regionInsula - second_regionMFG = 0")
+ofc_amyg_result <- summary(amyg_model)
+
+amyg_mfg_results <- rbind(hc_amyg_result$hypothesis, acc_amyg_result$hypothesis, insula_amyg_result$hypothesis)
+amyg_mfg_results <- amyg_mfg_results %>%
+  select(Hypothesis, Estimate, CI.Lower, CI.Upper) %>%
+  add_row(Hypothesis = "(second_regionOFC-second_regionMFG) = 0", Estimate = -1 * ofc_amyg_result$fixed[3, 1], CI.Lower = -1 * ofc_amyg_result$fixed[3, 4], CI.Upper = -1 * ofc_amyg_result$fixed[3, 3]) %>%
+  mutate_if(is.double, ~exp(.)) 
+
+print(amyg_mfg_results)
+
+# Hippocampus
+amyg_hc_result <- hypothesis(hc_model, "second_regionAmygdala - second_regionMFG = 0")
+acc_hc_result <- hypothesis(hc_model, "second_regionAnt.Cingulate - second_regionMFG = 0")
+insula_hc_result <- hypothesis(hc_model, "second_regionInsula - second_regionMFG = 0")
+ofc_hc_result <- summary(hc_model)
+
+hc_mfg_results <- rbind(amyg_hc_result$hypothesis, acc_hc_result$hypothesis, insula_hc_result$hypothesis)
+hc_mfg_results <- hc_mfg_results %>%
+  select(Hypothesis, Estimate, CI.Lower, CI.Upper) %>%
+  add_row(Hypothesis = "(second_regionOFC-second_regionMFG) = 0", Estimate = -1 * ofc_hc_result$fixed[3, 1], CI.Lower = -1 * ofc_hc_result$fixed[3, 4], CI.Upper = -1 * ofc_hc_result$fixed[3, 3]) %>%
+  mutate_if(is.double, ~exp(.)) 
+
+print(hc_mfg_results)
+
+
+# Ant Cing
+amyg_acc_result <- hypothesis(acc_model, "second_regionAmygdala - second_regionMFG = 0")
+hc_acc_result <- hypothesis(acc_model, "second_regionHippocampus - second_regionMFG = 0")
+insula_acc_result <- hypothesis(acc_model, "second_regionInsula - second_regionMFG = 0")
+ofc_acc_result <- summary(acc_model)
+
+acc_mfg_results <- rbind(amyg_acc_result$hypothesis, hc_acc_result$hypothesis, insula_acc_result$hypothesis)
+acc_mfg_results <- acc_mfg_results %>%
+  select(Hypothesis, Estimate, CI.Lower, CI.Upper) %>%
+  add_row(Hypothesis = "(second_regionOFC-second_regionMFG) = 0", Estimate = -1 * ofc_acc_result$fixed[3, 1], CI.Lower = -1 * ofc_acc_result$fixed[3, 4], CI.Upper = -1 * ofc_acc_result$fixed[3, 3]) %>%
+  mutate_if(is.double, ~exp(.)) 
+
+print(acc_mfg_results)
+
+
+# OFC
+amyg_ofc_result <- hypothesis(ofc_model, "second_regionAmygdala - second_regionMFG = 0")
+acc_ofc_result <- hypothesis(ofc_model, "second_regionAnt.Cingulate - second_regionMFG = 0")
+hc_ofc_result <- hypothesis(ofc_model, "second_regionHippocampus - second_regionMFG = 0")
+insula_ofc_result <- summary(ofc_model)
+
+ofc_mfg_results <- rbind(amyg_ofc_result$hypothesis, acc_ofc_result$hypothesis, hc_ofc_result$hypothesis)
+ofc_mfg_results <- ofc_mfg_results %>%
+  select(Hypothesis, Estimate, CI.Lower, CI.Upper) %>%
+  add_row(Hypothesis = "(second_regionInsula-second_regionMFG) = 0", Estimate = -1 * insula_ofc_result$fixed[3, 1], CI.Lower = -1 * insula_ofc_result$fixed[3, 4], CI.Upper = -1 * insula_ofc_result$fixed[3, 3]) %>%
+  mutate_if(is.double, ~exp(.)) 
+
+print(ofc_mfg_results)
+
+
+```
+
+
+```{r}
+
+# amygdala
+posterior_samples <- as_draws_df(amyg_model) %>% select(starts_with("b_"))
+posterior_samples$ofc <- posterior_samples$b_Intercept
+posterior_samples$hc <- posterior_samples$b_Intercept + posterior_samples$b_second_regionHippocampus
+posterior_samples$acc <- posterior_samples$b_Intercept + posterior_samples$b_second_regionAnt.Cingulate
+posterior_samples$mfg <- posterior_samples$b_Intercept + posterior_samples$b_second_regionMFG
+posterior_samples$insula <- posterior_samples$b_Intercept + posterior_samples$b_second_regionInsula
+amyg_main_effects <- posterior_samples %>%
+   select(ofc, hc, acc, mfg, insula) %>%
+   mutate_all(~exp(.)) %>%
+   gather() %>%
+   group_by(key) %>%
+   mean_hdi() %>% 
+   mutate_if(is.double, round, digits = 3)
+
+
+
+# hioppocampus
+posterior_samples <- as_draws_df(hc_model) %>% select(starts_with("b_"))
+posterior_samples$ofc <- posterior_samples$b_Intercept
+posterior_samples$amyg <- posterior_samples$b_Intercept + posterior_samples$b_second_regionAmygdala
+posterior_samples$acc <- posterior_samples$b_Intercept + posterior_samples$b_second_regionAnt.Cingulate
+posterior_samples$mfg <- posterior_samples$b_Intercept + posterior_samples$b_second_regionMFG
+posterior_samples$insula <- posterior_samples$b_Intercept + posterior_samples$b_second_regionInsula
+hc_main_effects <- posterior_samples %>%
+   select(ofc, amyg, acc, mfg, insula) %>%
+   mutate_all(~exp(.)) %>%
+   gather() %>%
+   group_by(key) %>%
+   mean_hdi() %>% 
+   mutate_if(is.double, round, digits = 3)
+
+# ACC
+posterior_samples <- as_draws_df(acc_model) %>% select(starts_with("b_"))
+posterior_samples$ofc <- posterior_samples$b_Intercept
+posterior_samples$amyg <- posterior_samples$b_Intercept + posterior_samples$b_second_regionAmygdala
+posterior_samples$hc <- posterior_samples$b_Intercept + posterior_samples$b_second_regionHippocampus
+posterior_samples$mfg <- posterior_samples$b_Intercept + posterior_samples$b_second_regionMFG
+posterior_samples$insula <- posterior_samples$b_Intercept + posterior_samples$b_second_regionInsula
+acc_main_effects <- posterior_samples %>%
+   select(ofc, amyg, hc, mfg, insula) %>%
+   mutate_all(~exp(.)) %>%
+   gather() %>%
+   group_by(key) %>%
+   mean_hdi() %>% 
+   mutate_if(is.double, round, digits = 3)
+
+
+
+```
+
+
+
+### Avoidance
+
+```{r avoid-differences}
+
+time_df <- aac_conn_avg_df %>%
+  filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(aac == "Avoid")
+
+
+amyg_time_df <- time_df %>%
+  filter(first_region == "Amygdala") 
+
+hc_time_df <- time_df %>%
+  filter(first_region == "Hippocampus") 
+
+ofc_time_df <- time_df %>%
+  filter(first_region == "OFC") 
+
+# insula_time_df <- time_df %>%
+#   filter(first_region == "Insula") 
+
+mfg_time_df <- time_df %>%
+  filter(first_region == "MFG")
+
+acc_time_df <- time_df %>%
+  filter(first_region == "Ant. Cingulate")
+
+```
+
+```{r brms-avoid}
+
+## Amygdala ##
+amyg_time_df <- amyg_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("OFC",  "MFG", "Ant. Cingulate", "Hippocampus"))) 
+
+amyg_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = amyg_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(amyg_model)
+
+# save full model #
+save(amyg_model, file = path(here(), "results", "imcoh_avd_amyg_second_roi_model.RData"))
+
+## OFC ##
+ofc_time_df <- ofc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c( "Amygdala", "MFG", "Ant. Cingulate", "Hippocampus"))) 
+ofc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = ofc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(ofc_model)
+
+# save full model #
+save(ofc_model, file = path(here(), "results", "imcoh_avd_ofc_second_roi_model.RData"))
+
+
+## Hippocampus ##
+hc_time_df <- hc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("OFC",  "MFG", "Ant. Cingulate", "Amygdala"))) 
+
+hc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = hc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(hc_model)
+
+# save full model #
+save(hc_model, file = path(here(), "results", "imcoh_avd_hc_second_roi_model.RData"))
+
+
+## ACC ##
+acc_time_df <- acc_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("OFC",  "MFG", "Hippocampus", "Amygdala"))) 
+
+acc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = acc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(acc_model)
+
+# save full model #
+save(acc_model, file = path(here(), "results", "imcoh_avd_acc_second_roi_model.RData"))
+
+## MFG ##
+mfg_time_df <- mfg_time_df %>%
+  mutate(second_region = factor(second_region, 
+                                levels = c("OFC",  "Ant. Cingulate", "Hippocampus", "Amygdala"))) 
+
+mfg_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = mfg_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+summary(mfg_model)
+
+# save full model #
+save(mfg_model, file = path(here(), "results", "imcoh_avd_mfg_second_roi_model.RData"))
+
+
+# ## Insula ##
+# insula_time_df <- insula_time_df %>%
+#   mutate(second_region = factor(second_region, 
+#                                 levels = c("OFC", "MFG", "Ant. Cingulate", "Hippocampus", "Amygdala"))) 
+# 
+# insula_model <- brm(
+#   formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+#   data = insula_time_df,
+#   family = gaussian(),
+#   prior = priors,
+#   chains = 4,
+#   iter = 4000,
+#   warmup = 1000,
+#   cores = 4,
+#   seed = 123
+# )
+# 
+# summary(insula_model)
+# 
+# # save full model #
+# save(insula_model, file = path(here(), "results", "imcoh_avd_insula_second_roi_model.RData"))
+
+```
+
+
+
+## Connectivity Profiles W/o Sig Thresholds
+
+```{r, fig.height= 6, fig.width=10}
+
+conn_clean_average_df <- conn_clean_elec_df %>%
+  group_by(metric, time, roi_pair, subject) %>%
+  mutate(average_sub_conn = mean(pair_conn, na.rm= T)) %>%
+  ungroup() %>%
+  select(-pairs, -pval, -p_frd, -sig, -percent_sig, -count_sig, -number_of_region_pairs, -connectivity, -pair_conn, -first_pair, -first_pair_1, -first_pair_2, -second_pair, -second_pair_1, -second_pair_2, -key) %>%
+  distinct() %>%
+  group_by(metric, time, roi_pair) %>%
+  mutate(average_conn = mean(average_sub_conn, na.rm= T)) %>%
+  ungroup()
+
+imcoh_clean_sig_average_df <- conn_clean_average_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(second_region != "SFG")
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "OFC") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average OFC connectivity to all other regions at trial onset") +
+  ylim(.04, .14)
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "Insula") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average Insula connectivity to all other regions at trial onset") +
+  ylim(.04, .14)
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "Ant. Cingulate") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average ACC connectivity to all other regions at trial onset") +
+  ylim(.04, .14)
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "MFG") %>%
+  filter(second_region != "MFG") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average MFG connectivity to all other regions at trial onset") +
+  ylim(.04, .14)
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "Amygdala") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average Amygdala connectivity to all other regions at trial onset") +
+  ylim(.04, .14)
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "Hippocampus") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average Hippocampus connectivity to all other regions at trial onset") +
+  ylim(.04, .14)
+
+```

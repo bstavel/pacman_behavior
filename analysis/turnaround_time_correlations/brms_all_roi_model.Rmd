@@ -56,13 +56,8 @@ c25 <- c(
 
 ```{r load-data}
 
-
 # load correlations #
-ofc_corr_df <- read_csv(path(here(), "results", "ofc_correlations.csv"))
-all_other_corr_df <- read_csv(path(here(), "results", "all_other_correlations.csv"))
-correlation_df <- bind_rows(ofc_corr_df, all_other_corr_df)
-
-
+correlation_df <- read_csv(path(here(), "results", "theta_correlations_newsubs.csv"))
 
 ```
 
@@ -160,23 +155,24 @@ correlation_sig_df <- correlation_df %>%
   mutate(scale_logged_times = scale(logged_times)[,1]) %>%
   ungroup() %>%
   mutate(regions = paste(first_region, second_region, sep = "_")) %>%
+  filter(!grepl("insula", regions)) %>%
   mutate(
     region_pair = case_when(
       grepl("ofc", regions) & grepl("hc", regions) ~ "ofc_hc",
       grepl("ofc", regions) & grepl("amyg", regions) ~ "ofc_amyg",
       grepl("ofc", regions) & grepl("mfg", regions) ~ "ofc_mfg",
-      grepl("ofc", regions) & grepl("insula", regions) ~ "ofc_insula",
+      # grepl("ofc", regions) & grepl("insula", regions) ~ "ofc_insula",
       grepl("ofc", regions) & grepl("cing", regions) ~ "ofc_cing",
       grepl("hc", regions) & grepl("amyg", regions) ~ "hc_amyg",
       grepl("hc", regions) & grepl("mfg", regions) ~ "hc_mfg",
-      grepl("hc", regions) & grepl("insula", regions) ~ "hc_insula",
+      # grepl("hc", regions) & grepl("insula", regions) ~ "hc_insula",
       grepl("hc", regions) & grepl("cing", regions) ~ "hc_cing",
       grepl("amyg", regions) & grepl("mfg", regions) ~ "amyg_mfg",
-      grepl("amyg", regions) & grepl("insula", regions) ~ "amyg_insula",
+      # grepl("amyg", regions) & grepl("insula", regions) ~ "amyg_insula",
       grepl("amyg", regions) & grepl("cing", regions) ~ "amyg_cing",
-      grepl("mfg", regions) & grepl("insula", regions) ~ "mfg_insula",
-      grepl("mfg", regions) & grepl("cing", regions) ~ "mfg_cing",
-      grepl("insula", regions) & grepl("cing", regions) ~ "insula_cing"
+      # grepl("mfg", regions) & grepl("insula", regions) ~ "mfg_insula",
+      grepl("mfg", regions) & grepl("cing", regions) ~ "mfg_cing"
+      # grepl("insula", regions) & grepl("cing", regions) ~ "insula_cing"
     ))
 
 
@@ -233,10 +229,10 @@ model <- brm(
 )
 
 # save full model #
-save(model, file = path(here(), "results", "full_all_roi_model_brms.RData"))
+save(model, file = path(here(), "results", "full_all_roi_model_brms_newsubs_noinsula.RData"))
 
 # load full model #
-load(path(here(), "results", "full_all_roi_model_brms.RData"))
+load(path(here(), "results", "full_all_roi_model_brms_newsubs_noinsula.RData"))
 
 ```
 
@@ -258,10 +254,11 @@ mcmc_trace(model, regex_pars = c("b_"), facet_args = list(ncol = 1))
 ```
 
 
-```{r}
+```{r, eval = F}
 
 # For each region pair
 region_pairs <- unique(correlation_sig_df$region_pair)
+region_pairs <- region_pairs[!is.na(region_pairs)]
 
 # values to find CI intervals in the density function
 closest_value <- function(x, v) {
@@ -334,7 +331,7 @@ slopes_summary_df <- bind_rows(slopes_summary, .id = "Region_Pair")
 ```
 
 
-```{r prep-samples-for-plotting, fig.width. = 10, fig.height = 10}
+```{r prep-samples-for-plotting, fig.width. = 10, fig.height = 10, eval = F}
 
 ## set colors ##
 roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
@@ -369,9 +366,9 @@ full_sample_plot_df <- full_sample_df %>%
     
   )) %>%
   mutate(Region_Pair = factor(Region_Pair, 
-                              levels = c("OFC ~ Amyg.", "OFC ~ HC", "OFC ~ ACC", "OFC ~ Insula", "OFC ~ MFG", 
-                                         "HC ~ Amyg.", "HC ~ ACC", "HC ~ Insula", "HC ~ MFG", "Insula ~ ACC", 
-                                         "Amyg. ~ ACC", "Amyg. ~ Insula", "Amyg. ~ MFG", "MFG ~ ACC", "MFG ~ Insula")))
+                              levels = c("OFC ~ Amyg.", "OFC ~ HC", "OFC ~ ACC",  "OFC ~ MFG", 
+                                         "HC ~ Amyg.", "HC ~ ACC", "HC ~ MFG",
+                                         "Amyg. ~ ACC", "Amyg. ~ MFG", "MFG ~ ACC")))
 
 slopes_summary_plot_df <- slopes_summary_df %>%
   mutate(first_region = case_when(
@@ -401,9 +398,9 @@ slopes_summary_plot_df <- slopes_summary_df %>%
     
   ))  %>%
   mutate(Region_Pair = factor(Region_Pair, 
-                              levels = c("OFC ~ Amyg.", "OFC ~ HC", "OFC ~ ACC", "OFC ~ Insula", "OFC ~ MFG", 
-                                         "HC ~ Amyg.", "HC ~ ACC", "HC ~ Insula", "HC ~ MFG", "Insula ~ ACC", 
-                                         "Amyg. ~ ACC", "Amyg. ~ Insula", "Amyg. ~ MFG", "MFG ~ ACC", "MFG ~ Insula"))) %>%
+                              levels = c("OFC ~ Amyg.", "OFC ~ HC", "OFC ~ ACC",  "OFC ~ MFG", 
+                                         "HC ~ Amyg.", "HC ~ ACC", "HC ~ MFG",
+                                         "Amyg. ~ ACC", "Amyg. ~ MFG", "MFG ~ ACC"))) %>%
   mutate(sig = if_else(0 > CI_Lower & 0 < CI_Upper, 99, 32))
 
 turn_time_plot <- full_sample_plot_df %>%
@@ -427,12 +424,12 @@ turn_time_plot <- full_sample_plot_df %>%
   labs(color = "Region", fill = "Region", y = "Density", x = "Estimated Beta Coefficiant") +
   scale_color_manual(values = roi_colors) +
   scale_fill_manual(values = roi_colors) +
-  ylim(0, 42) +
+  ylim(0, 50) +
   ggtitle("Turnaround Time Correlates with Trial-by-Trial Theta Connectivity", subtitle = "Each facet shows the posterior distribution for the slope for each region pair, * indicates the 95% CI did not include 0")
-
-ggsave(path(here(), "figures", "correl_turn_predictions", "turn_time_plot.png"), 
-       plot = turn_time_plot, 
-       width = 16, height = 8, units = "in", dpi = 300)
+turn_time_plot
+# ggsave(path(here(), "figures", "correl_turn_predictions", "turn_time_plot.png"), 
+#        plot = turn_time_plot, 
+#        width = 16, height = 8, units = "in", dpi = 300)
 
 
 

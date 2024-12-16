@@ -1,0 +1,283 @@
+---
+title: "Anterior vs Posterior"
+output: html_document
+date: "2024-10-22"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(blme)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+## Testing for elevated theta power during approach compared to avoidance
+
+This script tests for elevated theta power during approach in the hippocampus, amygdala, OFC, ACC, Insula, MFG, & SFG in both conflict and no-conflict trials. The window of interest is from 1.5 seconds before turning until 1.5 seconds after turning. I average this window within trials, electrodes, and subjects and then compare the approach vs avoiding sections using the following equation:
+
+lmer(trial_theta ~ aac + (1 + aac|subject), data = aac_df)
+
+I tried to first use:
+
+lmer(trial_theta ~ aac + (1 + aac|subject/elec_id), data = aac_df)
+
+But this resulted in singular fits for the no conflict trials. Removing the random slope drastically changed the degrees of freedom and a model with slopes was significantly better than a model without slopes as assessed by an anova.
+
+Meanwhile, removing the nested random effect of electrode did not change the fixed effects estimate hardly at all, and there was no sig difference when I compared the models via anova. The effects in the conflict trials also hold if I include the nested effect of electrode.
+
+Therefore, I believe the best model to assess the affecr of approaching vs avoiding (`aac`) is the one without the nested random effect of electrode, but with a random intercept and slope for subject. I will use this model for all the analyses.
+
+
+
+```{r load-data}
+# load hc data
+hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
+
+# crop time 
+hc_theta_data <- hc_theta_data %>% 
+  mutate(trial_time = trial_time - 3)  %>%
+  filter(trial_time >= -1)
+
+# load MNI data
+mni_data <- read_csv(path(here(), "munge", "mni_coordinates_all_subs.csv"))
+
+```
+
+```{r load-behavioral-data}
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+
+## merge them ##
+# ghost trials #
+hc_behave_df <- left_join(all_subs_g_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             hc_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+
+# no ghost trials #
+hc_ng_behave_df <- left_join(all_subs_ng_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                             hc_theta_data  %>% mutate(trial_time = round(trial_time, 2)), by = join_by(subject, trial_numeric, trial_time))
+
+```
+
+
+```{r sig-test-df-prep}
+
+
+create_sig_test_df <- function(behave_df){
+
+  # create turn df, by timelocking to the turn
+  turn_df <- behave_df %>%
+      # round time so that we can loop over time later
+      mutate(trial_time = round(trial_time, 2)) %>%
+      # exclude time before they started moving, may be good to look at not doing this as well
+      # filiter out ITI
+      filter(reward_groups != 99 & !is.na(electrode)) %>%
+      # prep electrode variables
+      mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+      mutate(electrode = gsub("_.*", "", electrode)) %>%
+      # shift the time so that time 0 is the start of movement onset
+      group_by(elec_id, trial_numeric, subject) %>%
+      # filter time so that trials end when the person turnaround for the final time
+      mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+      mutate(event = replace(event, is.na(event), 0)) %>%
+      mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
+      mutate(turnaround_time = max(turnaround_time)) %>%
+      filter(turnaround_time != 0) %>%
+      mutate(turn_time = trial_time - turnaround_time) %>%
+      ungroup() %>%
+      select(subject, elec_id, electrode, theta, trial_numeric, trial_time, turn_time, turnaround_time) %>%
+      distinct()
+
+  # filter between 1.5 before and after turn, and create approach, avoid condition, average across trial
+  aac_df <- turn_df %>%
+    filter(turn_time <= 1.5 & turn_time >= -1.5) %>%
+    mutate(aac_time = if_else(turn_time <=0, abs(turn_time), turn_time)) %>%
+    mutate(aac_time = round(aac_time, 2)) %>%
+    mutate(aac = if_else(turn_time <=0, "Approaching", "Avoiding")) %>%
+    group_by(elec_id, aac, trial_numeric) %>%
+    mutate(trial_theta = mean(theta)) %>%
+    select(-trial_time, -theta, -turn_time, -turnaround_time, -trial_time, -aac_time) %>%
+    distinct()  
+    
+  return(aac_df)
+  
+}
+
+
+```
+
+
+```{r create-sig-test-dfs-merge-anatomy}
+
+# create sig test dfs
+hc_ghost_sig_df <- create_sig_test_df(hc_behave_df)
+hc_ng_sig_df <- create_sig_test_df(hc_ng_behave_df)
+
+# separate out the bipolar pairs
+hc_ghost_sig_df <- hc_ghost_sig_df %>%
+  mutate(first_elec = gsub("-.*", "", electrode)) %>%
+  mutate(second_elec = gsub(".*-", "", electrode)) 
+
+# merge with anatomy
+antpost_data <- mni_data %>%
+  select(subject, Y, Electrode)
+
+hc_ghost_ap_df <- left_join(hc_ghost_sig_df, antpost_data, by = c("subject" = "subject", "first_elec" = "Electrode")) %>% rename(first_y = Y)
+hc_ghost_ap_df <- left_join(hc_ghost_ap_df, antpost_data, by = c("subject" = "subject", "second_elec" = "Electrode")) %>% rename(second_y = Y)
+
+# average the y coordinates
+hc_ghost_ap_df <- hc_ghost_ap_df %>%
+  mutate(y = (first_y + second_y) / 2) %>%
+  select(-first_y, -second_y)
+
+
+
+```
+
+```{r}
+
+# run model with rnadom effects of subject and electrode  
+model_ap <- lmer(trial_theta ~ y*aac + (1 + aac|subject), data = hc_ghost_ap_df)
+
+summary(model_ap)
+
+
+# run model with rnadom effects of subject and electrode  
+model_approach <- lmer(trial_theta ~ y + (1 + y|subject), data = hc_ghost_ap_df %>% filter(aac == "Approaching"))
+
+summary(model_approach)
+
+```
+```{r aproach-only}
+
+library(brms)
+
+### RERUN BUT WITH A SCALED Y!!! ###
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+# Fit the model
+hc_app_avd_model <- brm(
+  formula = trial_theta ~ y*aac + (1 + aac|subject),
+  data = hc_ghost_ap_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+summary(hc_app_avd_model)
+
+
+# save full model #
+save(hc_app_avd_model, file = path(here(), "results", "hc_app_avd_ant_post_model.RData"))
+
+
+
+```
+```{r plot-posterior}
+
+library(bayesplot)
+
+posterior <- as.array(hc_app_avd_model)
+dimnames(posterior)
+
+# plot the posterior
+color_scheme_set("red")
+mcmc_intervals(posterior, pars = c("b_y"))
+mcmc_intervals(posterior, pars = c("b_aacAvoiding"))
+mcmc_intervals(posterior, pars = c("b_y:aacAvoiding"))
+
+
+```
+
+
+
+```{r approach-only}
+
+
+## aproach only
+hc_ghost_approach_df <-  hc_ghost_ap_df %>% filter(aac == "Approaching")
+
+# Fit the model
+hc_approach_model <- brm(
+  formula = trial_theta ~ y + (1 + y|subject),
+  data = hc_ghost_approach_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+summary(hc_approach_model)
+
+
+# save full model #
+save(hc_approach_model, file = path(here(), "results", "hc_approach_ant_post_model.RData"))
+
+
+
+```

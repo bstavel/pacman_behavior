@@ -84,7 +84,7 @@ c25 <- c(
 
 ```{r load-data}
 ## load data ##
-conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_ghost_connectivity.csv"))
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_ghost_connectivity_newsubs.csv"))
 
 
 ## set colors ##
@@ -184,9 +184,14 @@ conn_clean_sig_average_df <- conn_clean_sig_elec_df %>%
   ungroup() %>%
   select(-pairs, -pval, -p_frd, -sig, -percent_sig, -count_sig, -number_of_region_pairs, -connectivity, -pair_conn, -first_pair, -first_pair_1, -first_pair_2, -second_pair, -second_pair_1, -second_pair_2, -key) %>%
   distinct() %>%
-  group_by(metric, time, roi_pair) %>%
-  mutate(average_conn = mean(average_sub_conn, na.rm= T)) %>%
-  ungroup()
+  group_by(metric, time, roi_pair, first_region, second_region) %>%
+  summarise(
+    average_conn = mean(average_sub_conn),
+    n = n(),
+    sd_sub_power = sd(average_sub_conn, na.rm = TRUE),
+    lower_sem = average_conn - sd_sub_power / sqrt(n),
+    upper_sem = average_conn + sd_sub_power / sqrt(n),
+    .groups = 'drop') 
 
 ```
 
@@ -196,16 +201,181 @@ conn_clean_sig_average_df <- conn_clean_sig_elec_df %>%
 
 imcoh_clean_sig_average_df <- conn_clean_sig_average_df %>%
   filter(metric == "Imaginary Coherence") %>%
-  filter(second_region != "SFG")
+  filter(second_region != "SFG" & first_region != "SFG") %>%
+  filter(second_region != "Insula" & first_region != "Insula")
+
+
+# imcoh_clean_sig_average_df %>%
+#   filter(first_region == "Insula") %>%
+#   ggplot(., aes(x=time, y = average_conn, color = second_region, fill = second_region)) +
+#   geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+#   geom_line(size = 1) +
+#   geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .3) +
+#   scale_alpha_manual(values = c(1, .3)) +
+#   scale_color_manual(values = roi_colors) +
+#   scale_fill_manual(values = roi_colors) +   
+#   guides(alpha = F, color = F) +
+#   theme(panel.background = element_rect(fill = "white"), 
+#         legend.position = "top",
+#         axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+#         axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+#         legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+#         plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+#         plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+#   labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "", fill=") +
+#   ggtitle("Average Insula connectivity to all other regions at trial onset") +
+#   ylim(.02, .14)
+
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "Ant. Cingulate") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region, fill = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .3) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) +
+  scale_fill_manual(values = roi_colors) +   
+  guides(alpha = F, color = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "", fill="") +
+  ggtitle("Average ACC connectivity to all other regions at trial onset") +
+  ylim(.02, .18)
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "MFG") %>%
+  filter(second_region != "MFG") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region, fill = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .3) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) +
+  scale_fill_manual(values = roi_colors) +   
+  guides(alpha = F, color = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "", fill="") +
+  ggtitle("Average MFG connectivity to all other regions at trial onset") +
+  ylim(.02, .18)
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "Amygdala") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region, fill = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .3) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) +
+  scale_fill_manual(values = roi_colors) +   
+  guides(alpha = F, color = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "", fill="") +
+  ggtitle("Average Amygdala connectivity to all other regions at trial onset") +
+  ylim(.02, .18)
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "Hippocampus") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region, fill = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .3) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) +
+  scale_fill_manual(values = roi_colors) +   
+  guides(alpha = F, color = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "", fill="") +
+  ggtitle("Average Hippocampus connectivity to all other regions at trial onset") +
+  ylim(.02, .18)
 
 
 imcoh_clean_sig_average_df %>%
   filter(first_region == "OFC") %>%
-  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  ggplot(., aes(x=time, y = average_conn, color = second_region, fill = second_region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
   geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .3) +
   scale_alpha_manual(values = c(1, .3)) +
   scale_color_manual(values = roi_colors) + 
+  scale_fill_manual(values = roi_colors) + 
+  guides(alpha = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "", fill="") +
+  ggtitle("Average OFC connectivity to all other regions at trial onset") +
+  ylim(.02, .18)
+
+```
+
+
+
+
+```{r, fig.height= 6, fig.width=10}
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "Amygdala") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region, fill = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .3) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) +
+  scale_fill_manual(values = roi_colors) +   
+  guides(alpha = F, color = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
+  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
+  ggtitle("Average Amygdala connectivity to all other regions at trial onset") +
+  ylim(.02, .18) + xlim(-2, 0)
+
+
+imcoh_clean_sig_average_df %>%
+  filter(first_region == "OFC") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region, fill = second_region)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .3) +
+  scale_alpha_manual(values = c(1, .3)) +
+  scale_color_manual(values = roi_colors) + 
+  scale_fill_manual(values = roi_colors) + 
   guides(alpha = F) +
   theme(panel.background = element_rect(fill = "white"), 
         legend.position = "top",
@@ -216,17 +386,23 @@ imcoh_clean_sig_average_df %>%
         plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
   labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
   ggtitle("Average OFC connectivity to all other regions at trial onset") +
-  ylim(.04, .14)
+  ylim(.02, .18) + xlim(-2, 0)
 
+
+```
+```{r fig.height = 10, fig.width = 12}
 
 imcoh_clean_sig_average_df %>%
-  filter(first_region == "Insula") %>%
-  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
+  filter(first_region != second_region) %>%
+  filter(first_region != "SFG" & second_region != "SFG") %>%
+  ggplot(., aes(x=time, y = average_conn, color = second_region, fill = second_region)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
   geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .3) +
   scale_alpha_manual(values = c(1, .3)) +
   scale_color_manual(values = roi_colors) + 
-  guides(alpha = F) +
+  scale_fill_manual(values = roi_colors) + 
+  guides(alpha = F, color = F) +
   theme(panel.background = element_rect(fill = "white"), 
         legend.position = "top",
         axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
@@ -235,130 +411,25 @@ imcoh_clean_sig_average_df %>%
         plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
         plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
   labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
-  ggtitle("Average Insula connectivity to all other regions at trial onset") +
-  ylim(.04, .14)
+  ggtitle("Average OFC connectivity to all other regions at trial onset") +
+  ylim(.02, .18) + xlim(-1.5, 1.5) + 
+  facet_wrap(~first_region)
 
-
-imcoh_clean_sig_average_df %>%
-  filter(first_region == "Ant. Cingulate") %>%
-  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
-  geom_line(size = 1) +
-  scale_alpha_manual(values = c(1, .3)) +
-  scale_color_manual(values = roi_colors) + 
-  guides(alpha = F) +
-  theme(panel.background = element_rect(fill = "white"), 
-        legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
-        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
-  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
-  ggtitle("Average ACC connectivity to all other regions at trial onset") +
-  ylim(.04, .14)
-
-
-imcoh_clean_sig_average_df %>%
-  filter(first_region == "MFG") %>%
-  filter(second_region != "MFG") %>%
-  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
-  geom_line(size = 1) +
-  scale_alpha_manual(values = c(1, .3)) +
-  scale_color_manual(values = roi_colors) + 
-  guides(alpha = F) +
-  theme(panel.background = element_rect(fill = "white"), 
-        legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
-        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
-  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
-  ggtitle("Average MFG connectivity to all other regions at trial onset") +
-  ylim(.04, .14)
-
-imcoh_clean_sig_average_df %>%
-  filter(first_region == "Amygdala") %>%
-  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
-  geom_line(size = 1) +
-  scale_alpha_manual(values = c(1, .3)) +
-  scale_color_manual(values = roi_colors) + 
-  guides(alpha = F) +
-  theme(panel.background = element_rect(fill = "white"), 
-        legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
-        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
-  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
-  ggtitle("Average Amygdala connectivity to all other regions at trial onset") +
-  ylim(.04, .14)
-
-
-imcoh_clean_sig_average_df %>%
-  filter(first_region == "Hippocampus") %>%
-  ggplot(., aes(x=time, y = average_conn, color = second_region)) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
-  geom_line(size = 1) +
-  scale_alpha_manual(values = c(1, .3)) +
-  scale_color_manual(values = roi_colors) + 
-  guides(alpha = F) +
-  theme(panel.background = element_rect(fill = "white"), 
-        legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
-        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
-  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
-  ggtitle("Average Hippocampus connectivity to all other regions at trial onset") +
-  ylim(.04, .14)
 
 ```
 
 
-
-```{r, fig.height= 6, fig.width=10}
-
-imcoh_clean_sig_roi_average_df <- imcoh_clean_sig_average_df %>%
-  filter(first_region != "SFG") %>%
-  select(-average_sub_conn, -subject) %>%
-  distinct() %>%
-  group_by(first_region, time) %>%
-  mutate(first_region_average = mean(average_conn)) %>%
-  ungroup() %>%
-  select(-average_conn, -second_region, -detailed_second_region, -roi_pair) %>%
-  distinct()
-
-imcoh_clean_sig_roi_average_df %>%
-  ggplot(., aes(x=time, y = first_region_average, color = first_region)) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "#2D2327") +
-  geom_line(size = 1) +
-  scale_alpha_manual(values = c(1, .3)) +
-  scale_color_manual(values = roi_colors) + 
-  guides(alpha = F) +
-  theme(panel.background = element_rect(fill = "white"), 
-        legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
-        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 18)) +
-  labs(x = "Time (s)", y = "Average Connectivity Across Subjects  (a.u.)", color = "") +
-  ggtitle("Average connectivity") +
-  ylim(.055, .1)
+OFC null findings hold for imaginary coherence and phase lag index, but ppc showed an effect of region in all cases. However, when I ran a full brms model with nested random effects, each region had CIs that overlapped with 0.
 
 
-```
+## Imaginary Coherence
 
+### Approach
 
 ```{r, fig.height= 6, fig.width=10}
 
 aac_conn_avg_df <- conn_clean_sig_elec_df %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
   filter(metric == "Imaginary Coherence" & !grepl("SFG", roi_pair)) %>%
   mutate(aac = if_else(time <= 0, "Approach", "Avoid")) %>%
   group_by(aac, key) %>%
@@ -368,7 +439,8 @@ aac_conn_avg_df <- conn_clean_sig_elec_df %>%
   distinct() %>%
   mutate(log_average_aac_conn = log(average_aac_conn)) %>%
   mutate(key = factor(key)) %>%
-  mutate(subject = factor(subject))
+  mutate(subject = factor(subject))  %>%
+  mutate(first_pair_key = factor(paste0(subject, "_", first_pair)))
 
 
 ```
@@ -378,6 +450,7 @@ aac_conn_avg_df <- conn_clean_sig_elec_df %>%
 
 time_df <- aac_conn_avg_df %>%
   filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(second_region != "Insula" & first_region != "Insula")  %>%
   filter(aac == "Approach")
 
 
@@ -390,8 +463,6 @@ hc_time_df <- time_df %>%
 ofc_time_df <- time_df %>%
   filter(first_region == "OFC") 
 
-insula_time_df <- time_df %>%
-  filter(first_region == "Insula") 
 
 mfg_time_df <- time_df %>%
   filter(first_region == "MFG")
@@ -402,68 +473,108 @@ acc_time_df <- time_df %>%
 
 ```
 
-```{r bayes-factors-app}
 
+```{r fig.height = 7, fig.width = 10}
 
-# Perform Bayesian ANOVA - Amyg
-amyg_result <- anovaBF(
-  formula = log_average_aac_conn ~ second_region + subject,
-  data = amyg_time_df,
-  whichRandom = "subject"
-)
+## set colors ##
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "ACC"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
 
-print(amyg_result)
+approach_avg_df <- time_df %>%
+  # Calculate mean power per electrode
+  group_by(subject, first_region, second_region) %>%
+  summarise(sub_conn = mean(average_aac_conn), .groups = 'drop') %>%
+  # Calculate mean power per subject
+  group_by(first_region, second_region) %>%
+  summarise(
+    pair_conn = mean(sub_conn),
+    n = n(),
+    sd_pair_conn = sd(sub_conn, na.rm = TRUE),
+    lower_sem = pair_conn - sd_pair_conn / sqrt(n),
+    upper_sem = pair_conn + sd_pair_conn / sqrt(n),
+    .groups = 'drop') 
+ 
+library(tidytext)
+approach_coh_plot <- approach_avg_df %>%
+  mutate(second_region = if_else(second_region == "Ant. Cingulate", "ACC", second_region)) %>%
+  mutate(first_region = if_else(first_region == "Ant. Cingulate", "ACC", first_region)) %>%
+  mutate(first_region = factor(first_region, levels = c("Amygdala", "Hippocampus", "OFC",  "ACC", "MFG"))) %>%
+  mutate(second_region = factor(second_region, levels = c("Amygdala", "Hippocampus", "OFC",  "ACC", "MFG"))) %>%
+  mutate(second_region_text = case_when(
+    second_region == "Amygdala" ~ "Amyg.", 
+    second_region == "Hippocampus" ~ "Hipp.",
+    second_region == "OFC" ~ "OFC",
+    .default = second_region)) %>%
+  mutate(second_region_text = reorder_within(second_region_text, pair_conn, first_region)) %>%
+  ggplot(., aes(x=second_region_text, , y = pair_conn, color = second_region, fill = second_region)) +
+  geom_col(alpha = .5) +
+  geom_errorbar(aes(x = second_region_text, ymin = lower_sem, ymax = upper_sem), width = .2) +
+  scale_color_manual(values = roi_colors) + 
+  scale_fill_manual(values = roi_colors) + 
+  scale_x_reordered() +
+  guides(alpha = F, color = F) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16, face = "italic"),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17, face = 'bold', hjust = .95)) + 
+  labs(x = "Pair Region", y = "Average of the absolute value of imaginary coherence", color = "", fill = "") +
+  ggtitle("OFC as a hub in the PFC-subcortical theta circuit") +
+  facet_wrap(~first_region, scales = "free_x", nrow = 1)
 
+approach_coh_plot
 
-# Perform Bayesian ANOVA - OFC
-ofc_result <- anovaBF(
-  formula = log_average_aac_conn ~ second_region + subject,
-  data = ofc_time_df,
-  whichRandom = "subject"
-)
-
-print(ofc_result)
-
-# Perform Bayesian ANOVA - HC
-hc_result <- anovaBF(
-  formula = log_average_aac_conn ~ second_region + subject,
-  data = hc_time_df,
-  whichRandom = "subject"
-)
-print(hc_result)
-
-# Perform Bayesian ANOVA - ACC
-acc_result <- anovaBF(
-  formula = log_average_aac_conn ~ second_region + subject,
-  data = acc_time_df,
-  whichRandom = "subject"
-)
-
-print(acc_result)
-
-# Perform Bayesian ANOVA - MFG
-mfg_result <- anovaBF(
-  formula = log_average_aac_conn ~ second_region + subject,
-  data = mfg_time_df,
-  whichRandom = "subject"
-)
-
-print(mfg_result)
-
-
-# Perform Bayesian ANOVA - Insula
-insula_result <- anovaBF(
-  formula = log_average_aac_conn ~ second_region + subject,
-  data = insula_time_df,
-  whichRandom = "subject"
-)
-
-print(insula_result)
-
-
+ggsave(path(here(), "figures", "connectivity", "fig3_theta_coherence_across_regions.png"), approach_coh_plot, width = 6.1, height = 8.5)
 
 ```
 
+
+
+```{r approach-table}
+
+approach_bayes_factor_df <- tibble(
+  Region = c("Amygdala", "Hippocampus", "OFC", "Ant. Cingulate", "MFG", "Insula"),
+  BF = c(extractBF(amyg_result)$bf,
+         extractBF(hc_result)$bf,
+         extractBF(ofc_result)$bf,
+         extractBF(acc_result)$bf,
+         extractBF(mfg_result)$bf,
+         extractBF(insula_result)$bf))
+
+approach_bayes_factor_df <- approach_bayes_factor_df %>%
+  mutate(BF = round(BF, 2)) %>%
+  mutate(BF_c = if_else(BF > 100, ">100", as.character(BF))) %>%
+  mutate(Interpretation = if_else(BF < 1/3, "Moderate evidence against an effect of partner region on outflow connectivity", 
+                                  if_else(BF > 10 & BF < 100, "Strong evidence for an effect of partner region on outflow connectivity", 
+                                          "Very strong evidence for an effect of partner region on outflow connectivity"))) %>%
+  select(-BF) %>%
+  rename(BF = BF_c)
+
+## OFC Approach
+ofc_app_table <- approach_bayes_factor_df %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("OFC Approach"))
+
+ofc_app_table
+
+gtsave(ofc_app_table, path(here(), "figures", "connectivity", "figure4_ofc_approach_table.png"))
+
+```
+
+### Avoidance
 
 ```{r avoid-differences}
 
@@ -554,7 +665,726 @@ print(insula_result)
 
 ```
 
+```{r avoidance-table}
 
+avoid_bayes_factor_df <- tibble(
+  Region = c("Amygdala", "Hippocampus", "OFC", "Ant. Cingulate", "MFG", "Insula"),
+  BF = c(extractBF(amyg_result)$bf,
+         extractBF(hc_result)$bf,
+         extractBF(ofc_result)$bf,
+         extractBF(acc_result)$bf,
+         extractBF(mfg_result)$bf,
+         extractBF(insula_result)$bf))
+
+avoid_bayes_factor_df <- avoid_bayes_factor_df %>%
+  mutate(BF = round(BF, 2)) %>%
+  mutate(BF_c = if_else(BF > 100, ">100", as.character(BF))) %>%
+  mutate(Interpretation = if_else(BF < 1/3, "Moderate evidence against an effect of partner region on outflow connectivity", 
+                                  if_else(BF < 1, "No evidence of an effect of partner region on outflow connectivity", 
+                                  if_else(BF > 10 & BF < 100, "Strong evidence an effect of partner region on outflow connectivity", 
+                                          "Very strong evidence for an effect of partner region on outflow connectivity")))) %>%
+  select(-BF) %>%
+  rename(BF = BF_c)
+
+## OFC avoid
+ofc_app_table <- avoid_bayes_factor_df %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("OFC avoid"))
+
+ofc_app_table
+
+gtsave(ofc_app_table, path(here(), "figures", "connectivity", "figure4_ofc_avoid_table.png"))
+
+```
+
+## Phase Lock Index
+
+### Approach
+
+```{r, fig.height= 6, fig.width=10}
+
+aac_conn_avg_df <- conn_clean_sig_elec_df %>%
+  filter(metric == "Phase Lag Index" & !grepl("SFG", roi_pair)) %>%
+  mutate(aac = if_else(time <= 0, "Approach", "Avoid")) %>%
+  group_by(aac, key) %>%
+  mutate(average_aac_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(subject, aac, pairs, first_pair, second_pair, roi_pair, first_region, second_region, average_aac_conn, key) %>%
+  distinct() %>%
+  mutate(log_average_aac_conn = log(average_aac_conn)) %>%
+  mutate(key = factor(key)) %>%
+  mutate(subject = factor(subject))  %>%
+  mutate(first_pair_key = factor(paste0(subject, "_", first_pair)))
+
+
+```
+
+
+```{r approach-differences}
+
+time_df <- aac_conn_avg_df %>%
+  filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(aac == "Approach")
+
+
+amyg_time_df <- time_df %>%
+  filter(first_region == "Amygdala") 
+
+hc_time_df <- time_df %>%
+  filter(first_region == "Hippocampus") 
+
+ofc_time_df <- time_df %>%
+  filter(first_region == "OFC") 
+
+insula_time_df <- time_df %>%
+  filter(first_region == "Insula") 
+
+mfg_time_df <- time_df %>%
+  filter(first_region == "MFG")
+
+acc_time_df <- time_df %>%
+  filter(first_region == "Ant. Cingulate")
+
+
+```
+
+
+```{r bayes-factors-app}
+
+
+# Perform Bayesian ANOVA - Amyg
+amyg_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = amyg_time_df,
+  whichRandom = "subject"
+)
+
+print(amyg_result)
+
+
+# Perform Bayesian ANOVA - OFC
+ofc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = ofc_time_df,
+  whichRandom = "subject"
+)
+
+print(ofc_result)
+
+# Perform Bayesian ANOVA - HC
+hc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = hc_time_df,
+  whichRandom = "subject"
+)
+print(hc_result)
+
+# Perform Bayesian ANOVA - ACC
+acc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = acc_time_df,
+  whichRandom = "subject"
+)
+
+print(acc_result)
+
+# Perform Bayesian ANOVA - MFG
+mfg_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = mfg_time_df,
+  whichRandom = "subject"
+)
+
+print(mfg_result)
+
+
+# Perform Bayesian ANOVA - Insula
+insula_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = insula_time_df,
+  whichRandom = "subject"
+)
+
+print(insula_result)
+```
+
+
+```{r approach-table}
+
+approach_bayes_factor_df <- tibble(
+  Region = c("Amygdala", "Hippocampus", "OFC", "Ant. Cingulate", "MFG", "Insula"),
+  BF = c(extractBF(amyg_result)$bf,
+         extractBF(hc_result)$bf,
+         extractBF(ofc_result)$bf,
+         extractBF(acc_result)$bf,
+         extractBF(mfg_result)$bf,
+         extractBF(insula_result)$bf))
+
+approach_bayes_factor_df <- approach_bayes_factor_df %>%
+  mutate(BF = round(BF, 2)) %>%
+  mutate(BF_c = if_else(BF > 100, ">100", as.character(BF))) %>%
+  mutate(Interpretation = if_else(BF < 1/3, "Moderate evidence against an effect of partner region on outflow connectivity", 
+                                  if_else(BF > 10 & BF < 100, "Strong evidence for an effect of partner region on outflow connectivity", 
+                                          "Very strong evidence an effect of partner region on outflow connectivity"))) %>%
+  select(-BF) %>%
+  rename(BF = BF_c)
+
+## OFC Approach
+ofc_app_table <- approach_bayes_factor_df %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("OFC Approach"))
+
+ofc_app_table
+
+gtsave(ofc_app_table, path(here(), "figures", "connectivity", "figure4_ofc_approach_table_plv.png"))
+
+```
+
+### Avoidance
+
+```{r avoid-differences}
+
+time_df <- aac_conn_avg_df %>%
+  filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(aac == "Avoid")
+
+
+amyg_time_df <- time_df %>%
+  filter(first_region == "Amygdala") 
+
+hc_time_df <- time_df %>%
+  filter(first_region == "Hippocampus") 
+
+ofc_time_df <- time_df %>%
+  filter(first_region == "OFC") 
+
+insula_time_df <- time_df %>%
+  filter(first_region == "Insula") 
+
+mfg_time_df <- time_df %>%
+  filter(first_region == "MFG")
+
+acc_time_df <- time_df %>%
+  filter(first_region == "Ant. Cingulate")
+
+```
+
+```{r bayes-avd}
+
+
+# Perform Bayesian ANOVA - Amyg
+amyg_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = amyg_time_df,
+  whichRandom = "subject"
+)
+
+print(amyg_result)
+
+
+# Perform Bayesian ANOVA - OFC
+ofc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = ofc_time_df,
+  whichRandom = "subject"
+)
+
+print(ofc_result)
+
+# Perform Bayesian ANOVA - HC
+hc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = hc_time_df,
+  whichRandom = "subject"
+)
+print(hc_result)
+
+# Perform Bayesian ANOVA - ACC
+acc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = acc_time_df,
+  whichRandom = "subject"
+)
+
+print(acc_result)
+
+# Perform Bayesian ANOVA - MFG
+mfg_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = mfg_time_df,
+  whichRandom = "subject"
+)
+
+print(mfg_result)
+
+
+# Perform Bayesian ANOVA - Insula
+insula_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = insula_time_df,
+  whichRandom = "subject"
+)
+
+print(insula_result)
+
+
+
+```
+
+```{r avoidance-table}
+
+avoid_bayes_factor_df <- tibble(
+  Region = c("Amygdala", "Hippocampus", "OFC", "Ant. Cingulate", "MFG", "Insula"),
+  BF = c(extractBF(amyg_result)$bf,
+         extractBF(hc_result)$bf,
+         extractBF(ofc_result)$bf,
+         extractBF(acc_result)$bf,
+         extractBF(mfg_result)$bf,
+         extractBF(insula_result)$bf))
+
+avoid_bayes_factor_df <- avoid_bayes_factor_df %>%
+  mutate(BF = round(BF, 2)) %>%
+  mutate(BF_c = if_else(BF > 100, ">100", as.character(BF))) %>%
+  mutate(Interpretation = if_else(BF < 1/3, "Moderate evidence against an effect of partner region on outflow connectivity", 
+                                  if_else(BF < 1, "No evidence of an effect of partner region on outflow connectivity", 
+                                  if_else(BF > 10 & BF < 100, "Strong evidence an effect of partner region on outflow connectivity", 
+                                          "Very strong evidence an effect of partner region on outflow connectivity")))) %>%
+  select(-BF) %>%
+  rename(BF = BF_c)
+
+## OFC avoid
+ofc_app_table <- avoid_bayes_factor_df %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("OFC avoid"))
+
+ofc_app_table
+
+gtsave(ofc_app_table, path(here(), "figures", "connectivity", "figure4_ofc_avoid_table_plv.png"))
+
+```
+
+
+## Pairwise Phase Consistency
+
+### Approach
+
+```{r, fig.height= 6, fig.width=10}
+
+aac_conn_avg_df <- conn_clean_sig_elec_df %>%
+  filter(metric == "Pairwise Phase Consistency" & !grepl("SFG", roi_pair)) %>%
+  mutate(aac = if_else(time <= 0, "Approach", "Avoid")) %>%
+  group_by(aac, key) %>%
+  mutate(average_aac_conn = mean(abs(connectivity))) %>%
+  ungroup() %>%
+  select(subject, aac, pairs, first_pair, second_pair, roi_pair, first_region, second_region, average_aac_conn, key) %>%
+  distinct() %>%
+  mutate(log_average_aac_conn = log(average_aac_conn)) %>%
+  mutate(key = factor(key)) %>%
+  mutate(subject = factor(subject)) %>%
+  mutate(first_pair_key = factor(paste0(subject, "_", first_pair)))
+
+
+```
+
+
+```{r approach-differences}
+
+time_df <- aac_conn_avg_df %>%
+  filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(aac == "Approach")
+
+
+amyg_time_df <- time_df %>%
+  filter(first_region == "Amygdala") 
+
+hc_time_df <- time_df %>%
+  filter(first_region == "Hippocampus") 
+
+ofc_time_df <- time_df %>%
+  filter(first_region == "OFC") 
+
+insula_time_df <- time_df %>%
+  filter(first_region == "Insula") 
+
+mfg_time_df <- time_df %>%
+  filter(first_region == "MFG")
+
+acc_time_df <- time_df %>%
+  filter(first_region == "Ant. Cingulate")
+
+
+```
+
+
+
+```{r bayes-factors-app}
+
+
+# Perform Bayesian ANOVA - Amyg
+amyg_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = amyg_time_df,
+  whichRandom = "subject"
+)
+
+print(amyg_result)
+
+
+# Perform Bayesian ANOVA - OFC
+ofc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = ofc_time_df,
+  whichRandom = "subject"
+)
+
+print(ofc_result)
+
+# Perform Bayesian ANOVA - HC
+hc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = hc_time_df,
+  whichRandom = "subject"
+)
+print(hc_result)
+
+# Perform Bayesian ANOVA - ACC
+acc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = acc_time_df,
+  whichRandom = "subject"
+)
+
+print(acc_result)
+
+# Perform Bayesian ANOVA - MFG
+mfg_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = mfg_time_df,
+  whichRandom = "subject"
+)
+
+print(mfg_result)
+
+
+# Perform Bayesian ANOVA - Insula
+insula_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = insula_time_df,
+  whichRandom = "subject"
+)
+
+print(insula_result)
+```
+
+
+```{r approach-table}
+
+approach_bayes_factor_df <- tibble(
+  Region = c("Amygdala", "Hippocampus", "OFC", "Ant. Cingulate", "MFG", "Insula"),
+  BF = c(extractBF(amyg_result)$bf,
+         extractBF(hc_result)$bf,
+         extractBF(ofc_result)$bf,
+         extractBF(acc_result)$bf,
+         extractBF(mfg_result)$bf,
+         extractBF(insula_result)$bf))
+
+approach_bayes_factor_df <- approach_bayes_factor_df %>%
+  mutate(BF = round(BF, 2)) %>%
+  mutate(BF_c = if_else(BF > 100, ">100", as.character(BF))) %>%
+  mutate(Interpretation = if_else(BF < 1/3, "Moderate evidence against an effect of partner region on outflow connectivity", 
+                                  if_else(BF > 10 & BF < 100, "Strong evidence for an effect of partner region on outflow connectivity", 
+                                          "Very strong evidence an effect of partner region on outflow connectivity"))) %>%
+  select(-BF) %>%
+  rename(BF = BF_c)
+
+## OFC Approach
+ofc_app_table <- approach_bayes_factor_df %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("OFC Approach"))
+
+ofc_app_table
+
+gtsave(ofc_app_table, path(here(), "figures", "connectivity", "figure4_ofc_approach_table_ppc.png"))
+
+```
+```{r}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+null_priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(exponential(1), class = "sd")                 # Prior for random effects standard deviations
+)
+
+ofc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = ofc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+# Null model without 'second_region'
+ofc_null_model <- brm(
+  formula = log(average_aac_conn) ~ 1 + (1 | subject/first_pair_key),
+  data = ofc_time_df,
+  family = gaussian(),
+  prior = null_priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+# Compute LOO for both models
+loo_full <- loo(ofc_model)
+loo_null <- loo(ofc_null_model)
+
+# Compare models
+loo_compare(loo_full, loo_null)
+
+
+summary(ofc_model)
+```
+
+
+### Avoidance
+
+```{r avoid-differences}
+
+time_df <- aac_conn_avg_df %>%
+  filter(second_region != "SFG" & first_region != "SFG" & first_region != second_region)  %>%
+  filter(aac == "Avoid") 
+
+
+amyg_time_df <- time_df %>%
+  filter(first_region == "Amygdala") 
+
+hc_time_df <- time_df %>%
+  filter(first_region == "Hippocampus") 
+
+ofc_time_df <- time_df %>%
+  filter(first_region == "OFC") 
+
+insula_time_df <- time_df %>%
+  filter(first_region == "Insula") 
+
+mfg_time_df <- time_df %>%
+  filter(first_region == "MFG")
+
+acc_time_df <- time_df %>%
+  filter(first_region == "Ant. Cingulate")
+
+```
+
+
+
+
+```{r bayes-avd}
+
+
+# Perform Bayesian ANOVA - Amyg
+amyg_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = amyg_time_df,
+  whichRandom = "subject"
+)
+
+print(amyg_result)
+
+
+# Perform Bayesian ANOVA - OFC
+ofc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = ofc_time_df,
+  whichRandom = "subject"
+)
+
+print(ofc_result)
+
+# Perform Bayesian ANOVA - HC
+hc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = hc_time_df,
+  whichRandom = "subject"
+)
+print(hc_result)
+
+# Perform Bayesian ANOVA - ACC
+acc_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = acc_time_df,
+  whichRandom = "subject"
+)
+
+print(acc_result)
+
+# Perform Bayesian ANOVA - MFG
+mfg_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = mfg_time_df,
+  whichRandom = "subject"
+)
+
+print(mfg_result)
+
+
+# Perform Bayesian ANOVA - Insula
+insula_result <- anovaBF(
+  formula = log_average_aac_conn ~ second_region + subject,
+  data = insula_time_df,
+  whichRandom = "subject"
+)
+
+print(insula_result)
+
+
+
+```
+
+```{r avoidance-table}
+
+avoid_bayes_factor_df <- tibble(
+  Region = c("Amygdala", "Hippocampus", "OFC", "Ant. Cingulate", "MFG", "Insula"),
+  BF = c(extractBF(amyg_result)$bf,
+         extractBF(hc_result)$bf,
+         extractBF(ofc_result)$bf,
+         extractBF(acc_result)$bf,
+         extractBF(mfg_result)$bf,
+         extractBF(insula_result)$bf))
+
+avoid_bayes_factor_df <- avoid_bayes_factor_df %>%
+  mutate(BF = round(BF, 2)) %>%
+  mutate(BF_c = if_else(BF > 100, ">100", as.character(BF))) %>%
+  mutate(Interpretation = if_else(BF < 1/3, "Moderate evidence against an effect of partner region on outflow connectivity", 
+                                  if_else(BF < 1, "No evidence of an effect of partner region on outflow connectivity", 
+                                  if_else(BF > 10 & BF < 100, "Strong evidence an effect of partner region on outflow connectivity", 
+                                          "Very strong evidence an effect of partner region on outflow connectivity")))) %>%
+  select(-BF) %>%
+  rename(BF = BF_c)
+
+## OFC avoid
+ofc_app_table <- avoid_bayes_factor_df %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("OFC avoid"))
+
+ofc_app_table
+
+gtsave(ofc_app_table, path(here(), "figures", "connectivity", "figure4_ofc_avoid_table_ppc.png"))
+
+```
+```{r}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+null_priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(exponential(1), class = "sd")                 # Prior for random effects standard deviations
+)
+
+ofc_model <- brm(
+  formula = log(average_aac_conn) ~ second_region + (1 + second_region|subject/first_pair_key),
+  data = ofc_time_df,
+  family = gaussian(),
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+# Null model without 'second_region'
+ofc_null_model <- brm(
+  formula = log(average_aac_conn) ~ 1 + (1 | subject/first_pair_key),
+  data = ofc_time_df,
+  family = gaussian(),
+  prior = null_priors,
+  chains = 4,
+  iter = 4000,
+  warmup = 1000,
+  cores = 4,
+  seed = 123
+)
+
+# Compute LOO for both models
+loo_full <- loo(ofc_model)
+loo_null <- loo(ofc_null_model)
+
+# Compare models
+loo_compare(loo_full, loo_null)
+
+
+summary(ofc_model)
+```
 
 
 ```{r connectivity-figs-sfn, fig.height= 6, fig.width=10}
@@ -603,11 +1433,11 @@ ofc_plot <- imcoh_clean_sig_average_df %>%
 # save #
 ggsave(path(here(), "figures", "connectivity", "ofc_outflow_sfn_2024_plot.png"), 
        plot = ofc_plot, 
-       width = 8.5, height = 4, units = "in", dpi = 300)
+       width = 6, height = 4, units = "in", dpi = 300)
 
 # save #
 ggsave(path(here(), "figures", "connectivity", "amyg_outflow_sfn_2024_plot.png"), 
        plot = amyg_plot, 
-       width = 8.5, height = 4, units = "in", dpi = 300)
+       width = 6, height = 4, units = "in", dpi = 300)
 
 ```

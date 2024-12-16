@@ -1,0 +1,543 @@
+---
+title: "Differential Connectivity Tables"
+output: html_document
+date: "2024-12-04"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(tidybayes)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(ggforce)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+# Functions
+
+
+```{r function-to-get-samples}
+
+compute_difference_samples <- function(region1, region2, cur_regions, posterior_samples) {
+  # Helper function to get coefficient name
+  get_coef_name <- function(region) {
+    if (region == "MFG" | (region == "OFC" & !any(grepl("MFG", cur_regions))))   {
+      return("b_Intercept")
+    } else {
+      return(paste0("b_second_region", region))
+    }
+  }
+  
+  coef1_name <- get_coef_name(region1)
+  coef2_name <- get_coef_name(region2)
+  
+  # Extract samples with chain and iteration information
+  coef1_samples <- if (coef1_name == "b_Intercept") {
+    posterior_samples[, , "b_Intercept"]
+  } else {
+    posterior_samples[, , coef1_name]
+  }
+  
+  coef2_samples <- if (coef2_name == "b_Intercept") {
+    posterior_samples[, , "b_Intercept"]
+  } else {
+    posterior_samples[, , coef2_name]
+  }
+  
+  # For the intercept (reference level), set coefficients to zero
+  if (coef1_name == "b_Intercept") coef1_samples <- coef1_samples * 0
+  if (coef2_name == "b_Intercept") coef2_samples <- coef2_samples * 0
+  
+  # Compute difference
+  difference_samples <- coef1_samples - coef2_samples
+  
+  return(difference_samples)
+}
+
+
+
+caclulate_results <- function(cur_model, cur_regions){
+  library(posterior)  # Load the posterior package
+  
+  # Extract posterior samples as a draws_array
+  posterior_samples <- as_draws_array(cur_model)
+  
+  # Create all possible pairs of regions
+  region_pairs <- expand.grid(Region1 = cur_regions, Region2 = cur_regions) %>%
+    filter(Region1 != Region2)
+  
+  # Remove duplicate pairs (e.g., keep only (A, B), not (B, A))
+  region_pairs <- region_pairs %>%
+    mutate(Pair = pmap_chr(list(Region1, Region2), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
+    distinct(Pair, .keep_all = TRUE) %>%
+    select(-Pair)
+  
+  # Compute intercept mean
+  intercept <- mean(as_draws_df(posterior_samples)$b_Intercept)
+  
+  # Initialize results data frame
+  results <- data.frame(
+    Region1 = character(),
+    Region2 = character(),
+    Mean = numeric(),
+    Std_Err = numeric(),
+    Rhat = numeric(),
+    Bulk_ESS = numeric(),
+    Tail_ESS = numeric(),
+    ci_lower = numeric(),
+    ci_upper = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in 1:nrow(region_pairs)) {
+    region1 <- region_pairs$Region1[i]
+    region2 <- region_pairs$Region2[i]
+    
+    # Compute difference samples (retaining chain info)
+    difference_samples <- compute_difference_samples(region1, region2, cur_regions, posterior_samples)
+    
+    # Convert difference_samples to draws_array
+    difference_draws <- as_draws_array(difference_samples)
+    
+    # Compute mean
+    mean_diff <- mean(difference_draws)
+    
+    # Compute standard error (standard deviation)
+    std_err <- sd(difference_draws)
+    
+    # Compute credible intervals
+    ci <- quantile(difference_draws, probs = c(0.025, 0.975))
+    ci_low <- ci[1]
+    ci_up <- ci[2]
+    
+    # Compute Rhat, Bulk ESS, Tail ESS
+    rhat_diff <- rhat(difference_draws)
+    ess_bulk_diff <- ess_bulk(difference_draws)
+    ess_tail_diff <- ess_tail(difference_draws)
+    
+    # Add to results
+    results <- rbind(results, data.frame(
+      Region1 = region1,
+      Region2 = region2,
+      Mean = mean_diff,
+      Std_Err = std_err,
+      Rhat = rhat_diff,
+      Bulk_ESS = ess_bulk_diff,
+      Tail_ESS = ess_tail_diff,
+      ci_lower = ci_low,
+      ci_upper = ci_up,
+      stringsAsFactors = FALSE
+    ))
+  }
+  return(results)
+}
+
+
+```
+
+
+```{r table-functions}
+
+clean_result_table <- function(df){
+  
+  df_clean <- df %>%
+  distinct() %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper)) %>%
+  mutate_if(is.double, function(x) round(x, 2)) %>% 
+  select(Region1, Region2, Metric, Mean, ci_lower, ci_upper, Std_Err, Rhat, Bulk_ESS, Tail_ESS) %>%
+  arrange(desc(Region1), desc(Region2)) %>%
+  rename("Region 1" = Region1, "Region 2" = Region2, "Mean" = Mean, "Est.Error" = Std_Err, "l-95% CI" = ci_lower, "u-95% CI" = ci_upper) 
+  
+  
+  return(df_clean)
+  
+}
+
+create_region_gt <- function(df, roi){
+  
+  table <- df %>%
+  group_by(`Region 1`, `Region 2`) %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(5)
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_row_groups()
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"),
+    locations = cells_body(
+      columns = vars(Metric))
+  ) %>%
+  tab_header(title = md(paste0("**", roi, " Coherence**")))
+  
+  gtsave(table, path(here(), "figures", "connectivity", paste0("supplemental_table_", roi, "_coherence_table.png")))
+             
+  return(table)           
+  
+}
+
+create_subject_gt <- function(ppc_model, pli_model, imcoh_model, roi) {
+
+  rand_eff_sub <- bind_rows(summary(ppc_model)$random$subject %>% mutate(Metric = "PPC"),
+                            summary(pli_model)$random$subject %>% mutate(Metric = "PLI"),
+                            summary(imcoh_model)$random$subject %>% mutate(Metric = "IMCOH"))
+  
+  # clean var names
+  rand_eff_sub_clean <- rand_eff_sub %>%
+    mutate(variable = gsub("\\.\\.\\..*", "", gsub("second_region", "", rownames(rand_eff_sub)))) %>%
+    select(variable, Metric, colnames(rand_eff_sub)) %>%
+    remove_rownames()
+  
+  ## Random effects of subject Table 
+  rand_eff_sub_table <- rand_eff_sub_clean %>%
+    mutate_if(is.double, ~round(., 2)) %>%
+    group_by(variable) %>%
+    gt() %>%
+    tab_options(
+      table.font.names = "Gill Sans",
+      table.font.size = px(12),
+      data_row.padding = px(4)
+    ) %>%
+    tab_style(
+      style = cell_text(style = "italic"), # Apply italics to the first column
+      locations = cells_body(columns = 1)  # Apply only to the first column
+    ) %>%
+    tab_header(title = md("**Random effect of subject (20 levels)**"))
+  
+  
+  gtsave(rand_eff_sub_table, path(here(), "figures", "connectivity", paste0("supplemental_table_", roi, "_ran_eff_sub_table.png")))
+  
+  return(rand_eff_sub_table)
+  
+}
+
+
+create_posterior_pred_df <- function(model){
+
+  # create posterior check
+  y_true <- model$data$`log(average_aac_conn)`
+  y_rep <- posterior_predict(model, ndraws = 100)
+  
+  # Compute observed statistics
+  mean_obs <- mean(y_true)
+  sd_obs <- sd(y_true)
+  
+  # Compute replicated statistics
+  mean_rep <- apply(y_rep, 1, mean)
+  sd_rep <- apply(y_rep, 1, sd)
+  
+  # Compute posterior predictive summaries for mean
+  mean_rep_mean <- mean(mean_rep)
+  mean_rep_CI <- quantile(mean_rep, probs = c(0.025, 0.975))
+  ppp_value_mean <- mean(mean_rep >= mean_obs)
+  
+  # Compute posterior predictive summaries for standard deviation
+  sd_rep_mean <- mean(sd_rep)
+  sd_rep_CI <- quantile(sd_rep, probs = c(0.025, 0.975))
+  ppp_value_sd <- mean(sd_rep >= sd_obs)
+  
+  # Create a data frame for the table
+  table_rows <- data_frame(
+    Statistic = c("Mean", "Standard Deviation"),
+    `Observed Value` = c(mean_obs, sd_obs),
+    `Posterior Predictive Mean` = c(mean_rep_mean, sd_rep_mean),
+    `Credible Interval` = c(
+      paste0("[", round(mean_rep_CI[1], 3), ", ", round(mean_rep_CI[2], 3), "]"),
+      paste0("[", round(sd_rep_CI[1], 3), ", ", round(sd_rep_CI[2], 3), "]")
+    ),
+    `Posterior Predictive p value` = c(round(ppp_value_mean, 3), round(ppp_value_sd, 3))
+  )
+  
+  
+  return(table_rows)
+
+}
+
+create_posterior_pred_table <- function(df, roi){
+
+  clean_ppc_table <- df %>%
+    group_by(Metric) %>%
+    gt() %>%
+    tab_options(
+      table.font.names = "Gill Sans",
+      table.font.size = px(12),
+      data_row.padding = px(4)
+    ) %>%
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_row_groups()
+    ) %>%
+    tab_style(
+      style = cell_text(style = "italic"), # Apply italics to the first column
+      locations = cells_body(columns = 1)  # Apply only to the first column
+    ) %>%
+    tab_header(title = md(paste0("**Posterior Predictive Check: ", roi, "**")))
+  
+  gtsave(clean_ppc_table, path(here(), "figures", "connectivity", paste0("supplemental_table_", roi, "_ppc_table.png")))
+  
+  return(clean_ppc_table)
+  
+}
+
+
+```
+
+
+
+```{r load-results}
+
+# PPC
+
+# load data
+load(file = path(here(), "results", "imcoh_app_amyg_ppc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_ofc_ppc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_hc_ppc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_acc_ppc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_mfg_ppc_second_roi_model.RData"))
+
+# rename models
+amyg_ppc_model <- amyg_model
+ofc_ppc_model <- ofc_model
+hc_ppc_model <- hc_model
+acc_ppc_model <- acc_model
+mfg_ppc_model <- mfg_model
+
+# PLI
+# load data
+load(file = path(here(), "results", "imcoh_app_amyg_pli_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_ofc_pli_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_hc_pli_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_acc_pli_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_mfg_pli_second_roi_model.RData"))
+
+
+# rename models
+amyg_pli_model <- amyg_model
+ofc_pli_model <- ofc_model
+hc_pli_model <- hc_model
+acc_pli_model <- acc_model
+mfg_pli_model <- mfg_model
+
+
+# IMCOH
+# load data
+load(file = path(here(), "results", "imcoh_app_amyg_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_ofc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_hc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_acc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_mfg_second_roi_model.RData"))
+
+# rename models
+amyg_imcoh_model <- amyg_model
+ofc_imcoh_model <- ofc_model
+hc_imcoh_model <- hc_model
+acc_imcoh_model <- acc_model
+mfg_imcoh_model <- mfg_model
+
+
+```
+
+```{r create-results-dfs}
+
+## pli
+amyg_ppc_results <- caclulate_results(amyg_ppc_model,  c('MFG', 'OFC', 'Ant.Cingulate', 'Hippocampus'))
+hc_ppc_results <- caclulate_results(hc_ppc_model,  c('MFG', "Amygdala", 'OFC', 'Ant.Cingulate'))
+ofc_ppc_results <- caclulate_results(ofc_ppc_model,  c('MFG', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+acc_ppc_results <- caclulate_results(acc_ppc_model,  c('MFG', "Amygdala", 'OFC',  'Hippocampus'))
+mfg_ppc_results <- caclulate_results(mfg_ppc_model,  c('OFC', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+
+## pli
+amyg_pli_results <- caclulate_results(amyg_pli_model,  c('MFG', 'OFC', 'Ant.Cingulate', 'Hippocampus'))
+hc_pli_results <- caclulate_results(hc_pli_model,  c('MFG', "Amygdala", 'OFC', 'Ant.Cingulate'))
+ofc_pli_results <- caclulate_results(ofc_pli_model,  c('MFG', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+acc_pli_results <- caclulate_results(acc_pli_model,  c('MFG', "Amygdala", 'OFC',  'Hippocampus'))
+mfg_pli_results <- caclulate_results(mfg_pli_model,  c('OFC', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+
+## imcoh
+amyg_imcoh_results <- caclulate_results(amyg_imcoh_model,  c('MFG', 'OFC', 'Ant.Cingulate', 'Hippocampus'))
+hc_imcoh_results <- caclulate_results(hc_imcoh_model,  c('MFG', "Amygdala", 'OFC', 'Ant.Cingulate'))
+ofc_imcoh_results <- caclulate_results(ofc_imcoh_model,  c('MFG', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+acc_imcoh_results <- caclulate_results(acc_imcoh_model,  c('MFG', "Amygdala", 'OFC',  'Hippocampus'))
+mfg_imcoh_results <- caclulate_results(mfg_imcoh_model,  c('OFC', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
+
+```
+
+
+```{r concatenate-by-region}
+
+# amygdala
+amyg_results <- bind_rows(amyg_ppc_results %>% mutate(Metric = "PPC"),
+                          amyg_pli_results %>% mutate(Metric = "PLI"),
+                          amyg_imcoh_results %>% mutate(Metric = "IMCOH"))
+
+# hippocampus
+hc_results <- bind_rows(hc_ppc_results %>% mutate(Metric = "PPC"),
+                        hc_pli_results %>% mutate(Metric = "PLI"),
+                        hc_imcoh_results %>% mutate(Metric = "IMCOH"))
+
+# ofc
+ofc_results <- bind_rows(ofc_ppc_results %>% mutate(Metric = "PPC"),
+                         ofc_pli_results %>% mutate(Metric = "PLI"),
+                         ofc_imcoh_results %>% mutate(Metric = "IMCOH"))
+
+# acc
+acc_results <- bind_rows(acc_ppc_results %>% mutate(Metric = "PPC"),
+                         acc_pli_results %>% mutate(Metric = "PLI"),
+                         acc_imcoh_results %>% mutate(Metric = "IMCOH"))
+
+# mfg
+mfg_results <- bind_rows(mfg_ppc_results %>% mutate(Metric = "PPC"),
+                         mfg_pli_results %>% mutate(Metric = "PLI"),
+                         mfg_imcoh_results %>% mutate(Metric = "IMCOH"))
+
+
+
+```
+
+```{r clean-result-tables}
+
+# clean results for tables
+hc_summary_df <- clean_result_table(hc_results)
+amyg_summary_df <- clean_result_table(amyg_results)
+ofc_summary_df <- clean_result_table(ofc_results)
+acc_summary_df <- clean_result_table(acc_results)
+mfg_summary_df <- clean_result_table(mfg_results)
+
+```
+
+
+```{r create-roi-tables}
+
+amyg_table <- create_region_gt(amyg_summary_df, "Amygdala")
+hc_table <- create_region_gt(hc_summary_df, "Hippocampus")
+ofc_table <- create_region_gt(ofc_summary_df, "OFC")
+acc_table <- create_region_gt(acc_summary_df, "ACC")
+mfg_table <- create_region_gt(mfg_summary_df, "MFG")
+  
+```
+
+
+```{r create-random-eff-tables-for-each-region}
+
+create_subject_gt(amyg_ppc_model,  amyg_pli_model, amyg_imcoh_model, "amyg")
+create_subject_gt(hc_ppc_model,  hc_pli_model, hc_imcoh_model, "hc")
+create_subject_gt(ofc_ppc_model,  ofc_pli_model, ofc_imcoh_model, "ofc")
+create_subject_gt(acc_ppc_model,  acc_pli_model, acc_imcoh_model, "acc")
+create_subject_gt(mfg_ppc_model,  mfg_pli_model, mfg_imcoh_model, "mfg")
+
+
+```
+
+
+```{r create-poster-pred-table}
+
+# Create ppc tables
+amyg_poster_pred_df <- bind_rows(create_posterior_pred_df(amyg_ppc_model) %>% mutate(Metric = "PPC"),
+                                 create_posterior_pred_df(amyg_pli_model) %>% mutate(Metric = "PLI"),
+                                 create_posterior_pred_df(amyg_imcoh_model) %>% mutate(Metric = "IMCOH"))
+
+hc_poster_pred_df <- bind_rows(create_posterior_pred_df(hc_ppc_model) %>% mutate(Metric = "PPC"),
+                               create_posterior_pred_df(hc_pli_model) %>% mutate(Metric = "PLI"),
+                               create_posterior_pred_df(hc_imcoh_model) %>% mutate(Metric = "IMCOH"))
+
+ofc_poster_pred_df <- bind_rows(create_posterior_pred_df(ofc_ppc_model) %>% mutate(Metric = "PPC"),
+                                create_posterior_pred_df(ofc_pli_model) %>% mutate(Metric = "PLI"),
+                                create_posterior_pred_df(ofc_imcoh_model) %>% mutate(Metric = "IMCOH"))
+
+acc_poster_pred_df <- bind_rows(create_posterior_pred_df(acc_ppc_model) %>% mutate(Metric = "PPC"),
+                                create_posterior_pred_df(acc_pli_model) %>% mutate(Metric = "PLI"),
+                                create_posterior_pred_df(acc_imcoh_model) %>% mutate(Metric = "IMCOH"))
+
+mfg_poster_pred_df <- bind_rows(create_posterior_pred_df(mfg_ppc_model) %>% mutate(Metric = "PPC"),
+                                create_posterior_pred_df(mfg_pli_model) %>% mutate(Metric = "PLI"),
+                                create_posterior_pred_df(mfg_imcoh_model) %>% mutate(Metric = "IMCOH"))
+
+# plot tables
+create_posterior_pred_table(amyg_poster_pred_df, "Amygdala")
+create_posterior_pred_table(hc_poster_pred_df, "Hippocampus")
+create_posterior_pred_table(ofc_poster_pred_df, "OFC")
+create_posterior_pred_table(acc_poster_pred_df, "ACC")
+create_posterior_pred_table(mfg_poster_pred_df, "MFG")
+
+
+
+````
+
+
+
+

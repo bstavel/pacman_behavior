@@ -1,0 +1,239 @@
+---
+title: "right_left_mfg"
+output: html_document
+date: "2024-10-30"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194",  "MFG" = "#FB6087")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+```{r load-data}
+
+## HFA ##
+dlpfc_hfa_data <- read_csv( path(here(), "munge", "hfa_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
+
+# separate dlpfc into sfg and mfg
+dlpfc_hfa_data <- dlpfc_hfa_data %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+dlpfc_hfa_data <- separate_mfg_sfg(dlpfc_hfa_data)
+sfg_hfa_data <- dlpfc_hfa_data %>% filter(sfg == 1) %>% select(-sfg, -mfg)
+mfg_hfa_data <- dlpfc_hfa_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
+
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+all_subs_ng_dist <- read_csv(path(here(), "munge", "all_subs_noghost_complete_distance_df.csv"))
+
+
+# add ITI to behavioral df
+behavior_iti_df <- all_subs_g_dist %>% 
+  select(subject, trial_numeric, trial_time) %>%
+  filter(trial_time < 1) %>%
+  mutate(trial_time = round(trial_time - 1, 2))
+
+all_subs_dist <- full_join(all_subs_g_dist, behavior_iti_df)
+
+
+```
+
+
+```{r}
+
+# load MNI data
+mni_data <- read_csv(path(here(), "munge", "mni_coordinates_all_subs.csv"))
+
+# create left/right pairs
+leftright_data <- mni_data %>%
+  mutate(left_right = if_else(X <= 0, "Left", "Right")) %>%
+  select(subject, left_right, Electrode)
+
+
+```
+
+
+```{r merge-ieeg-hfa-data-behave-data}
+
+mfg_hfa_clean_data <- mfg_hfa_data %>%
+  mutate(freq = "hfa") %>%
+  mutate(region = "MFG") %>%
+  rename(power = theta) %>%
+  mutate(electrode = gsub("_.*", "", electrode)) %>%
+  mutate(first_elec = gsub("-.*", "", electrode)) %>%
+  mutate(second_elec = gsub(".*-", "", electrode))  %>% 
+  mutate(trial_time = trial_time - 3)  %>%
+  filter(trial_time >= -1)
+
+
+# merge with anatomy
+mfg_hfa_clean_data <- left_join(mfg_hfa_clean_data, leftright_data, by = c("subject" = "subject", "first_elec" = "Electrode"))
+
+# bind with behavioral data #
+mfg_hfa_behave_df <- inner_join(all_subs_dist %>% select(-move_step) %>% mutate(trial_time = round(trial_time, 2)), 
+                               mfg_hfa_clean_data %>% mutate(trial_time = round(trial_time, 2)))
+
+
+
+```
+
+
+```{r read-in-attack-tables}
+
+## load and compile attack tables ##
+for(sub in unique(all_subs_dist$subject)){
+  
+  tmp <- read_csv(path(here(), "data", "ieeg_behave", paste0(sub, "_attack_events.csv")))
+  tmp <- tmp %>%
+    mutate(subject = sub)
+  
+  if(exists("attack_events")){
+    attack_events <- bind_rows(attack_events, tmp)
+  } else {
+    attack_events <- tmp
+  }
+  
+}
+
+## modify to get trials of interest ##
+attack_events <- attack_events %>%
+  mutate(trial_numeric = neural_trial_numeric + 1) %>%
+  mutate(attacks_ids = paste0(subject, "_", trial_numeric))
+
+
+```
+
+
+```{r shift-to-attack}
+
+# merge attack df
+mfg_attack_hfa_df <- left_join(mfg_hfa_behave_df, attack_events %>% rename(attack_begin = event) %>% select(subject, trial_numeric, sample, attack_begin))
+mfg_attack_hfa_df <- mfg_attack_hfa_df %>%
+  mutate(attack_begin = if_else(is.na(attack_begin), 0, 1)) %>%
+  group_by(subject, trial_numeric) %>%
+  mutate(attacked = if_else(sum(attack_begin) != 0, 1, 0)) %>%
+  ungroup()
+
+# shift to center around turnaround  #
+hfa_end_centered_df <- mfg_attack_hfa_df %>%
+  filter(attacked == 1) %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  # prep electrode variables
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  # shift the time so that time 0 is the start of trial end
+  group_by(elec_id, trial_numeric, subject, freq, region) %>%
+  mutate(attack_time = if_else(attack_begin == 1, trial_time, -999)) %>%
+  mutate(attack_time = max(attack_time)) %>%
+  filter(attack_time > 0) %>%
+  mutate(time = trial_time - attack_time) %>%
+  ungroup() 
+
+
+```
+
+
+```{r mfg-avg, fig.width = 10, fig.height = 6}
+
+
+mfg_hfa_avg_df <- hfa_end_centered_df %>%
+  mutate(time = round(time, 2)) %>%
+  filter(time >= -1 & time <= 4) %>%
+  # Calculate mean power per electrode
+  group_by(subject, left_right, time, elec_id) %>%
+  summarise(elec_power = mean(power), .groups = 'drop') %>%
+  # Calculate mean power per subject
+  group_by(subject, left_right, time) %>%
+  summarise(sub_power = mean(elec_power), .groups = 'drop') %>%
+  # Calculate mean power per region and compute SEM
+  group_by(left_right, time) %>%
+  summarise(
+    all_power = mean(sub_power, na.rm = TRUE),
+    n = n(),
+    sd_sub_power = sd(sub_power, na.rm = TRUE),
+    lower_sem = all_power - sd_sub_power / sqrt(n),
+    upper_sem = all_power + sd_sub_power / sqrt(n),
+    .groups = 'drop'
+  )
+  
+
+lr_mfg_plot <- mfg_hfa_avg_df %>% 
+  filter(time >= -.2 & time <= 2) %>%
+  ggplot(aes(x = time, y = all_power, fill = left_right)) +
+  # geom_point() +
+  geom_line(aes(color = left_right)) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+    theme(panel.background = element_rect(fill = "white"), 
+          legend.position = "top",
+          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
+          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
+          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20, face = 'bold')) + 
+  scale_color_manual(values = c("darkgrey", "#FB6087")) +
+  scale_fill_manual(values = c("darkgrey", "#FB6087")) +
+  labs(title = "MFG HFA Power During Ghost Attack",
+       subtitle = "Centered on Attack",
+       fill = "Hemisphere",
+       color = "Hemisphere",
+       x = "Time (s)",
+       y = "Power (z)") 
+
+
+ggsave(path(here(), "figures", "attack", "figure6_ghost_attack_lr_mfg_plot.png"), 
+       plot = lr_mfg_plot, 
+       width = 10, height = 6, units = "in", dpi = 300)
+
+```
+
+
+
+
+

@@ -1,0 +1,354 @@
+---
+title: "Create Supp Turn Time Tables"
+output: html_document
+date: "2024-12-12"
+---
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(brms)
+library(RColorBrewer)
+library(broom.mixed)
+library(gt)
+library(bayestestR)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+```{r load-model-results}
+
+# load theta model #
+load(path(here(), "results", "full_all_roi_model_brms_newsubs_noinsula.RData"))
+theta_model <- model
+
+# load theta model #
+load(path(here(), "results", "full_hfa_all_roi_model_brms_newsubs.RData"))
+hfa_model <- model
+
+```
+
+
+```{r table-ppc-functions}
+
+create_posterior_pred_df <- function(model){
+
+  # create posterior check
+  y_true <- model$data$scale_correlation
+  y_rep <- posterior_predict(model, ndraws = 100)
+  
+  # Compute observed statistics
+  mean_obs <- mean(y_true)
+  sd_obs <- sd(y_true)
+  
+  # Compute replicated statistics
+  mean_rep <- apply(y_rep, 1, mean)
+  sd_rep <- apply(y_rep, 1, sd)
+  
+  # Compute posterior predictive summaries for mean
+  mean_rep_mean <- mean(mean_rep)
+  mean_rep_CI <- quantile(mean_rep, probs = c(0.025, 0.975))
+  ppp_value_mean <- mean(mean_rep >= mean_obs)
+  
+  # Compute posterior predictive summaries for standard deviation
+  sd_rep_mean <- mean(sd_rep)
+  sd_rep_CI <- quantile(sd_rep, probs = c(0.025, 0.975))
+  ppp_value_sd <- mean(sd_rep >= sd_obs)
+  
+  # Create a data frame for the table
+  table_rows <- data_frame(
+    Statistic = c("Mean", "Standard Deviation"),
+    `Observed Value` = c(mean_obs, sd_obs),
+    `Posterior Predictive Mean` = c(mean_rep_mean, sd_rep_mean),
+    `Credible Interval` = c(
+      paste0("[", round(mean_rep_CI[1], 3), ", ", round(mean_rep_CI[2], 3), "]"),
+      paste0("[", round(sd_rep_CI[1], 3), ", ", round(sd_rep_CI[2], 3), "]")
+    ),
+    `Posterior Predictive p value` = c(round(ppp_value_mean, 3), round(ppp_value_sd, 3))
+  )
+  
+  
+  return(table_rows)
+
+}
+
+create_posterior_pred_table <- function(df){
+
+  clean_ppc_table <- df %>%
+    mutate(`Observed Value` = round(`Observed Value`, 2),
+           `Posterior Predictive Mean` = round(`Posterior Predictive Mean`, 2)) %>%
+    group_by(freq) %>%
+    gt() %>%
+    tab_options(
+      table.font.names = "Gill Sans",
+      table.font.size = px(12),
+      data_row.padding = px(4)
+    ) %>%
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_row_groups()
+    ) %>%
+    tab_style(
+      style = cell_text(style = "italic"), # Apply italics to the first column
+      locations = cells_body(columns = 1)  # Apply only to the first column
+    ) %>%
+    tab_header(title = md(paste0("**Posterior Predictive Check: Synchrony ~ Approach Time**")))
+  
+  gtsave(clean_ppc_table, path(here(), "figures", "correl_turn_predictions", paste0("supplemental_table_turn_time_ppc_table.png")))
+  
+  return(clean_ppc_table)
+  
+}
+
+
+```
+
+## Theta Specific Tables
+
+```{r random-effects-tables, fig.width. = 10, fig.height = 10}
+
+rand_eff_sub <- summary(theta_model)$random$subject
+rand_eff_elec_pair <- summary(theta_model)$random$`subject:roi_pair1`
+
+# clean var names
+rand_eff_sub_clean <- rand_eff_sub %>%
+  mutate(" " = c("sd(Intercept)", "sd(Time)", "cor(Intercept, Time)")) %>%
+  select(" ", colnames(rand_eff_sub)) 
+
+# clean var names
+rand_eff_elec_pair_clean <- rand_eff_elec_pair %>%
+  mutate(" " = c("sd(Intercept)", "sd(Time)", "cor(Intercept, Time)")) %>%
+  select(" ", colnames(rand_eff_sub)) 
+  
+
+## Random effects of subject Table 
+rand_eff_sub_table <- rand_eff_sub_clean %>%
+  mutate_at(vars(colnames(rand_eff_sub)), ~round(., 2)) %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("**Random effect of subject (15 levels)**"))
+
+rand_eff_sub_table
+
+gtsave(rand_eff_sub_table, path(here(), "figures", "correl_turn_predictions", "figure4_theta_turn_time_ran_eff_sub_table.png"))
+
+## Random Effects of Subject Table 
+rand_eff_elec_table <- rand_eff_elec_pair_clean %>%
+  mutate_at(vars(colnames(rand_eff_elec_pair)), ~round(., 2)) %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("**Random effect of electrode pair (3119 levels)**"))
+
+rand_eff_elec_table
+
+gtsave(rand_eff_elec_table, path(here(), "figures", "correl_turn_predictions", "figure4_theta_turn_time_ran_eff_elec_pair_table.png"))
+
+```
+
+
+```{r full-model-resuls}
+
+model_results <- summary(theta_model)$fixed
+
+model_results_clean <- model_results %>%
+  mutate(Variable = rownames(summary(theta_model)$fixed)) %>%
+  mutate(Variable = gsub("region_pair", "", 
+                     gsub("scale_logged_times", "time", Variable)))
+
+
+all_results_table <- model_results_clean %>%
+  mutate_at(vars(Estimate, Est.Error, `l-95% CI`, `u-95% CI`, Rhat, Bulk_ESS, Tail_ESS), ~round(., 2)) %>%
+  select(Variable, Estimate, Est.Error, `l-95% CI`, `u-95% CI`, Rhat, Bulk_ESS, Tail_ESS) %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(5)
+  ) %>%
+  tab_style(
+    style = cell_text(indent = px(40)), # Add space to the right
+    locations = cells_body(columns = 2) # Apply only to the first column
+  ) %>%
+  tab_style(
+    style = cell_text(indent = px(20)), # Add space to the right
+    locations = cells_body(columns = 3:6) # Apply only to the first column
+  ) %>%  
+  tab_style(
+    style = cell_text(style = "italic", align = 'left'), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("**Theta Model Estimates**"))
+
+all_results_table
+
+
+gtsave(all_results_table, path(here(), "figures", "correl_turn_predictions", "figure4_theta_turn_time_full_model_results_table.png"),
+       vwidth = 1200,
+       vheight =2400)
+
+```
+
+
+
+## HFA Specific Tables
+
+```{r random-effects-tables, fig.width. = 10, fig.height = 10}
+
+rand_eff_sub <- summary(hfa_model)$random$subject
+rand_eff_elec_pair <- summary(hfa_model)$random$`subject:roi_pair1`
+
+# clean var names
+rand_eff_sub_clean <- rand_eff_sub %>%
+  mutate(" " = c("sd(Intercept)", "sd(Time)", "cor(Intercept, Time)")) %>%
+  select(" ", colnames(rand_eff_sub)) 
+
+# clean var names
+rand_eff_elec_pair_clean <- rand_eff_elec_pair %>%
+  mutate(" " = c("sd(Intercept)", "sd(Time)", "cor(Intercept, Time)")) %>%
+  select(" ", colnames(rand_eff_sub)) 
+  
+
+## Random effects of subject Table 
+rand_eff_sub_table <- rand_eff_sub_clean %>%
+  mutate_at(vars(colnames(rand_eff_sub)), ~round(., 2)) %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("**Random effect of subject (15 levels)**"))
+
+rand_eff_sub_table
+
+gtsave(rand_eff_sub_table, path(here(), "figures", "correl_turn_predictions", "figure4_hfa_turn_time_ran_eff_sub_table.png"))
+
+## Random Effects of Subject Table 
+rand_eff_elec_table <- rand_eff_elec_pair_clean %>%
+  mutate_at(vars(colnames(rand_eff_elec_pair)), ~round(., 2)) %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(4)
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("**Random effect of electrode pair (3119 levels)**"))
+
+rand_eff_elec_table
+
+gtsave(rand_eff_elec_table, path(here(), "figures", "correl_turn_predictions", "figure4_hfa_turn_time_ran_eff_elec_pair_table.png"))
+
+```
+
+
+```{r full-model-resuls}
+
+model_results <- summary(hfa_model)$fixed
+
+model_results_clean <- model_results %>%
+  mutate(Variable = rownames(summary(hfa_model)$fixed)) %>%
+  mutate(Variable = gsub("region_pair", "", 
+                     gsub("scale_logged_times", "time", Variable)))
+
+
+all_results_table <- model_results_clean %>%
+  mutate_at(vars(Estimate, Est.Error, `l-95% CI`, `u-95% CI`, Rhat, Bulk_ESS, Tail_ESS), ~round(., 2)) %>%
+  select(Variable, Estimate, Est.Error, `l-95% CI`, `u-95% CI`, Rhat, Bulk_ESS, Tail_ESS) %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(5)
+  ) %>%
+  tab_style(
+    style = cell_text(indent = px(40)), # Add space to the right
+    locations = cells_body(columns = 2) # Apply only to the first column
+  ) %>%
+  tab_style(
+    style = cell_text(indent = px(20)), # Add space to the right
+    locations = cells_body(columns = 3:6) # Apply only to the first column
+  ) %>%  
+  tab_style(
+    style = cell_text(style = "italic", align = 'left'), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("**HFA Model Estimates**"))
+
+all_results_table
+
+
+gtsave(all_results_table, path(here(), "figures", "correl_turn_predictions", "figure4_hfa_turn_time_full_model_results_table.png"),
+       vwidth = 1200,
+       vheight =2400)
+
+```
+
+```{r posterior_pred}
+
+theta_ppc_df <- create_posterior_pred_df(theta_model)
+hfa_ppc_df <- create_posterior_pred_df(hfa_model)
+ppc_df <- rbind(theta_ppc_df %>% mutate(freq = "Theta"), hfa_ppc_df  %>% mutate(freq = "HFA"))
+
+create_posterior_pred_table(ppc_df)
+
+```

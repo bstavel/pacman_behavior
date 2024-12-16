@@ -1,0 +1,243 @@
+---
+title: "Posterior Predictives"
+output: html_document
+date: "2024-11-25"
+---
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(brms)
+library(RColorBrewer)
+library(broom.mixed)
+library(gt)
+library(bayestestR)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+
+
+```{r load-data}
+
+# load correlations #
+correlation_df <- read_csv(path(here(), "results", "theta_correlations_newsubs.csv"))
+
+
+```
+
+
+```{r split-mfg-sfg}
+
+regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
+
+mfg_df <- regions_df %>%
+  filter(region == "mfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+sfg_df <- regions_df %>%
+  filter(region == "sfg") %>%
+  mutate(elec_id = paste0(subject, "_", Electrode))
+
+correlation_detailed_df <- correlation_df %>%
+  rowwise() %>%
+  mutate(
+    first_pair = gsub(paste0(subject, "_"), "", elec1),
+    second_pair = gsub(paste0(subject, "_"), "", elec2),
+    first_pair_1 = gsub("-.*", "", first_pair),
+    first_pair_2 = gsub(".*-", "", first_pair),
+    second_pair_1 = gsub("-.*", "", second_pair),
+    second_pair_2 = gsub(".*-", "", second_pair),
+  ) %>%
+  ungroup() %>%
+  mutate(
+    detailed_first_region = if_else(
+        first_region == "dlpfc" &
+        paste0(subject, "_", first_pair_1) %in% mfg_df$elec_id |
+        paste0(subject, "_", first_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          first_region == "dlpfc" &
+          paste0(subject, "_", first_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", first_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      first_region
+      )),
+    detailed_second_region = if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% mfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  mfg_df$elec_id,
+      "mfg",
+      if_else(
+          second_region == "dlpfc" &
+          paste0(subject, "_", second_pair_1) %in% sfg_df$elec_id |
+          paste0(subject, "_", second_pair_2) %in%  sfg_df$elec_id,
+      "sfg",
+      second_region
+      )
+     )
+    )
+
+
+## Check that everything worked correctly
+table(correlation_detailed_df$detailed_first_region)
+table(correlation_detailed_df$detailed_second_region)
+
+# final rename
+correlation_detailed_df <- correlation_detailed_df %>%
+  mutate(first_region = detailed_first_region, 
+         second_region = detailed_second_region) %>%
+  select(-detailed_first_region, -detailed_second_region)
+
+# fix pair id to fit with sig pairs
+correlation_df <- correlation_detailed_df %>%
+  rowwise() %>%
+  mutate(roi_pair1 = paste0(subject, gsub(subject, "", elec1), "_to", gsub(subject, "", elec2)),
+         roi_pair2 = paste0(subject, gsub(subject, "", elec2), "_to", gsub(subject, "", elec1))) %>%
+  ungroup()
+
+
+```
+
+
+```{r only-sig-elecs}
+
+# load sig pairs by coherence analysis #
+sig_pairs <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+sig_pairs <- sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence")
+
+# filter to sig pairs
+correlation_sig_df <- correlation_df %>%
+  filter(first_region != "sfg" & second_region != "sfg") %>%
+  filter(first_region != second_region) %>%
+  filter( (roi_pair1 %in% sig_pairs$pair_id) | (roi_pair2 %in% sig_pairs$pair_id) ) %>%
+  filter(!is.na(correlation)) %>%
+  filter(!is.infinite(logged_times)) %>%
+  mutate(scale_correlation = scale(correlation)[,1]) %>%
+  mutate(scale_logged_times = scale(logged_times)[,1]) %>%
+  ungroup() %>%
+  mutate(regions = paste(first_region, second_region, sep = "_")) %>%
+  filter(!grepl("insula", regions)) %>%
+  mutate(
+    region_pair = case_when(
+      grepl("ofc", regions) & grepl("hc", regions) ~ "ofc_hc",
+      grepl("ofc", regions) & grepl("amyg", regions) ~ "ofc_amyg",
+      grepl("ofc", regions) & grepl("mfg", regions) ~ "ofc_mfg",
+      # grepl("ofc", regions) & grepl("insula", regions) ~ "ofc_insula",
+      grepl("ofc", regions) & grepl("cing", regions) ~ "ofc_cing",
+      grepl("hc", regions) & grepl("amyg", regions) ~ "hc_amyg",
+      grepl("hc", regions) & grepl("mfg", regions) ~ "hc_mfg",
+      # grepl("hc", regions) & grepl("insula", regions) ~ "hc_insula",
+      grepl("hc", regions) & grepl("cing", regions) ~ "hc_cing",
+      grepl("amyg", regions) & grepl("mfg", regions) ~ "amyg_mfg",
+      # grepl("amyg", regions) & grepl("insula", regions) ~ "amyg_insula",
+      grepl("amyg", regions) & grepl("cing", regions) ~ "amyg_cing",
+      # grepl("mfg", regions) & grepl("insula", regions) ~ "mfg_insula",
+      grepl("mfg", regions) & grepl("cing", regions) ~ "mfg_cing"
+      # grepl("insula", regions) & grepl("cing", regions) ~ "insula_cing"
+    ))
+
+
+```
+
+```{r load-model-results}
+
+# load full model #
+load(path(here(), "results", "full_all_roi_model_brms_newsubs_noinsula.RData"))
+
+
+summary(model)
+```
+
+
+```{r, fig.width=8, fig.height=6}
+
+# Generate replicated datasets
+y_rep <- posterior_predict(model, ndraws = 100)
+
+ppc_dens_overlay(correlation_sig_df$scale_correlation, y_rep[sample(1:100, 5), ]) 
+
+
+```
+
+```{r}
+
+ppc_hist(correlation_sig_df$scale_correlation, y_rep[1:5, ])
+
+```
+
+```{r}
+
+ppc_ecdf_overlay(correlation_sig_df$scale_correlation, y_rep[1:25, ])
+
+```
+
+
+```{r}
+
+ppc_boxplot(correlation_sig_df$scale_correlation, y_rep[1:5, ])
+
+```
+```{r}
+
+ppc_stat(correlation_sig_df$scale_correlation, y_rep, stat = "mean")
+ppc_stat(correlation_sig_df$scale_correlation, y_rep, stat = "sd")
+
+observed_mean <- mean(correlation_sig_df$scale_correlation)
+replicated_means <- rowMeans(y_rep)
+bayesian_p_value <- mean(replicated_means >= observed_mean)
+
+predictive_intervals <- apply(y_rep, 2, quantile, probs = c(0.025, 0.975))
+within_interval <- correlation_sig_df$scale_correlation >= predictive_intervals[1, ] &
+                   correlation_sig_df$scale_correlation <= predictive_intervals[2, ]
+coverage_rate <- mean(within_interval)
+
+```
+
+```{r, fig.height = 6, fig.width = 15}
+
+# Example stratification by a variable
+ppc_violin_grouped(correlation_sig_df$scale_correlation, y_rep[1:25, ], group = correlation_sig_df$subject)
+
+
+```
