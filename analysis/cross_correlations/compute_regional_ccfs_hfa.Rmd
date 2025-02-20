@@ -59,26 +59,26 @@ c25 <- c(
 freq <- "hfa"
 
 # ieeg data #
-ofc_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_ofc_all_subs_logged_iti_onset_highres.csv")))
-amyg_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_amyg_all_subs_logged_iti_onset_highres.csv")))
-hc_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_hc_all_subs_logged_iti_onset_highres.csv")))
-cing_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_cing_all_subs_logged_iti_onset_highres.csv")))
-dlpfc_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_dlpfc_all_subs_logged_iti_onset_highres.csv")))
+ofc_hfa_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_ofc_all_subs_logged_iti_onset_highres.csv")))
+amyg_hfa_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_amyg_all_subs_logged_iti_onset_highres.csv")))
+hc_hfa_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_hc_all_subs_logged_iti_onset_highres.csv")))
+cing_hfa_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_cing_all_subs_logged_iti_onset_highres.csv")))
+dlpfc_hfa_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_dlpfc_all_subs_logged_iti_onset_highres.csv")))
 
 # separate dlpfc into sfg and mfg
-dlpfc_theta_data <- dlpfc_theta_data %>%
+dlpfc_hfa_data <- dlpfc_hfa_data %>%
   mutate(electrode = gsub("_.*", "", electrode))
-dlpfc_theta_data <- separate_mfg_sfg(dlpfc_theta_data)
-mfg_theta_data <- dlpfc_theta_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
+dlpfc_hfa_data <- separate_mfg_sfg(dlpfc_hfa_data)
+mfg_hfa_data <- dlpfc_hfa_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
 
 # bind ieeg data #
-all_subs_theta_data <- bind_rows(ofc_theta_data %>% mutate(region = "ofc"),
-                                 amyg_theta_data %>% mutate(region = "amyg"),
-                                 hc_theta_data %>% mutate(region = "hc"),
-                                 cing_theta_data %>% mutate(region = "cing"),
-                                 mfg_theta_data %>% mutate(region = "mfg")) 
+all_subs_hfa_data <- bind_rows(ofc_hfa_data %>% mutate(region = "ofc"),
+                                 amyg_hfa_data %>% mutate(region = "amyg"),
+                                 hc_hfa_data %>% mutate(region = "hc"),
+                                 cing_hfa_data %>% mutate(region = "cing"),
+                                 mfg_hfa_data %>% mutate(region = "mfg")) 
 
-rm(ofc_theta_data, amyg_theta_data, hc_theta_data, cing_theta_data, dlpfc_theta_data, mfg_theta_data)
+rm(ofc_hfa_data, amyg_hfa_data, hc_hfa_data, cing_hfa_data, dlpfc_hfa_data, mfg_hfa_data)
 
 # behavioral data #
 all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
@@ -92,25 +92,21 @@ all_subs_g_dist <- all_subs_g_dist %>%
 
 ```{r merge-behave-ieeg-data}
 
-all_subs_g_dist <- all_subs_g_dist %>% 
+all_subs_g_dist <- all_subs_g_dist %>%
   select(subject, trial_numeric, trial_time, Direction, reward_groups, last_away, away_choice) %>%
-  mutate(trial_time = round(trial_time, 2)) %>% 
+  mutate(trial_time = round(trial_time, 2)) %>%
   rename(game_time = trial_time)
 
-all_subs_theta_data <- all_subs_theta_data  %>% 
-  rename(trial_time = time, theta = value, trial_numeric = trial) %>%
+all_subs_hfa_data <- all_subs_hfa_data  %>% 
   filter(trial_time >= 0) %>%
   # create game_time which is rounded to the nearest .5
   mutate(game_time = round(floor(trial_time / 0.05) * 0.05, 2)) %>%
   mutate(electrode = gsub("_.*", "", electrode))
 
 # merge behavior data with ieeg data
-ieeg_behave_df <- full_join(all_subs_theta_data, all_subs_g_dist, by = join_by(subject, trial_numeric, game_time)) %>%
+ieeg_behave_df <- full_join(all_subs_hfa_data, all_subs_g_dist, by = join_by(subject, trial_numeric, game_time)) %>%
   arrange(electrode) %>%
   distinct()
-
-# write to csv
-# write_csv(all_subs_theta_data, path(here(), "munge", "all_regions_bandpassed_theta_iti_onset.csv"))
 
 ```
 
@@ -138,7 +134,7 @@ onset_lme_df <- ieeg_behave_df %>%
     mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
     filter(move_time < max(turnaround_time)) %>%
     ungroup() %>%
-    select(subject, elec_id, theta, region, trial_numeric, move_time, trial_time, move_time_hr) %>%
+    select(subject, elec_id, hfa, region, trial_numeric, move_time, trial_time, move_time_hr) %>%
     distinct()
 
 # # calculate turn times
@@ -154,6 +150,10 @@ onset_lme_df <- ieeg_behave_df %>%
 
 # load sig pairs by coherence analysis #
 all_sig_pairs <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+# write to csv
+write_csv(onset_lme_df, path(here(), "munge", "ccf_hfa_onset_lme_df.csv"))
+write_csv(all_subs_hfa_data, path(here(), "munge", "ccf_all_subs_hfa_df.csv"))
 
 
 ```
@@ -176,7 +176,7 @@ amyg_acc_df <- onset_lme_df %>%
 
 
 ccf_amyg_acc_results <- calculate_overall_ccf(amyg_cing_sig_pairs, amyg_acc_df)
-ccf_amyg_acc_null_results <- run_and_save_perms(amyg_acc_df, amyg_cing_sig_pairs, "null_ccf_amyg_acc_hfa_results.csv")
+ccf_amyg_acc_null_results <- run_and_save_perms(amyg_acc_df, amyg_cing_sig_pairs, all_subs_hfa_data, "null_ccf_amyg_acc_hfa_results.csv")
 
 # save true version
 write_csv(ccf_amyg_acc_results, path(here(), "results", "ccf_amyg_acc_hfa_results.csv"))
