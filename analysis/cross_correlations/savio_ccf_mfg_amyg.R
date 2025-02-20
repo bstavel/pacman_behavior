@@ -32,7 +32,7 @@ mfg_amyg_df <- onset_lme_df %>%
 
 
 ccf_mfg_amyg_results <- calculate_overall_ccf(sig_pairs, mfg_amyg_df)
-ccf_mfg_amyg_null_results <- run_and_save_perms(mfg_amyg_df, sig_pairs, "null_ccf_mfg_amyg_hfa_results.csv")
+ccf_mfg_amyg_null_results <- run_and_save_perms(mfg_amyg_df, sig_pairs, all_subs_hfa_data, "null_ccf_mfg_amyg_hfa_results.csv")
 
 # save true version
 write_csv(ccf_mfg_amyg_results, path(here(), "results", "ccf_mfg_amyg_hfa_results.csv"))
