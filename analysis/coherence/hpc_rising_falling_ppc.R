@@ -77,7 +77,6 @@ sig_electrodes <- sig_df %>%
 
 
 ## create the approach df ##
-
 avd_time_window <- 2
 app_time_window <- -2
 
@@ -147,6 +146,7 @@ rising_model <- brm(
   warmup = 3000,
   chains = 4,
   control = list(adapt_delta = 0.99),
+  init = 0,
   seed = 4242
 )
 

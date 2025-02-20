@@ -1,0 +1,786 @@
+---
+title: "Analyze Theta CCF"
+output: html_document
+date: "2025-02-04"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+library(brms)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+```{r functions}
+
+get_p_values <- function(df, df_null){
+  
+  df$prop_greater <- NA
+  for(i in 1:nrow(df)){
+    
+    row <- df[i, ]
+    
+    null_vals <- df_null %>%
+      filter(elec1 == row$elec1 & elec2 == row$elec2) %>%
+      pull(best_cor)
+    
+    prop_greater <- sum(null_vals > row$best_cor) / length(null_vals)
+    
+    df[i, "prop_greater"] <- prop_greater
+    
+  }
+  return(df)
+}
+
+```
+
+## Amyg ~ ACC
+
+```{r load-data}
+
+## read true ccf data
+ccf_amyg_acc_results <- read_csv(here("results", "ccf", "ccf_amyg_acc_results.csv"))
+
+## read null data 
+null_ccf_amyg_acc_results <- read_csv(here("results", "ccf", "null_ccf_amyg_acc_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_amyg_acc_results <- get_p_values(ccf_amyg_acc_results, null_ccf_amyg_acc_results)
+
+```
+
+```{r tables}
+
+table(ccf_amyg_acc_results$subject, ccf_amyg_acc_results$prop_greater < 0.05)
+
+```
+
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_amyg_acc_results <- ccf_amyg_acc_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_amyg_acc_results_sig <- ccf_amyg_acc_results %>%
+  filter(sig == T)
+
+ccf_amyg_acc_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_amyg_acc_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+priors <- c(
+  prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
+  prior(student_t(3, 0, 10), class = "sd")             # Prior for random effects standard deviations
+)
+
+
+# Fit the model
+sub_amyg_cing_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_amyg_acc_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_amyg_cing_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_amyg_cing_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+## HC ~ ACC
+
+```{r load-data}
+
+## read true ccf data
+ccf_hc_cing_results <- read_csv(here("results", "ccf", "ccf_hc_cing_results.csv"))
+
+## read null data 
+null_ccf_hc_cing_results <- read_csv(here("results", "ccf", "null_ccf_hc_cing_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_hc_cing_results <- get_p_values(ccf_hc_cing_results, null_ccf_hc_cing_results)
+
+```
+
+```{r tables}
+
+table(ccf_hc_cing_results$subject, ccf_hc_cing_results$prop_greater < 0.05)
+
+```
+
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_hc_cing_results <- ccf_hc_cing_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_hc_cing_results_sig <- ccf_hc_cing_results %>%
+  filter(sig == T)
+
+ccf_hc_cing_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_hc_cing_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+
+# Fit the model
+sub_hc_cing_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_hc_cing_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_hc_cing_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_hc_cing_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+## HC ~ Amyg
+
+```{r load-data}
+
+## read true ccf data
+ccf_hc_amyg_results <- read_csv(here("results", "ccf", "ccf_hc_amyg_results.csv"))
+
+## read null data 
+null_ccf_hc_amyg_results <- read_csv(here("results", "ccf", "null_ccf_hc_amyg_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_hc_amyg_results <- get_p_values(ccf_hc_amyg_results, null_ccf_hc_amyg_results)
+
+```
+
+```{r tables}
+
+table(ccf_hc_amyg_results$subject, ccf_hc_amyg_results$prop_greater < 0.05)
+
+```
+
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_hc_amyg_results <- ccf_hc_amyg_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_hc_amyg_results_sig <- ccf_hc_amyg_results %>%
+  filter(sig == T)
+
+ccf_hc_amyg_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_hc_amyg_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+
+# Fit the model
+sub_hc_amyg_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_hc_amyg_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_hc_amyg_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_hc_amyg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+## MFG ~ Amyg
+
+```{r load-data}
+
+## read true ccf data
+ccf_mfg_amyg_results <- read_csv(here("results", "ccf", "ccf_mfg_amyg_results.csv"))
+
+## read null data 
+null_ccf_mfg_amyg_results <- read_csv(here("results", "ccf", "null_ccf_mfg_amyg_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_mfg_amyg_results <- get_p_values(ccf_mfg_amyg_results, null_ccf_mfg_amyg_results)
+
+```
+
+```{r tables}
+
+table(ccf_mfg_amyg_results$subject, ccf_mfg_amyg_results$prop_greater < 0.05)
+
+```
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_mfg_amyg_results <- ccf_mfg_amyg_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_mfg_amyg_results_sig <- ccf_mfg_amyg_results %>%
+  filter(sig == T)
+
+ccf_mfg_amyg_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_mfg_amyg_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+
+# Fit the model
+sub_mfg_amyg_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_mfg_amyg_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_mfg_amyg_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_mfg_amyg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+## OFC ~ Amyg
+
+```{r load-data}
+
+## read true ccf data
+ccf_ofc_amyg_results <- read_csv(here("results", "ccf", "ccf_ofc_amyg_results.csv"))
+
+## read null data 
+null_ccf_ofc_amyg_results <- read_csv(here("results", "ccf", "null_ccf_ofc_amyg_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_ofc_amyg_results <- get_p_values(ccf_ofc_amyg_results, null_ccf_ofc_amyg_results)
+
+```
+
+```{r tables}
+
+table(ccf_ofc_amyg_results$subject, ccf_ofc_amyg_results$prop_greater < 0.05)
+
+```
+
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_ofc_amyg_results <- ccf_ofc_amyg_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_ofc_amyg_results_sig <- ccf_ofc_amyg_results %>%
+  filter(sig == T)
+
+ccf_ofc_amyg_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_ofc_amyg_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+
+# Fit the model
+sub_ofc_amyg_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_ofc_amyg_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_ofc_amyg_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_ofc_amyg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+
+## MFG ~ Cing
+
+```{r load-data}
+
+## read true ccf data
+ccf_mfg_cing_results <- read_csv(here("results", "ccf", "ccf_mfg_cing_results.csv"))
+
+## read null data 
+null_ccf_mfg_cing_results <- read_csv(here("results", "ccf", "null_ccf_mfg_cing_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_mfg_cing_results <- get_p_values(ccf_mfg_cing_results, null_ccf_mfg_cing_results)
+
+```
+
+```{r tables}
+
+table(ccf_mfg_cing_results$subject, ccf_mfg_cing_results$prop_greater < 0.05)
+
+```
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_mfg_cing_results <- ccf_mfg_cing_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_mfg_cing_results_sig <- ccf_mfg_cing_results %>%
+  filter(sig == T)
+
+ccf_mfg_cing_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_mfg_cing_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+
+# Fit the model
+sub_mfg_cing_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_mfg_cing_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_mfg_cing_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_mfg_cing_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+
+## MFG ~ HC
+
+```{r load-data}
+
+## read true ccf data
+ccf_mfg_hc_results <- read_csv(here("results", "ccf", "ccf_mfg_hc_results.csv"))
+
+## read null data 
+null_ccf_mfg_hc_results <- read_csv(here("results", "ccf", "null_ccf_mfg_hc_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_mfg_hc_results <- get_p_values(ccf_mfg_hc_results, null_ccf_mfg_hc_results)
+
+```
+
+```{r tables}
+
+table(ccf_mfg_hc_results$subject, ccf_mfg_hc_results$prop_greater < 0.05)
+
+```
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_mfg_hc_results <- ccf_mfg_hc_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_mfg_hc_results_sig <- ccf_mfg_hc_results %>%
+  filter(sig == T)
+
+ccf_mfg_hc_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_mfg_hc_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+
+# Fit the model
+sub_mfg_hc_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_mfg_hc_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_mfg_hc_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_mfg_hc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+
+## OFC ~ CING
+
+```{r load-data}
+
+## read true ccf data
+ccf_ofc_cing_results <- read_csv(here("results", "ccf", "ccf_ofc_acc_results.csv"))
+
+## read null data 
+null_ccf_ofc_cing_results <- read_csv(here("results", "ccf", "null_ccf_ofc_acc_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_ofc_cing_results <- get_p_values(ccf_ofc_cing_results, null_ccf_ofc_cing_results)
+
+```
+
+```{r tables}
+
+table(ccf_ofc_cing_results$subject, ccf_ofc_cing_results$prop_greater < 0.05)
+
+```
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_ofc_cing_results <- ccf_ofc_cing_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_ofc_cing_results_sig <- ccf_ofc_cing_results %>%
+  filter(sig == T)
+
+ccf_ofc_cing_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_ofc_cing_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+
+# Fit the model
+sub_ofc_cing_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_ofc_cing_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_ofc_cing_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_ofc_cing_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+## OFC ~ MFG
+
+```{r load-data}
+
+## read true ccf data
+ccf_ofc_mfg_results <- read_csv(here("results", "ccf", "ccf_ofc_mfg_results.csv"))
+
+## read null data 
+null_ccf_ofc_mfg_results <- read_csv(here("results", "ccf", "null_ccf_ofc_mfg_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_ofc_mfg_results <- get_p_values(ccf_ofc_mfg_results, null_ccf_ofc_mfg_results)
+
+```
+
+```{r tables}
+
+table(ccf_ofc_mfg_results$subject, ccf_ofc_mfg_results$prop_greater < 0.05)
+
+```
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_ofc_mfg_results <- ccf_ofc_mfg_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_ofc_mfg_results_sig <- ccf_ofc_mfg_results %>%
+  filter(sig == T)
+
+ccf_ofc_mfg_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_ofc_mfg_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+
+# Fit the model
+sub_ofc_mfg_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_ofc_mfg_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_ofc_mfg_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_ofc_mfg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+
+## OFC ~ HC
+
+```{r load-data}
+
+## read true ccf data
+ccf_ofc_hc_results <- read_csv(here("results", "ccf", "ccf_ofc_hc_results.csv"))
+
+## read null data 
+null_ccf_ofc_hc_results <- read_csv(here("results", "ccf", "null_ccf_ofc_hc_results.csv"))
+
+```
+
+
+```{r calculate-p-values}
+
+## calculate p-values
+ccf_ofc_hc_results <- get_p_values(ccf_ofc_hc_results, null_ccf_ofc_hc_results)
+
+```
+
+```{r tables}
+
+table(ccf_ofc_hc_results$subject, ccf_ofc_hc_results$prop_greater < 0.05)
+
+```
+
+```{r, fig.width = 12, fig.height = 8}
+
+ccf_ofc_hc_results <- ccf_ofc_hc_results %>%
+  mutate(sig = prop_greater < 0.05)
+
+ccf_ofc_hc_results_sig <- ccf_ofc_hc_results %>%
+  filter(sig == T)
+
+ccf_ofc_hc_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+ccf_ofc_hc_results_sig %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+
+
+```{r}
+
+# Fit the model
+sub_ofc_hc_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_ofc_hc_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_ofc_hc_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_ofc_hc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```

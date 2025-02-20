@@ -305,7 +305,7 @@ last_away_plot <- last_away_df %>%
         axis.ticks.x = element_blank(),
         axis.text.x = element_blank()) +
   scale_fill_manual(values = c("#B9DFD5", "#61BBA5")) +
-  ggtitle("Variability in risk tolderance", subtitle = "Random sample of 20 participants shows across- and within- subject variability\nin the degree of risk incurred on a given trial")
+  ggtitle("Variability in risk tolerance", subtitle = "Random sample of 20 participants shows across- and within- subject variability\nin the degree of risk incurred on a given trial")
 
 last_away_plot
 
@@ -418,7 +418,7 @@ experienced_plot <- phenom_df %>%
   ggplot(., aes(x = emotion, y = count, fill = emotion)) +
   geom_col(alpha = .8, color = "black") +
   xlab("") +
-  ylab("Percent of Prolific Participants (n = 191)") +
+  ylab("Percent of Online Participants (n = 191)") +
   theme(panel.background = element_rect(fill = "white"), 
         legend.position = "none",
         plot.margin = margin(t = 1, r = 1, b = 1, l = 1),

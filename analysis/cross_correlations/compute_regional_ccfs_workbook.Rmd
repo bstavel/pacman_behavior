@@ -1,0 +1,2041 @@
+---
+title: "Calculate Theta Correlations"
+output: html_document
+date: "2025-01-13"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+```{r functions}
+
+detrend_signal <- function(signal) {
+  time <- 1:length(signal) # Create a time index
+  lm_fit <- lm(signal ~ time) # Fit a linear model
+  detrended_signal <- signal - predict(lm_fit) # Subtract the trend
+  return(detrended_signal)
+}
+
+
+calculate_ccf <- function(sig_pairs, theta_df){
+  
+  results_df <- tibble("subject" = character(),
+                              "elec1" = character(),
+                              "elec2" = character(),
+                              "trial_numeric" = numeric(),
+                              "approach_length" = numeric(),
+                              "best_lag" = numeric(),
+                              "best_cor" = numeric(),
+                              "best_time" = numeric())
+
+  
+  for(sub in unique(sig_pairs$subject)){
+    
+    sub_sig_pairs <- sig_pairs %>% filter(subject == sub)
+  
+    for(nrow in 1:nrow(sub_sig_pairs)){
+      
+      pair1 <- sub_sig_pairs %>% slice(nrow) %>% pull(pair1) #amyg
+      pair2 <- sub_sig_pairs %>% slice(nrow) %>% pull(pair2) #hc
+      
+      if((pair1 %in% theta_df$elec_id) & (pair2 %in% theta_df$elec_id)){
+        
+          signal1_df <- theta_df %>% filter(subject == sub & elec_id == pair1) 
+          signal2_df <- theta_df %>% filter(subject == sub & elec_id == pair2) 
+          
+        
+        for(trial in unique(signal1_df$trial_numeric)){
+          
+          app_length <- signal1_df %>% filter(trial_numeric == trial) %>% select(move_time) %>% max()
+    
+          signal1 <- signal1_df %>% filter(trial_numeric == trial) %>% pull(theta) # ofc
+          signal2 <- signal2_df %>% filter(trial_numeric == trial) %>% pull(theta) # hc
+          
+          # # detrend
+          signal1_d <- detrend_signal(signal1)
+          signal2_d <- detrend_signal(signal2)
+          
+          # comptue correlation
+          ccf_res <- ccf(signal1_d, signal2_d, lag.max = 25, plot = F)
+            
+          # Identify which index of acf_vals has the largest *absolute* correlation
+          acf_vals <- ccf_res$acf
+          idx_max <- which.max(acf_vals)
+          
+          b_lag   <- ccf_res$lag[idx_max]
+          b_cor   <- acf_vals[idx_max]
+          b_time <- .01 * b_lag
+          
+          # store results
+          results_df <- results_df %>% add_row(subject = sub, elec1 = pair1, elec2 = pair2, trial_numeric = trial, 
+                                               approach_length = app_length, best_lag = b_lag, best_cor = b_cor, best_time = b_time)
+        
+        }
+      
+      }
+      
+    
+    }
+  
+  }  
+  
+  return(results_df)
+
+}
+
+calculate_overall_ccf <- function(sig_pairs, theta_df){
+  
+  results_df <- tibble("subject" = character(),
+                              "elec1" = character(),
+                              "elec2" = character(),
+                              "best_lag" = numeric(),
+                              "best_cor" = numeric(),
+                              "best_time" = numeric())
+
+  
+  for(sub in unique(sig_pairs$subject)){
+    
+    sub_sig_pairs <- sig_pairs %>% filter(subject == sub)
+  
+    for(nrow in 1:nrow(sub_sig_pairs)){
+      
+      pair1 <- sub_sig_pairs %>% slice(nrow) %>% pull(pair1) #amyg
+      pair2 <- sub_sig_pairs %>% slice(nrow) %>% pull(pair2) #hc
+      
+      if((pair1 %in% theta_df$elec_id) & (pair2 %in% theta_df$elec_id)){
+        
+          signal1_df <- theta_df %>% filter(subject == sub & elec_id == pair1) 
+          signal2_df <- theta_df %>% filter(subject == sub & elec_id == pair2) 
+          
+          
+        signal1_full <- NULL
+        signal2_full <- NULL
+        for(trial in unique(signal1_df$trial_numeric)){
+          
+          app_length <- signal1_df %>% filter(trial_numeric == trial) %>% select(move_time) %>% max()
+    
+          signal1 <- signal1_df %>% filter(trial_numeric == trial) %>% pull(theta) # ofc
+          signal2 <- signal2_df %>% filter(trial_numeric == trial) %>% pull(theta) # hc
+          
+          # # detrend
+          signal1_d <- detrend_signal(signal1)
+          signal2_d <- detrend_signal(signal2)
+          
+          # bind
+          signal1_full <- c(signal1_full, signal1_d)
+          signal2_full <- c(signal2_full, signal2_d)
+        
+        }
+          
+        # comptue correlation
+          ccf_res <- ccf(signal1_full, signal2_full, lag.max = 25, plot = F)
+            
+        # Identify which index of acf_vals has the largest *absolute* correlation
+        acf_vals <- ccf_res$acf
+        idx_max <- which.max(acf_vals)
+        
+        b_lag   <- ccf_res$lag[idx_max]
+        b_cor   <- acf_vals[idx_max]
+        b_time <- .01 * b_lag
+        
+        # store results
+        results_df <- results_df %>% add_row(subject = sub, elec1 = pair1, elec2 = pair2, 
+                                             best_lag = b_lag, best_cor = b_cor, best_time = b_time)
+      
+      }
+      
+    
+    }
+  
+  }  
+  
+  return(results_df)
+
+}
+
+```
+
+```{r load-data}
+
+## get file lists
+all_files <- list.files(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta"))
+all_files <- all_files[grep("baseline", all_files)]
+hc_files <- all_files[grep("hc", all_files)]
+amyg_files <- all_files[grep("amyg", all_files)]
+ofc_files <- all_files[grep("ofc", all_files)]
+cing_files <- all_files[grep("cing", all_files)]
+mfg_files <- all_files[grep("mfg", all_files)]
+
+# load hc data
+hc_theta_data <- NULL
+for(file in hc_files){
+  hc_theta_data <- rbind(hc_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+
+# load amyg data
+amyg_theta_data <- NULL
+for(file in amyg_files){
+  amyg_theta_data <- rbind(amyg_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+  
+# load ofc data
+ofc_theta_data <- NULL
+for(file in ofc_files){
+  ofc_theta_data <- rbind(ofc_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+
+# load cing data
+cing_theta_data <- NULL
+for(file in cing_files){
+  cing_theta_data <- rbind(cing_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+
+# load mfg data
+mfg_theta_data <- NULL
+for(file in mfg_files){
+  mfg_theta_data <- rbind(mfg_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+
+# bind ieeg data #
+all_subs_theta_data <- bind_rows(ofc_theta_data %>% mutate(region = "ofc"),
+                                 amyg_theta_data %>% mutate(region = "amyg"),
+                                 hc_theta_data %>% mutate(region = "hc"),
+                                 cing_theta_data %>% mutate(region = "cing"),
+                                 mfg_theta_data %>% mutate(region = "mfg")) 
+
+rm(ofc_theta_data, amyg_theta_data, hc_theta_data, cing_theta_data, mfg_theta_data)
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+all_subs_g_dist <- all_subs_g_dist %>%
+  filter(attack_chase_bob == "Bob") 
+
+
+
+```
+
+```{r merge-behave-ieeg-data}
+
+all_subs_g_dist <- all_subs_g_dist %>% 
+  select(subject, trial_numeric, trial_time, Direction, reward_groups, last_away, away_choice) %>%
+  mutate(trial_time = round(trial_time, 2)) %>% 
+  rename(game_time = trial_time)
+
+all_subs_theta_data <- all_subs_theta_data  %>% 
+  rename(trial_time = time, theta = value, trial_numeric = trial) %>%
+  filter(trial_time >= 0) %>%
+  # create game_time which is rounded to the nearest .5
+  mutate(game_time = round(floor(trial_time / 0.05) * 0.05, 2)) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+# merge behavior data with ieeg data
+ieeg_behave_df <- full_join(all_subs_theta_data, all_subs_g_dist, by = join_by(subject, trial_numeric, game_time)) %>%
+  arrange(electrode) %>%
+  distinct()
+
+# write to csv
+# write_csv(all_subs_theta_data, path(here(), "munge", "all_regions_bandpassed_theta_iti_onset.csv"))
+
+```
+
+
+
+```{r prep-data}
+
+# shift to move time, remove data after turn
+onset_lme_df <- ieeg_behave_df %>%
+    # round time so that we can loop over time later
+    mutate(game_time = round(game_time, 2)) %>%
+    # exclude time before they started moving, may be good to look at not doing this as well
+    filter(Direction != "Still") %>%
+    # filiter out ITI
+    filter(reward_groups != 99 & !is.na(electrode)) %>%
+    # prep electrode variables
+    mutate(elec_id = paste0(subject, "_", electrode)) %>%
+    # shift the time so that time 0 is the start of movement onset
+    group_by(elec_id, trial_numeric, subject) %>%
+    mutate(move_time = round(game_time - first(game_time), 2)) %>%
+    mutate(move_time_hr = round(trial_time - first(game_time), 3)) %>%
+    # filter time so that trials end when the person turnaround for the final time
+    mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+    mutate(event = replace(event, is.na(event), 0)) %>%
+    mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+    filter(move_time < max(turnaround_time)) %>%
+    ungroup() %>%
+    select(subject, elec_id, theta, region, trial_numeric, move_time, trial_time, move_time_hr) %>%
+    distinct()
+
+# # calculate turn times
+# turn_time_df <- onset_lme_df %>%
+#   select(subject, trial_numeric, move_time) %>%
+#   distinct() %>%
+#   group_by(subject, trial_numeric) %>%
+#   mutate(turn_time = last(move_time)) %>%
+#   select(subject, trial_numeric, turn_time) %>%
+#   distinct() %>%
+#   rename(trial = trial_numeric) %>%
+#   mutate(logged_times = log(turn_time))
+
+# load sig pairs by coherence analysis #
+all_sig_pairs <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+
+```
+
+# Testing
+
+```{r}
+
+
+
+# 	
+sub <- "BJH025"
+pair1 <- "BJH025_A8-A9"
+pair2 <- "BJH025_I4-I5"
+
+example_pair <- ccf_ofc_hc_results_cut %>%
+  filter(elec1 == pair1 & elec2 == pair2)
+
+# example_pair_cut_of <- example_pair %>% filter(best_lag < -30)
+# trials <- example_pair_cut_of$trial_numeric
+theta_df <- ofc_hc_df
+trials <- sample(example_pair$trial_numeric, 10)
+# trials <- unique(example_pair$trial_numeric)
+
+for(trial in trials){
+  signal1_df <- theta_df %>% filter(subject == sub & elec_id == pair1) 
+  signal2_df <- theta_df %>% filter(subject == sub & elec_id == pair2) 
+  
+  signal1 <- signal1_df %>% filter(trial_numeric == trial) %>% pull(theta) # ofc
+  signal2 <- signal2_df %>% filter(trial_numeric == trial) %>% pull(theta) # hc
+  
+  signal1_d <- detrend_signal(signal1)
+  signal2_d <- detrend_signal(signal2)
+  
+  tmp <- signal1_df %>%
+  filter(trial_numeric == trial)
+  tmp$theta2 <- signal2  
+  tmp$theta1d <- signal1_d
+  tmp$theta2d <- signal2_d
+  
+  plot1 <- tmp %>%
+    ggplot(., aes(x = move_time_hr)) +
+    geom_line(aes( y = theta), color = "blue") +
+    geom_line(aes(y = theta2), color = "purple")
+  
+  plot2 <- tmp %>%
+    ggplot(., aes(x = move_time_hr)) +
+    geom_line(aes( y = theta1d), color = "blue") +
+    geom_line(aes(y = theta2d), color = "purple")
+  
+  print(plot1)
+  print(plot2)
+  
+  # comptue correlation
+  ccf_res <- ccf(signal1_d, signal2_d, lag.max = 25, plot = T)
+  
+  acf_vals <- ccf_res$acf
+  idx_max <- which.max(acf_vals)
+  
+  b_lag   <- ccf_res$lag[idx_max]
+  b_cor   <- acf_vals[idx_max]
+  b_time <- b_lag * .01
+  print(b_lag)
+  print(b_cor)
+  print(b_time)
+  
+  
+  plot3 <- tmp %>%
+    ggplot(., aes(x = move_time_hr)) +
+    geom_line(aes( y = theta1d), color = "blue") +
+    geom_line(aes(y = theta2d, x= move_time_hr + b_time), color = "purple") +
+    ggtitle(paste0("shifted: ", b_time))
+  print(plot3)
+  
+  
+
+
+}
+  
+confusion_df <- calculate_ccf(tmp_sig_pairs, amyg_acc_df)
+
+# Identify which index of acf_vals has the largest *absolute* correlation
+acf_vals <- ccf_res$acf
+idx_max <- which.max(acf_vals)
+
+b_lag   <- ccf_res$lag[idx_max]
+b_cor   <- acf_vals[idx_max]
+b_time <- possible_time_lags[idx_max]
+
+tmp <- signal1_df %>%
+  filter(trial_numeric == trial)
+tmp$theta2 <- signal2  
+tmp$theta1d <- signal1_d
+tmp$theta2d <- signal2_d
+
+tmp %>%
+  ggplot(., aes(x = move_time_hr)) +
+  geom_line(aes( y = theta), color = "blue") +
+  geom_line(aes(y = theta2), color = "purple")
+
+tmp %>%
+  ggplot(., aes(x = move_time_hr)) +
+  geom_line(aes( y = theta1d), color = "blue") +
+  geom_line(aes(y = theta2d), color = "purple")
+          
+```
+
+
+
+# Amyg ~ ACC
+
+```{r amyg-acc-prep}
+
+amyg_cing_sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "amyg_cing") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+
+amyg_acc_df <- onset_lme_df %>%
+  filter(region %in% c("amyg", "cing"))
+
+
+ccf_amyg_acc_results <- calculate_ccf(amyg_cing_sig_pairs, amyg_acc_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_amyg_acc_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_amyg_acc_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+```{r, fig.width = 20, fig.height = 40}
+
+
+ccf_amyg_acc_results %>%
+  mutate(pair_id = paste0(elec1, "_", elec2)) %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~elec1)
+
+ccf_amyg_acc_results %>%
+  mutate(pair_id = paste0(elec1, "_", elec2)) %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~elec2)
+
+
+
+
+```
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_amyg_acc_results_cut <- ccf_amyg_acc_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_amyg_acc_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_amyg_acc_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_amyg_acc_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+
+# HC ~ Amygdala
+
+```{r amyg-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "hc_amyg") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+hc_amyg_df <- onset_lme_df %>%
+  filter(region %in% c("hc", "amyg"))
+
+
+ccf_hc_amyg_results <- calculate_ccf(sig_pairs, hc_amyg_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_hc_amyg_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_hc_amyg_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_hc_amyg_results_cut <- ccf_hc_amyg_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_hc_amyg_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_hc_amyg_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_hc_amyg_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+
+# HC ~ ACC
+
+```{r amyg-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "hc_cing") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+
+hc_cing_df <- onset_lme_df %>%
+  filter(region %in% c("hc", "cing"))
+
+ccf_hc_cing_results <- calculate_ccf(sig_pairs, hc_cing_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_hc_cing_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_hc_cing_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_hc_cing_results_cut <- ccf_hc_cing_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_hc_cing_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_hc_cing_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_hc_cing_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+
+# OFC ~ Amyg
+
+```{r ofc-amyg-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_amyg") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_amyg_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "amyg"))
+
+
+ccf_ofc_amyg_results <- calculate_ccf(sig_pairs, ofc_amyg_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_ofc_amyg_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_ofc_amyg_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_ofc_amyg_results_cut <- ccf_ofc_amyg_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_ofc_amyg_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_ofc_amyg_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_ofc_amyg_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+
+# OFC ~ HC
+
+```{r ofc-hc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_hc") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_hc_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "hc"))
+
+
+ccf_ofc_hc_results <- calculate_ccf(sig_pairs, ofc_hc_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_ofc_hc_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_ofc_hc_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_ofc_hc_results_cut <- ccf_ofc_hc_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_ofc_hc_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_ofc_hc_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_ofc_hc_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+
+
+
+# OFC ~ ACC
+
+```{r ofc-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_cing") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_acc_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "cing"))
+
+
+ccf_ofc_acc_results <- calculate_ccf(sig_pairs, ofc_acc_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_ofc_acc_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_ofc_acc_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_ofc_acc_results_cut <- ccf_ofc_acc_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_ofc_acc_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_ofc_acc_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_ofc_acc_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+
+
+
+# OFC ~ MFG
+
+```{r ofc-mfg-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_mfg") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_mfg_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "mfg"))
+
+
+ccf_ofc_mfg_results <- calculate_ccf(sig_pairs, ofc_mfg_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_ofc_mfg_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_ofc_mfg_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_ofc_mfg_results_cut <- ccf_ofc_mfg_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_ofc_mfg_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_ofc_mfg_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_ofc_mfg_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+
+
+# MFG ~ ACC
+
+```{r ofc-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "mfg_cing") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+mfg_cing_df <- onset_lme_df %>%
+  filter(region %in% c("mfg", "cing"))
+
+
+ccf_mfg_cing_results <- calculate_ccf(sig_pairs, mfg_cing_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_mfg_cing_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_mfg_cing_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_mfg_cing_results_cut <- ccf_mfg_cing_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_mfg_cing_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_mfg_cing_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_mfg_cing_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+
+# MFG ~ HC
+
+```{r ofc-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "mfg_hc") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+mfg_hc_df <- onset_lme_df %>%
+  filter(region %in% c("mfg", "hc"))
+
+
+ccf_mfg_hc_results <- calculate_ccf(sig_pairs, mfg_hc_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_mfg_hc_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_mfg_hc_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_mfg_hc_results_cut <- ccf_mfg_hc_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_mfg_hc_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_mfg_hc_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_mfg_hc_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+# MFG ~ Amyg
+
+```{r ofc-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "mfg_amyg") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+mfg_amyg_df <- onset_lme_df %>%
+  filter(region %in% c("mfg", "amyg"))
+
+
+ccf_mfg_amyg_results <- calculate_ccf(sig_pairs, mfg_amyg_df)
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ccf_mfg_amyg_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 15, fig.height = 12}
+
+ccf_mfg_amyg_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  facet_wrap(~subject, scales = "free_y")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ccf_mfg_amyg_results_cut <- ccf_mfg_amyg_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) %>%
+  filter(approach_length >= .1)
+
+
+wilcox.test(ccf_mfg_amyg_results_cut$best_time, conf.int = T)
+
+for(sub in unique(ccf_mfg_amyg_results_cut$subject)){
+  print(sub)
+  print(wilcox.test(ccf_mfg_amyg_results_cut %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+
+```
+
+### Overall CCF
+
+
+# OFC ~ HC
+
+```{r}
+
+create_permuted_data <- function(df){
+
+  # We'll store final results as list elements, then combine once at the end:
+  df_null_list <- vector("list", length = 0)
+  list_counter <- 1
+  
+  trial_lengths <- df %>%
+    group_by(subject, elec_id, trial_numeric) %>%
+    summarise(trial_length = n()) %>%
+    ungroup() %>%
+    distinct()
+  
+  df_null <- df %>%
+    mutate(theta = NA)
+  
+  df_final_null <- tibble()
+  
+  
+  unique_subjects <- unique(trial_lengths$subject)
+  
+  for (sub in unique_subjects) {
+    
+    # Filter once for this subject
+    sub_trial_length <- trial_lengths %>% 
+      filter(subject == sub)
+    
+    # The "null template" rows for this subject
+    sub_df_null <- df_null %>% 
+      filter(subject == sub)
+    
+    # The full data (with real theta) for this subject
+    # "electrode" here must match your column in all_subs_theta_data
+    full_sub_data <- all_subs_theta_data %>%
+      filter(subject == sub)
+    
+    # For each electrode in this subject:
+    for (elec in unique(sub_trial_length$elec_id)) {
+      
+      # Filter once for this subject/electrode
+      sub_elec_trial_length <- sub_trial_length %>%
+        filter(elec_id == elec)
+      
+      # Filter the null template for subject/electrode
+      sub_elec_df_null <- sub_df_null %>%
+        filter(elec_id == elec)
+      
+      # Filter the real data for subject/electrode
+      #   You used gsub(...) to remove subject name from the electrode column,
+      #   so replicate that logic:
+      elec_name_in_full <- gsub(paste0(sub, "_"), "", elec)
+      elec_sub_data <- full_sub_data %>%
+        filter(electrode == elec_name_in_full)
+      
+      # Split data by trial_numeric in advance 
+      # so we can grab the relevant rows without repeated filtering
+      elec_sub_data_split <- split(elec_sub_data, elec_sub_data$trial_numeric)
+      
+      # Now iterate over each trial i
+      for (i in unique(sub_elec_trial_length$trial_numeric)) {
+        
+        # length of trial i
+        i_length <- sub_elec_trial_length$trial_length[
+          sub_elec_trial_length$trial_numeric == i
+        ]
+        
+        # Randomly pick a different trial j
+        possible_j <- sub_elec_trial_length$trial_numeric[
+          sub_elec_trial_length$trial_numeric != i
+        ]
+        chosen_j <- sample(possible_j, 1)
+        
+        # Grab chosen_j's full data (already split)
+        j_data <- elec_sub_data_split[[as.character(chosen_j)]]
+        
+        # Randomly pick a start point
+        sample_start <- sample(1:(nrow(j_data) - i_length), 1)
+        
+        
+        # Subset j_data rows from sample_start to sample_start + i_length - 1
+        # (Ensure j_data is in the correct row order if needed)
+        j_data <- j_data[sample_start:(sample_start + i_length - 1), , drop = FALSE]
+        
+        # Grab the corresponding rows from the null template
+        df_tmp <- sub_elec_df_null %>%
+          filter(trial_numeric == i)
+        
+        # Fill theta from j_data
+        df_tmp$theta <- j_data$theta
+        
+        # Store in the list
+        df_null_list[[list_counter]] <- df_tmp
+        list_counter <- list_counter + 1
+      }
+    }
+  }
+  
+  # Combine all pieces at once
+  df_final_null <- bind_rows(df_null_list)
+
+return(df_final_null)
+
+}
+
+
+```
+
+```{r ofc-hc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_hc") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_hc_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "hc"))
+
+
+overall_ccf_ofc_hc_results <- calculate_overall_ccf(sig_pairs, ofc_hc_df)
+
+
+```
+
+```{r run-perms, warning = F}
+
+
+perms <- 1:100
+null_ccf_ofc_hc_results <- tibble()
+
+for(perm in perms){
+  
+  print(perm)
+  df_final_null <- create_permuted_data(ofc_hc_df)
+  
+  null_ccf_ofc_hc_results_tmp <- calculate_overall_ccf(sig_pairs, df_final_null)
+  
+  null_ccf_ofc_hc_results_tmp$perm <- perm
+  
+  null_ccf_ofc_hc_results <- rbind(null_ccf_ofc_hc_results, null_ccf_ofc_hc_results_tmp)
+  
+  if(perm %% 5 == 0){
+    
+    write_csv(null_ccf_ofc_hc_results, path(here(), "results", "ccf", "null_ccf_ofc_hc_results.csv"))
+  }
+  
+  
+}
+
+
+```
+
+```{r ofc-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "mfg_cing") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+mfg_cing_df <- onset_lme_df %>%
+  filter(region %in% c("mfg", "cing"))
+
+
+overall_ccf_mfg_cing_results <- calculate_overall_ccf(sig_pairs, mfg_cing_df)
+
+```
+
+```{r run-perms, warning = F}
+
+
+perms <- 1:100
+null_ccf_mfg_cing_results <- tibble()
+
+for(perm in perms){
+  
+  print(perm)
+  df_final_null <- create_permuted_data(mfg_cing_df)
+  
+  null_ccf_mfg_cing_results_tmp <- calculate_overall_ccf(sig_pairs, df_final_null)
+  
+  null_ccf_mfg_cing_results_tmp$perm <- perm
+  
+  null_ccf_mfg_cing_results <- rbind(null_ccf_mfg_cing_results, null_ccf_mfg_cing_results_tmp)
+  
+  if(perm %% 5 == 0){
+    
+    write_csv(null_ccf_mfg_cing_results, path(here(), "results", "ccf", "null_ccf_mfg_cing_results.csv"))
+  }
+  
+  
+}
+
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+overall_ccf_mfg_cing_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+null_ccf_ofc_hc_results %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+
+ovaerall_ccf_ofc_hc_results %>%
+  ggplot(., aes(x = best_cor)) +
+  geom_histogram(binwidth = .01) 
+
+null_ccf_ofc_hc_results %>%
+  ggplot(., aes(x = best_cor)) +
+  geom_histogram(binwidth = .01) 
+
+ggplot() + 
+  geom_density(data = overall_ccf_ofc_hc_results, aes(x = best_cor), binwidth = .01,  alpha = .7)  +
+  geom_density(data = null_ccf_ofc_hc_results, aes(x = best_cor), binwidth = .01, fill = "grey", alpha = .7) 
+
+```
+```{r}
+
+# loop over rows in overall_ccf_ofc_hc_results
+# for each row, calculate the proportion of null values that are greater than the observed value
+# store in a new column
+overall_ccf_ofc_hc_results$prop_greater <- NA
+for(i in 1:nrow(overall_ccf_ofc_hc_results)){
+  
+  row <- overall_ccf_ofc_hc_results[i, ]
+  
+  null_vals <- null_ccf_ofc_hc_results %>%
+    filter(elec1 == row$elec1 & elec2 == row$elec2) %>%
+    pull(best_cor)
+  
+  prop_greater <- sum(null_vals > row$best_cor) / length(null_vals)
+  
+  overall_ccf_ofc_hc_results[i, "prop_greater"] <- prop_greater
+  
+}
+
+overall_ccf_mfg_cing_results$prop_greater <- NA
+for(i in 1:nrow(overall_ccf_ofc_hc_results)){
+  
+  row <- overall_ccf_mfg_cing_results[i, ]
+  
+  null_vals <- null_ccf_mfg_cing_results %>%
+    filter(elec1 == row$elec1 & elec2 == row$elec2) %>%
+    pull(best_cor)
+  
+  prop_greater <- sum(null_vals > row$best_cor) / length(null_vals)
+  
+  overall_ccf_mfg_cing_results[i, "prop_greater"] <- prop_greater
+  
+}
+
+
+
+
+```
+
+```{r}
+
+overall_ccf_ofc_hc_results <- overall_ccf_ofc_hc_results %>%
+  mutate(prob_greater_fdr = p.adjust(prop_greater, method = "fdr")) %>%
+  mutate(sig = prob_greater_fdr < .05) 
+
+overall_ccf_mfg_cing_results <- overall_ccf_mfg_cing_results %>%
+  mutate(prob_greater_fdr = p.adjust(prop_greater, method = "fdr")) %>%
+  mutate(sig = prob_greater_fdr < .05) 
+
+table(overall_ccf_ofc_hc_results$subject, overall_ccf_ofc_hc_results$sig)
+
+
+table(overall_ccf_mfg_cing_results$subject, overall_ccf_mfg_cing_results$sig)
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 8}
+
+overall_ccf_mfg_cing_results %>%
+  filter(sig == T) %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) 
+
+overall_ccf_ofc_hc_results %>%
+  filter(sig == T) %>%
+  ggplot(., aes(x = best_time)) +
+  geom_histogram(binwidth = .01) +
+  geom_vline(xintercept = 0, color = "black") +
+  facet_wrap(~subject, scale = "free_y")
+
+```
+```{r}
+priors <- c(
+  prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
+  prior(student_t(3, 0, 10), class = "sd")             # Prior for random effects standard deviations
+)
+
+overall_ccf_mfg_cing_results_sig <- overall_ccf_mfg_cing_results_sig %>%
+  mutate(best_time_scaled = scale(best_time)[,])
+
+# Fit the model
+sub_mfg_cing_model <- brm(
+  formula = best_time_scaled ~ 1 + (1|subject/elec1),
+  data = overall_ccf_mfg_cing_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_mfg_cing_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_mfg_cing_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+```{r}
+
+overall_ccf_ofc_hc_results_sig <- overall_ccf_ofc_hc_results %>%
+  filter(sig == T) %>%
+  mutate(best_time_scaled = scale(best_time)[,])
+
+# Fit the model
+sub_ofc_hc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1|subject/elec1),
+  data = overall_ccf_ofc_hc_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_ofc_hc_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_ofc_hc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+
+```{r, fig.width = 12, fig.height = 12}
+
+ovaerall_ccf_ofc_hc_results_cut <- ovaerall_ccf_ofc_hc_results %>%
+  filter(best_time < max(best_time) & best_time > min(best_time)) 
+
+
+wilcox.test(ovaerall_ccf_ofc_hc_results_cut$best_time, conf.int = T)
+
+for(sub in unique(overall_ccf_mfg_cing_results$subject)){
+  print(sub)
+  print(wilcox.test(overall_ccf_mfg_cing_results %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+overall_ccf_mfg_cing_results_sig <- overall_ccf_mfg_cing_results %>%
+  mutate(sig = T)
+
+wilcox.test(overall_ccf_mfg_cing_results_sig$best_time, conf.int = T)
+
+for(sub in unique(overall_ccf_mfg_cing_results_sig$subject)){
+  print(sub)
+  print(wilcox.test(overall_ccf_mfg_cing_results_sig %>% filter(subject == sub) %>% pull(best_time), conf.int = T))
+}
+
+```
+
+
+
+
+### Bayesian Regressions
+
+
+```{r}
+
+library(brms)
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores())
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
+  prior(exponential(1), class = "sd")               # Prior for random effects standard deviations
+)
+
+### MFG ~ HC ###
+
+ccf_mfg_hc_results_cut <- ccf_mfg_hc_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+mfg_hc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_mfg_hc_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(mfg_hc_model)
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(mfg_hc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+
+### OFC ~ HC ###
+
+ccf_ofc_hc_results_cut <- ccf_ofc_hc_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+ofc_hc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_ofc_hc_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(ofc_hc_model)
+
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_hc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+
+### Amyg ~ ACC ###
+
+ccf_amyg_acc_results_cut <- ccf_amyg_acc_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+amyg_acc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_amyg_acc_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_acc_model)
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_acc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+### Amyg ~ HC ###
+
+ccf_hc_amyg_results_cut <- ccf_hc_amyg_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+amyg_hc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_hc_amyg_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_hc_model)
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_hc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+
+### ACC ~ HC ###
+
+ccf_hc_cing_results_cut <- ccf_hc_cing_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+acc_hc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_hc_cing_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(acc_hc_model)
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(acc_hc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+### ACC ~ MFG ###
+
+ccf_mfg_cing_results_cut <- ccf_mfg_cing_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+acc_mfg_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_mfg_cing_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(acc_mfg_model)
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(acc_mfg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+
+### ACC ~ OFC ###
+
+ccf_ofc_acc_results_cut <- ccf_ofc_acc_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+acc_ofc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_ofc_acc_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(acc_ofc_model)
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(acc_ofc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+
+### Amyg ~ OFC ###
+
+ccf_ofc_amyg_results_cut <- ccf_ofc_amyg_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+amyg_ofc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_ofc_amyg_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_ofc_model)
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_ofc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+
+### MFG ~ OFC ###
+
+ccf_ofc_mfg_results_cut <- ccf_ofc_mfg_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+mfg_ofc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_ofc_mfg_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(mfg_ofc_model)
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(mfg_ofc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+
+### MFG ~ OFC ###
+
+ccf_mfg_amyg_results_cut <- ccf_mfg_amyg_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time))
+
+# Fit the model
+mfg_amyg_model <- brm(
+  formula = best_time_scaled ~ 1 + (1| subject/elec1:elec2),
+  data = ccf_mfg_amyg_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(mfg_amyg_model)
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(mfg_amyg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+```
+
+```{r}
+
+### OFC MFG ###
+posterior_samples <- posterior_samples(mfg_ofc_model)
+# Isolate subject-level random effects
+subject_effects <- posterior_samples %>%
+  select(starts_with("r_subject[")) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "subject",
+    values_to = "effect"
+  ) %>%
+  mutate(
+    subject = str_extract(subject, "\\d+")  # Extract subject ID from variable names
+  )
+
+# Combine with overall intercept to get subject-specific intercepts
+overall_intercept <- posterior_samples %>%
+  pull(b_Intercept)
+
+ofc_mfg_subject_effects <- subject_effects %>%
+  mutate(
+    subject_specific_intercept = overall_intercept + effect,  # Add overall intercept
+  )
+
+ofc_mfg_subject_dirs <- ofc_mfg_subject_effects %>%
+  group_by(subject) %>%
+  mutate(subject_specific_directions = mean(subject_specific_intercept > 0)) %>%
+  select(subject, subject_specific_directions) %>%
+  distinct()
+
+```
+
+```{r, fig.width = 9, fig.height = 5}
+
+
+ofc_mfg_subject_effects %>%
+  ggplot(., aes(x = subject_specific_intercept, group = subject )) +
+  geom_vline(xintercept = 0, color = "#2D2327", linewidth = 1) +
+  geom_density(alpha = .5, color = "steelblue4") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle("OFC MFG")
+
+
+```
+
+
+```{r}
+
+### MFG ~ HC ###
+
+# Isolate subject-level random effects
+posterior_samples <- posterior_samples(mfg_hc_model)
+mfg_hc_subject_effects <- posterior_samples %>%
+  select(starts_with("r_subject[")) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "subject",
+    values_to = "effect"
+  ) %>%
+  mutate(
+    subject = str_extract(subject, "\\d+")  # Extract subject ID from variable names
+  )
+
+# Combine with overall intercept to get subject-specific intercepts
+overall_intercept <- posterior_samples %>%
+  pull(b_Intercept)
+
+mfg_hc_subject_effects <- mfg_hc_subject_effects %>%
+  mutate(
+    subject_specific_intercept = overall_intercept + effect,  # Add overall intercept
+  )
+
+mfg_hc_subject_dirs <- mfg_hc_subject_effects %>%
+  group_by(subject) %>%
+  mutate(subject_specific_directions = mean(subject_specific_intercept > 0)) %>%
+  select(subject, subject_specific_directions) %>%
+  distinct()
+
+```
+
+```{r, fig.width = 9, fig.height = 5}
+
+
+mfg_hc_subject_effects %>%
+  ggplot(., aes(x = subject_specific_intercept, group = subject )) +
+  geom_vline(xintercept = 0, color = "#2D2327", linewidth = 1) +
+  geom_density(alpha = .5, color = "steelblue4") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle(" MFG ~ HC")
+
+
+```
+
+## OFC ~ HC
+
+```{r}
+library(kableExtra)
+
+tmp <- summary(ofc_hc_model) 
+
+tmp$fixed %>% mutate_all(function(x) round(x, 3)) %>% gt()
+
+
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_hc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+
+
+```
+
+```{r}
+
+### OFC ~ HC ###
+posterior_draws <- as_draws_df(ofc_hc_model)
+
+# Extract subject-level random effects
+subject_effects <- posterior_draws %>%
+  select(starts_with("r_subject[")) %>%
+  mutate(draw = row_number()) %>%
+  pivot_longer(
+    cols = starts_with("r_subject["),
+    names_to = "subject",
+    values_to = "subject_effect"
+  ) %>%
+  mutate(
+    subject = gsub(".*\\[", "", gsub(",.*", "", subject)) # Extract subject ID
+  )
+
+# Extract elec1:elec2-level random effects
+elec_effects <- posterior_draws %>%
+  select(starts_with("r_subject:elec1:elec2[")) %>%
+  mutate(draw = row_number()) %>%
+  pivot_longer(
+    cols = starts_with("r_subject:elec1:elec2["),
+    names_to = "elec_pair",
+    values_to = "elec_effect"
+  ) %>%
+  mutate(
+    elec_pair = str_extract(elec_pair, "\\[.*\\]") %>%  # Extract elec1:elec2 IDs
+      str_remove_all("\\[|\\]")  # Remove brackets
+  )
+
+# Combine subject-level and elec1:elec2 effects
+ofc_hc_combined_effects <- elec_effects %>%
+  mutate(subject = gsub("_.*", "", elec_pair)) %>%
+  left_join(subject_effects, by = c("subject", "draw")) %>%
+  mutate(
+    total_effect = subject_effect + elec_effect  # Combine random effects
+  )
+
+# Add the overall intercept to compute the full effect
+ofc_hc_overall_intercept <- posterior_draws %>%
+  pull(b_Intercept)
+
+ofc_hc_combined_effects <- ofc_hc_combined_effects %>%
+  mutate(
+    full_effect = total_effect + ofc_hc_overall_intercept
+  )
+
+
+ofc_hc_combined_dirs <- ofc_hc_combined_effects %>%
+  group_by(elec_pair) %>%
+  mutate(total_effect_directions = mean(total_effect > 0)) %>%
+  select(subject, elec_pair, total_effect_directions) %>%
+  distinct()
+
+
+```
+
+```{r, fig.width = 9, fig.height = 5}
+
+
+sub_ofc_hc_ccf_plot <- subject_effects %>%
+  ggplot(., aes(x = subject_effect, group = subject )) +
+  geom_vline(xintercept = 0, color = "#2D2327", linewidth = 1) +
+  geom_density(alpha = .5, color = "steelblue4") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle(" OFC ~ HC") +
+  xlim(-.2, .2)
+
+ggsave(path(here(), "figures", "sub_ofc_hc_ccf_plot.png"),
+       plot = sub_ofc_hc_ccf_plot,
+       width = 6, height = 4, units = "in", dpi = 300)
+
+```
+
+```{r, fig.width = 15, fig.height = 7}
+
+
+ofc_hc_combined_effects %>%
+  filter(elec_pair == sample(elec_pair, 20)) %>%
+  ggplot(., aes(x = full_effect, group = elec_pair )) +
+  geom_vline(xintercept = 0, color = "#2D2327", linewidth = 1) +
+  geom_density(alpha = .5, color = "steelblue4") +
+  theme(panel.background = element_rect(fill = "white")) +
+  ggtitle(" OFC ~ HC")
+
+
+ofc_hc_combined_dirs %>%
+  ggplot(., aes(x =   total_effect_directions)) +
+  geom_density(alpha = .5, fill = "steelblue4", color = "black") +
+  geom_vline(xintercept = 0.95, color = "#2D2327", linewidth = 1, linetype = "dashed") +
+  geom_vline(xintercept = 0.05, color = "#2D2327", linewidth = 1, linetype = "dashed") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, nrow = 3) +
+  ggtitle(" OFC ~ HC") 
+
+
+sub_prob_positive_ofc_hc_plot <- ofc_hc_combined_dirs %>%
+  ggplot(., aes(x =   total_effect_directions)) +
+  geom_histogram(binwidth = .05, alpha = .5, fill = "steelblue4", color = "black") +
+  geom_vline(xintercept = 0.95, color = "#2D2327", linewidth = 1, linetype = "dashed") +
+  geom_vline(xintercept = 0.05, color = "#2D2327", linewidth = 1, linetype = "dashed") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~subject, nrow = 3, scale = "free_y") +
+  scale_x_continuous(breaks = c(0, .5, 1)) + 
+  ggtitle(" OFC ~ HC") 
+
+
+ggsave(path(here(), "figures", "sub_prob_positive_ofc_hc_plot.png"),
+       plot = sub_prob_positive_ofc_hc_plot,
+       width = 9, height = 5, units = "in", dpi = 300)
+
+
+```
+
+
+```{r, fig.width = 15, fig.height = 10}
+
+
+ofc_hc_combined_effects %>%
+  # filter(elec_pair == sample(elec_pair, 20)) %>%
+  filter(subject == "BJH025") %>%
+  ggplot(., aes(x = full_effect, group = elec_pair )) +
+  geom_vline(xintercept = 0, color = "#2D2327", linewidth = 1) +
+  geom_density(alpha = .5, color = "steelblue4") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_pair, ncol = 4) +
+  ggtitle(" OFC ~ HC")
+
+
+
+
+
+
+```
+
+```{r, fig.width = 15, fig.height = 10}
+
+ccf_ofc_hc_results_cut %>%
+  filter(subject == "BJH025") %>%
+  mutate(pair_id = paste(elec1, elec2, sep = "_")) %>%
+  ggplot(., aes(x =   best_time)) +
+  geom_histogram(binwidth = 0.01, alpha = .5, fill = "steelblue4", color = "black") +
+  geom_vline(xintercept = 0, color = "#2D2327", linewidth = 1, linetype = "dashed") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~pair_id, ncol = 4) +
+  ggtitle(" OFC ~ HC: BJH025") 
+
+```
+```{r}
+
+ex_pair <- ccf_ofc_hc_results_cut %>%
+  mutate(pair_id = paste(elec1, elec2, sep = "_")) %>%
+  filter(subject == "BJH025" & pair_id == "BJH025_A8-A9_BJH025_I4-I5") 
+
+
+wilcox.test(ex_pair$best_time_scaled)
+```
+
+## Single Subjects
+
+```{r}
+
+ccf_sub_ofc_hc_results_cut <- ccf_ofc_hc_results_cut %>%
+  mutate(best_time_scaled = (best_time - mean(best_time)) / sd(best_time)) %>%
+  filter(subject == "BJH025")
+
+priors <- c(
+  prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
+  prior(student_t(3, 0, 10), class = "sd")             # Prior for random effects standard deviations
+)
+
+# Fit the model
+sub_ofc_hc_model <- brm(
+  formula = best_time_scaled ~ 1 + (1|elec1:elec2),
+  data = ccf_sub_ofc_hc_results_cut,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(sub_ofc_hc_model)
+
+
+```
+
+
+```{r}
+
+sub_posterior_draws <- as_draws_df(sub_ofc_hc_model)
+
+## get elec effects
+sub_elec_effects <- sub_posterior_draws %>%
+  select(starts_with("r_elec1:elec2[")) %>%
+  mutate(draw = row_number()) %>%
+  pivot_longer(
+    cols = starts_with("r_elec1:elec2["),
+    names_to = "elec_pair",
+    values_to = "elec_effect"
+  ) %>%
+  mutate(
+    elec_pair = str_extract(elec_pair, "\\[.*\\]") %>%  # Extract elec1:elec2 IDs
+      str_remove_all("\\[|\\]")  # Remove brackets
+  )
+
+
+# Add the overall intercept to compute the full effect
+sub_ofc_hc_overall_intercept <- sub_posterior_draws %>%
+  pull(b_Intercept)
+
+sub_ofc_hc_combined_effects <- sub_elec_effects %>%
+  mutate(
+    full_effect = elec_effect + sub_ofc_hc_overall_intercept
+  )
+
+
+```
+
+```{r, fig.width = 15, fig.height = 10}
+
+
+sub_ofc_hc_combined_effects %>%
+  ggplot(., aes(x = full_effect, group = elec_pair )) +
+  geom_vline(xintercept = 0, color = "#2D2327", linewidth = 1) +
+  geom_density(alpha = .5, color = "steelblue4") +
+  theme(panel.background = element_rect(fill = "white")) +
+  facet_wrap(~elec_pair, ncol = 4) +
+  ggtitle(" OFC ~ HC")
+
+
+
+
+
+
+```
+
+```{r}
+
+sub_ofc_hc_combined_dirs <- sub_ofc_hc_combined_effects %>%
+  group_by(elec_pair) %>%
+  mutate(total_effect_directions = mean(full_effect > 0)) %>%
+  select(elec_pair, total_effect_directions) %>%
+  distinct()
+
+
+sub_ofc_hc_combined_dirs %>%
+  ggplot(., aes(x = total_effect_directions)) +
+  geom_histogram()
+
+
+```
+
+

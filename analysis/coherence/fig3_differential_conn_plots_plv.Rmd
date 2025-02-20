@@ -101,22 +101,22 @@ compute_difference_samples <- function(region1, region2, cur_regions, posterior_
   coef1_name <- get_coef_name(region1)
   coef2_name <- get_coef_name(region2)
   
-  # Extract samples with chain and iteration information
+  # Extract samples
   coef1_samples <- if (coef1_name == "b_Intercept") {
-    posterior_samples[, , "b_Intercept"]
+    posterior_samples$b_Intercept
   } else {
-    posterior_samples[, , coef1_name]
+    posterior_samples[[coef1_name]]
   }
   
   coef2_samples <- if (coef2_name == "b_Intercept") {
-    posterior_samples[, , "b_Intercept"]
+    posterior_samples$b_Intercept
   } else {
-    posterior_samples[, , coef2_name]
+    posterior_samples[[coef2_name]]
   }
   
-  # For the intercept (reference level), set coefficients to zero
-  if (coef1_name == "b_Intercept") coef1_samples <- coef1_samples * 0
-  if (coef2_name == "b_Intercept") coef2_samples <- coef2_samples * 0
+  # For the intercept (reference level), coefficient is zero
+  if (coef1_name == "b_Intercept") coef1_samples <- rep(0, nrow(posterior_samples))
+  if (coef2_name == "b_Intercept") coef2_samples <- rep(0, nrow(posterior_samples))
   
   # Compute difference
   difference_samples <- coef1_samples - coef2_samples
@@ -125,37 +125,29 @@ compute_difference_samples <- function(region1, region2, cur_regions, posterior_
 }
 
 
-
 caclulate_results <- function(cur_model, cur_regions){
-  library(posterior)  # Load the posterior package
-  
-  # Extract posterior samples as a draws_array
-  posterior_samples <- as_draws_array(cur_model)
+
+  # Extract posterior samples of fixed effects coefficients
+  posterior_samples <- as_draws_df(cur_model) %>% select(starts_with("b_"))
   
   # Create all possible pairs of regions
   region_pairs <- expand.grid(Region1 = cur_regions, Region2 = cur_regions) %>%
     filter(Region1 != Region2)
   
-  # Remove duplicate pairs (e.g., keep only (A, B), not (B, A))
-  region_pairs <- region_pairs %>%
-    mutate(Pair = pmap_chr(list(Region1, Region2), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
-    distinct(Pair, .keep_all = TRUE) %>%
-    select(-Pair)
+  # compute intercept
+  intercept <- mean(posterior_samples$b_Intercept)
   
-  # Compute intercept mean
-  intercept <- mean(as_draws_df(posterior_samples)$b_Intercept)
-  
-  # Initialize results data frame
   results <- data.frame(
     Region1 = character(),
     Region2 = character(),
+    sample_diff = numeric(),
+    Intercept = numeric(),
     Mean = numeric(),
-    Std_Err = numeric(),
-    Rhat = numeric(),
-    Bulk_ESS = numeric(),
-    Tail_ESS = numeric(),
-    ci_lower = numeric(),
+    max_density = numeric(),
     ci_upper = numeric(),
+    ci_lower = numeric(),
+    lower_density = numeric(),
+    upper_density = numeric(),
     stringsAsFactors = FALSE
   )
   
@@ -163,48 +155,141 @@ caclulate_results <- function(cur_model, cur_regions){
     region1 <- region_pairs$Region1[i]
     region2 <- region_pairs$Region2[i]
     
-    # Compute difference samples (retaining chain info)
+    # Compute difference samples
     difference_samples <- compute_difference_samples(region1, region2, cur_regions, posterior_samples)
     
-    # Convert difference_samples to draws_array
-    difference_draws <- as_draws_array(difference_samples)
-    
     # Compute mean
-    mean_diff <- mean(difference_draws)
+    mean_diff <- mean(difference_samples)
     
-    # Compute standard error (standard deviation)
-    std_err <- sd(difference_draws)
+    
+    # Compute mode (max density)
+    density_estimate <- density(difference_samples)
+    mode_diff <- density_estimate$x[which.max(density_estimate$y)]
+    max_dens = max(density_estimate$y)
     
     # Compute credible intervals
-    ci <- quantile(difference_draws, probs = c(0.025, 0.975))
-    ci_low <- ci[1]
-    ci_up <- ci[2]
+    ci_low <- quantile(difference_samples, probs = 0.025)
+    ci_up <- quantile(difference_samples, probs = 0.975)
     
-    # Compute Rhat, Bulk ESS, Tail ESS
-    rhat_diff <- rhat(difference_draws)
-    ess_bulk_diff <- ess_bulk(difference_draws)
-    ess_tail_diff <- ess_tail(difference_draws)
+    # Compute density at credible interval bounds
+    density_lower <- approx(density_estimate$x, density_estimate$y, xout = ci_low)$y
+    density_upper <- approx(density_estimate$x, density_estimate$y, xout = ci_up)$y
     
     # Add to results
     results <- rbind(results, data.frame(
       Region1 = region1,
       Region2 = region2,
+      sample_diff = difference_samples,
       Mean = mean_diff,
-      Std_Err = std_err,
-      Rhat = rhat_diff,
-      Bulk_ESS = ess_bulk_diff,
-      Tail_ESS = ess_tail_diff,
+      Intercept = intercept,
+      max_density = max_dens,
       ci_lower = ci_low,
       ci_upper = ci_up,
+      lower_density = density_lower,
+      upper_density = density_upper,
       stringsAsFactors = FALSE
     ))
   }
   return(results)
 }
 
-
 ```
 
+
+
+
+### Alternative versions
+
+```{r functions}
+
+tug_plot_prep <- function(df, region_sets) {
+  
+  df_prep <- df %>%
+  distinct() %>%
+  mutate(sig = if_else(ci_lower <= 0 & 0 <= ci_upper, "No difference", 
+                           if_else(Mean > 0, "Larger", "Smaller"))) %>%
+  mutate(Region2 = if_else(Region2 == "Ant.Cingulate", "ACC", Region2),
+         Region1 = if_else(Region1 == "Ant.Cingulate", "ACC", Region1)) %>%
+  mutate(Region2 = if_else(Region2 == "Amygdala", "Amyg.", Region2),
+       Region1 = if_else(Region1 == "Amygdala", "Amyg.", Region1)) %>%  
+  mutate(Region2 = if_else(Region2 == "Hippocampus", "HC", Region2),
+     Region1 = if_else(Region1 == "Hippocampus", "HC", Region1)) %>%    
+  mutate(comparison = paste0(Region1, "_", Region2)) %>%
+  filter(comparison %in% region_sets) %>%
+  mutate(comparison = factor(comparison, levels = region_sets)) %>%
+  # Convert to numeric index for plotting
+  mutate(comparison_num = as.numeric(as.factor(comparison))) %>%
+  arrange(comparison_num) %>% # Ensure a stable order %>%
+  mutate(Mean = exp(Mean),
+         ci_lower = exp(ci_lower),
+         ci_upper = exp(ci_upper))
+  
+  return(df_prep)
+  
+}
+
+
+tug_plot <- function(plot_data, plot_title, file_name){
+  
+  # Now we have a numeric axis (comparison_num). We'll use that as the x-axis.
+  # We'll place Region1 labels on one side and Region2 labels on the other side.
+  # Since each row corresponds to a particular comparison (which links one Region1 and one Region2),
+  # we can use them as labels directly.
+  left_labels <- plot_data$Region1
+  right_labels <- plot_data$Region2
+
+  roi_plot <- ggplot(plot_data, aes(x = comparison_num, y = Mean, color = sig)) +
+    geom_point(size = 3) +
+    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.2) +
+    geom_hline(yintercept = 1, color = "#2D2327") +
+    # geom_vline(xintercept = 3.5, linetype = "dashed", color = "gray40") +
+    coord_flip() +
+    theme_minimal() +
+    theme(panel.grid.minor = element_blank(),
+          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7.5),
+          legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+          plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 9, hjust = 0.5, margin = margin(b = 5)),
+          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7, margin = margin(b = 0)),
+          legend.position = "top") +
+    labs(
+      x = "",
+      y = "Preferred Connectivity (relative ratio, left:right)",
+      title = paste0(plot_title, "\n"),
+      subtitle = " ",
+      color = "",
+    ) +
+    scale_x_continuous(
+      breaks = plot_data$comparison_num,  # Positions of each comparison
+      labels = left_labels,               # Show Region1 on the left axis
+      sec.axis = dup_axis(
+        ~., # same scale transformation
+        name = "",                 # Axis label on the right
+        labels = right_labels             # Show Region2 on the right axis
+      )
+    ) +
+    scale_y_reverse() +
+    ylim(2, 0) +
+    scale_color_manual(
+      values = c("Larger" = "#DBE317", "No Difference" = "darkgrey", "Smaller" = "#28AE7E"),
+      breaks = c("Larger", "No Difference", "Smaller"),
+      limits = c("Larger", "No Difference", "Smaller"),
+      drop = FALSE, 
+      guide = F
+    )
+
+  
+  ggsave(path(here(), "figures", "connectivity", paste0("figure3_differential_theta_coherence_tug_", file_name, ".png")), 
+         plot = roi_plot, 
+         width = 2.65, height = 2.5, units = "in", dpi = 300)
+  
+  return(roi_plot)
+  
+}
+  
+  
+```
 
 
 # PPC
@@ -231,54 +316,6 @@ acc_results <- caclulate_results(acc_model,  c('MFG', "Amygdala", 'OFC',  'Hippo
 mfg_results <- caclulate_results(mfg_model,  c('OFC', "Amygdala", 'Ant.Cingulate', 'Hippocampus'))
 
 ```
-
-```{r result-tables}
-
-
-amyg_summary_df <- amyg_results %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper)) %>%
-  mutate_if(is.double, function(x) round(x, 2)) %>% 
-  select(Region1, Region2, Mean, ci_lower, ci_upper, Std_Err, Rhat, Bulk_ESS, Tail_ESS) %>%
-  arrange(desc(Region1), desc(Region2)) %>%
-  rename("Region 1" = Region1, "Region 2" = Region2, "Mean" = Mean, "Est.Error" = Std_Err, "l-95% CI" = ci_lower, "u-95% CI" = ci_upper) 
-
-hc_summary_df <- hc_results %>%
-  select(-sample_diff) %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper))
-
-
-ofc_summary_df <- ofc_results %>%
-  select(-sample_diff) %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper))
-
-
-acc_summary_df <- acc_results %>%
-  select(-sample_diff) %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper))
-
-mfg_summary_df <- mfg_results %>%
-  select(-sample_diff) %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper))
-
-
-
-```
-
 
 ```{r, fig.width = 7, fig.height = 3}
 
@@ -356,6 +393,37 @@ ggsave(path(here(), "figures", "connectivity", "figure3_ppc_differential_theta_c
 
 
 
+```{r roi-plots, fig.width = 3, fig.height = 2}
+
+# amygdala
+amyg_tug_df <- tug_plot_prep(amyg_results, c("OFC_ACC", "HC_ACC", "HC_OFC", "ACC_MFG", "OFC_MFG", "HC_MFG"))
+amyg_plot <- tug_plot(amyg_tug_df, "Amygdala", "amyg_ppc")
+
+# hippocampus
+hc_tug_df <- tug_plot_prep(hc_results, c("OFC_ACC", "Amyg._ACC", "Amyg._OFC", "ACC_MFG", "OFC_MFG", "Amyg._MFG"))
+hc_plot <- tug_plot(hc_tug_df, "Hippocampus", "hc_ppc")
+
+# ofc
+ofc_tug_df <- tug_plot_prep(ofc_results, c("HC_Amyg.", "Amyg._ACC", "HC_ACC", "ACC_MFG", "Amyg._MFG", "HC_MFG"))
+ofc_plot <- tug_plot(ofc_tug_df, "OFC", "ofc_ppfc")
+
+# acc
+acc_tug_df <- tug_plot_prep(acc_results, c("HC_Amyg.", "Amyg._OFC", "HC_OFC", "OFC_MFG", "Amyg._MFG", "HC_MFG"))
+acc_plot <- tug_plot(acc_tug_df, "ACC", "acc_ppc")
+
+# mfg
+mfg_tug_plot <- tug_plot_prep(mfg_results, c("HC_Amyg.", "Amyg._OFC", "HC_OFC", "Amyg._ACC", "HC_ACC",  "OFC_ACC"))
+mfg_plot <- tug_plot(mfg_tug_plot, "MFG", "mfg_ppc")
+
+
+# plot
+amyg_plot
+hc_plot
+ofc_plot
+acc_plot
+mfg_plot
+
+```
 
 # PLI
 
@@ -458,47 +526,34 @@ ggsave(path(here(), "figures", "connectivity", "figure3_pli_differential_theta_c
 
 ```
 
+```{r roi-plots, fig.width = 3, fig.height = 2}
 
-```{r result-tables}
+# amygdala
+amyg_tug_df <- tug_plot_prep(amyg_results, c("OFC_ACC", "HC_ACC", "HC_OFC", "ACC_MFG", "OFC_MFG", "HC_MFG"))
+amyg_plot <- tug_plot(amyg_tug_df, "Amygdala", "amyg_pli")
 
+# hippocampus
+hc_tug_df <- tug_plot_prep(hc_results, c("OFC_ACC", "Amyg._ACC", "Amyg._OFC", "ACC_MFG", "OFC_MFG", "Amyg._MFG"))
+hc_plot <- tug_plot(hc_tug_df, "Hippocampus", "hc_pli")
 
-amyg_summary_df <- amyg_results %>%
-  select(-sample_diff) %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper))
+# ofc
+ofc_tug_df <- tug_plot_prep(ofc_results, c("HC_Amyg.", "Amyg._ACC", "HC_ACC", "ACC_MFG", "Amyg._MFG", "HC_MFG"))
+ofc_plot <- tug_plot(ofc_tug_df, "OFC", "ofc_pli")
 
-hc_summary_df <- hc_results %>%
-  select(-sample_diff) %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper))
+# acc
+acc_tug_df <- tug_plot_prep(acc_results, c("HC_Amyg.", "Amyg._OFC", "HC_OFC", "OFC_MFG", "Amyg._MFG", "HC_MFG"))
+acc_plot <- tug_plot(acc_tug_df, "ACC", "acc_pli")
 
-
-ofc_summary_df <- ofc_results %>%
-  select(-sample_diff) %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper))
+# mfg
+mfg_tug_plot <- tug_plot_prep(mfg_results, c("HC_Amyg.", "Amyg._OFC", "HC_OFC", "Amyg._ACC", "HC_ACC",  "OFC_ACC"))
+mfg_plot <- tug_plot(mfg_tug_plot, "MFG", "mfg_pli")
 
 
-acc_summary_df <- acc_results %>%
-  select(-sample_diff) %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper))
-
-mfg_summary_df <- mfg_results %>%
-  select(-sample_diff) %>%
-  distinct() %>%
-  mutate(Mean = exp(Mean),
-         ci_lower = exp(ci_lower),
-         ci_upper = exp(ci_upper))
-
-
+# plot
+amyg_plot
+hc_plot
+ofc_plot
+acc_plot
+mfg_plot
 
 ```

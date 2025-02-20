@@ -101,6 +101,7 @@ summary(mfg_model)
 
 
 ```
+
 ```{r function-to-get-samples}
 
 compute_difference_samples <- function(region1, region2, cur_regions, posterior_samples) {

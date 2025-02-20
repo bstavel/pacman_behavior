@@ -152,7 +152,7 @@ example_plot
 
 ggsave(path(here(), "figures", "connectivity", "figure3_example_elec_pair.png"), 
        plot = example_plot, 
-       width = 3.5, height = 3, units = "in", dpi = 600)
+       width = 3.5, height = 2.5, units = "in", dpi = 600)
 
 ```
 

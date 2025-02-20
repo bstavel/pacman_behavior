@@ -7,7 +7,7 @@ compile_ieeg_csv_files <- function(roi, sub, sample_freq, timelock_folder, keywo
 
   
   # get the time step #
-    sample_step <- sample_freq/20
+    sample_step <- sample_freq/100 # 100 for highres, 20, normally
     time_step <- sample_step/sample_freq
   
   elec_full_data_all_elecs <- NULL

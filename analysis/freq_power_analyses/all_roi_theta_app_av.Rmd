@@ -346,7 +346,7 @@ hc_plot <- plot_conflict_trials(hc_plot_df, "Hippocampus")
 hc_plot
 
 # save plot
-ggsave(path(here(), "figures", "figure2_hc_app_avoid_combined_theta_plot.png"), plot = hc_plot, width = 2, height = 2.7)
+ggsave(path(here(), "figures", "Presentation_hc_app_avoid_combined_theta_plot.png"), plot = hc_plot, width = 3, height = 2.7)
 
 ```
 

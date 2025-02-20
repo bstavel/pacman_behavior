@@ -1,0 +1,418 @@
+---
+title: "Calculate Theta Correlations"
+output: html_document
+date: "2025-01-13"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+```{r load-data}
+
+## get file lists
+all_files <- list.files(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta"))
+all_files <- all_files[grep("baseline", all_files)]
+hc_files <- all_files[grep("hc", all_files)]
+amyg_files <- all_files[grep("amyg", all_files)]
+ofc_files <- all_files[grep("ofc", all_files)]
+cing_files <- all_files[grep("cing", all_files)]
+mfg_files <- all_files[grep("mfg", all_files)]
+
+# load hc data
+hc_theta_data <- NULL
+for(file in hc_files){
+  hc_theta_data <- rbind(hc_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+
+# load amyg data
+amyg_theta_data <- NULL
+for(file in amyg_files){
+  amyg_theta_data <- rbind(amyg_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+  
+# load ofc data
+ofc_theta_data <- NULL
+for(file in ofc_files){
+  ofc_theta_data <- rbind(ofc_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+
+# load cing data
+cing_theta_data <- NULL
+for(file in cing_files){
+  cing_theta_data <- rbind(cing_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+
+# load mfg data
+mfg_theta_data <- NULL
+for(file in mfg_files){
+  mfg_theta_data <- rbind(mfg_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
+
+# bind ieeg data #
+all_subs_theta_data <- bind_rows(ofc_theta_data %>% mutate(region = "ofc"),
+                                 amyg_theta_data %>% mutate(region = "amyg"),
+                                 hc_theta_data %>% mutate(region = "hc"),
+                                 cing_theta_data %>% mutate(region = "cing"),
+                                 mfg_theta_data %>% mutate(region = "mfg")) 
+
+rm(ofc_theta_data, amyg_theta_data, hc_theta_data, cing_theta_data, mfg_theta_data)
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+all_subs_g_dist <- all_subs_g_dist %>%
+  filter(attack_chase_bob == "Bob") 
+
+
+
+```
+
+```{r merge-behave-ieeg-data}
+
+all_subs_g_dist <- all_subs_g_dist %>% 
+  select(subject, trial_numeric, trial_time, Direction, reward_groups, last_away, away_choice) %>%
+  mutate(trial_time = round(trial_time, 2)) %>% 
+  rename(game_time = trial_time)
+
+all_subs_theta_data <- all_subs_theta_data  %>% 
+  rename(trial_time = time, theta = value, trial_numeric = trial) %>%
+  filter(trial_time >= 0) %>%
+  # create game_time which is rounded to the nearest .5
+  mutate(game_time = round(floor(trial_time / 0.05) * 0.05, 2)) %>%
+  mutate(electrode = gsub("_.*", "", electrode))
+
+# merge behavior data with ieeg data
+ieeg_behave_df <- full_join(all_subs_theta_data, all_subs_g_dist, by = join_by(subject, trial_numeric, game_time)) %>%
+  arrange(electrode) %>%
+  distinct()
+
+# write to csv
+# write_csv(all_subs_theta_data, path(here(), "munge", "all_regions_bandpassed_theta_iti_onset.csv"))
+
+```
+
+
+
+```{r prep-data}
+
+# shift to move time, remove data after turn
+onset_lme_df <- ieeg_behave_df %>%
+    # round time so that we can loop over time later
+    mutate(game_time = round(game_time, 2)) %>%
+    # exclude time before they started moving, may be good to look at not doing this as well
+    filter(Direction != "Still") %>%
+    # filiter out ITI
+    filter(reward_groups != 99 & !is.na(electrode)) %>%
+    # prep electrode variables
+    mutate(elec_id = paste0(subject, "_", electrode)) %>%
+    # shift the time so that time 0 is the start of movement onset
+    group_by(elec_id, trial_numeric, subject) %>%
+    mutate(move_time = round(game_time - first(game_time), 2)) %>%
+    mutate(move_time_hr = round(trial_time - first(game_time), 3)) %>%
+    # filter time so that trials end when the person turnaround for the final time
+    mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
+    mutate(event = replace(event, is.na(event), 0)) %>%
+    mutate(turnaround_time = if_else(event == 1, move_time, 0)) %>%
+    filter(move_time < max(turnaround_time)) %>%
+    ungroup() %>%
+    select(subject, elec_id, theta, region, trial_numeric, move_time, trial_time, move_time_hr) %>%
+    distinct()
+
+# # calculate turn times
+# turn_time_df <- onset_lme_df %>%
+#   select(subject, trial_numeric, move_time) %>%
+#   distinct() %>%
+#   group_by(subject, trial_numeric) %>%
+#   mutate(turn_time = last(move_time)) %>%
+#   select(subject, trial_numeric, turn_time) %>%
+#   distinct() %>%
+#   rename(trial = trial_numeric) %>%
+#   mutate(logged_times = log(turn_time))
+
+# load sig pairs by coherence analysis #
+all_sig_pairs <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
+
+
+```
+
+
+# Amyg ~ ACC
+
+```{r amyg-acc-prep}
+
+# amyg_cing_sig_pairs <- all_sig_pairs %>%
+#   mutate(pair_id = paste0(subject, "_", pairs)) %>%
+#   filter(metric == "Imaginary Coherence") %>%
+#   filter(roi_pair == "amyg_cing") %>%
+#   mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+#   mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+# 
+# 
+# amyg_acc_df <- onset_lme_df %>%
+#   filter(region %in% c("amyg", "cing"))
+# 
+# 
+# ccf_amyg_acc_results <- calculate_overall_ccf(amyg_cing_sig_pairs, amyg_acc_df)
+ccf_amyg_acc_null_results <- run_and_save_perms(amyg_acc_df, amyg_cing_sig_pairs, "null_ccf_amyg_acc_results.csv")
+
+# save true version
+write_csv(ccf_amyg_acc_results, path(here(), "results", "ccf_amyg_acc_results.csv"))
+
+```
+
+
+# HC ~ Amygdala
+
+```{r amyg-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "hc_amyg") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+hc_amyg_df <- onset_lme_df %>%
+  filter(region %in% c("hc", "amyg"))
+
+
+ccf_hc_amyg_results <- calculate_overall_ccf(sig_pairs, hc_amyg_df)
+ccf_hc_amyg_null_results <- run_and_save_perms(hc_amyg_df, sig_pairs, "null_ccf_hc_amyg_results.csv")
+
+# save true version
+write_csv(ccf_hc_amyg_results, path(here(), "results", "ccf_hc_amyg_results.csv"))
+```
+
+
+# HC ~ ACC
+
+```{r amyg-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "hc_cing") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+
+hc_cing_df <- onset_lme_df %>%
+  filter(region %in% c("hc", "cing"))
+
+ccf_hc_cing_results <- calculate_overall_ccf(sig_pairs, hc_cing_df)
+ccf_hc_cing_null_results <- run_and_save_perms(hc_cing_df, sig_pairs, "null_ccf_hc_cing_results.csv")
+
+# save true version
+write_csv(ccf_hc_cing_results, path(here(), "results", "ccf_hc_cing_results.csv"))
+
+```
+
+
+# OFC ~ Amyg
+
+```{r ofc-amyg-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_amyg") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_amyg_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "amyg"))
+
+ccf_ofc_amyg_results <- calculate_overall_ccf(sig_pairs, ofc_amyg_df)
+ccf_ofc_amyg_null_results <- run_and_save_perms(ofc_amyg_df, sig_pairs, "null_ccf_ofc_amyg_results.csv")
+
+# save true version
+write_csv(ccf_ofc_amyg_results, path(here(), "results", "ccf_ofc_amyg_results.csv"))
+
+```
+
+# OFC ~ HC
+
+```{r ofc-hc-prep, eval = F}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_hc") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_hc_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "hc"))
+
+
+ccf_ofc_hc_results <- calculate_overall_ccf(sig_pairs, ofc_hc_df)
+ccf_ofc_hc_null_results <- run_and_save_perms(ofc_hc_df, sig_pairs, "null_ccf_ofc_hc_results.csv", perms_run = 50)
+
+# save true version
+write_csv(ccf_ofc_hc_results, path(here(), "results", "ccf_ofc_hc_results.csv"))
+```
+
+# OFC ~ ACC
+
+```{r ofc-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_cing") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_acc_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "cing"))
+
+
+ccf_ofc_acc_results <- calculate_overall_ccf(sig_pairs, ofc_acc_df)
+ccf_ofc_acc_null_results <- run_and_save_perms(ofc_acc_df, sig_pairs, "null_ccf_ofc_acc_results.csv", perms_run = 36)
+
+# save true version
+write_csv(ccf_ofc_acc_results, path(here(), "results", "ccf_ofc_acc_results.csv"))
+
+
+```
+
+
+# OFC ~ MFG
+
+```{r ofc-mfg-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_mfg") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_mfg_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "mfg"))
+
+
+ccf_ofc_mfg_results <- calculate_overall_ccf(sig_pairs, ofc_mfg_df)
+ccf_ofc_mfg_null_results <- run_and_save_perms(ofc_mfg_df, sig_pairs, "null_ccf_ofc_mfg_results.csv")
+
+# save true version
+write_csv(ccf_ofc_mfg_results, path(here(), "results", "ccf_ofc_mfg_results.csv"))
+
+
+
+```
+
+
+# MFG ~ ACC
+
+```{r ofc-acc-prep, eval = F}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "mfg_cing") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+mfg_cing_df <- onset_lme_df %>%
+  filter(region %in% c("mfg", "cing"))
+
+
+ccf_mfg_cing_results <- calculate_overall_ccf(sig_pairs, mfg_cing_df)
+ccf_mfg_cing_null_results <- run_and_save_perms(mfg_cing_df, sig_pairs, "null_ccf_mfg_cing_results.csv")
+
+# save true version
+write_csv(ccf_mfg_cing_results, path(here(), "results", "ccf_mfg_cing_results.csv"))
+
+```
+
+
+# MFG ~ HC
+
+```{r ofc-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "mfg_hc") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+mfg_hc_df <- onset_lme_df %>%
+  filter(region %in% c("mfg", "hc"))
+
+
+ccf_mfg_hc_results <- calculate_overall_ccf(sig_pairs, mfg_hc_df)
+ccf_mfg_hc_null_results <- run_and_save_perms(mfg_hc_df, sig_pairs, "null_ccf_mfg_hc_results.csv")
+
+# save true version
+write_csv(ccf_mfg_hc_results, path(here(), "results", "ccf_mfg_hc_results.csv"))
+
+```
+
+# MFG ~ Amyg
+
+```{r ofc-acc-prep}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "mfg_amyg") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+mfg_amyg_df <- onset_lme_df %>%
+  filter(region %in% c("mfg", "amyg"))
+
+
+ccf_mfg_amyg_results <- calculate_overall_ccf(sig_pairs, mfg_amyg_df)
+ccf_mfg_amyg_null_results <- run_and_save_perms(mfg_amyg_df, sig_pairs, "null_ccf_mfg_amyg_results.csv")
+
+# save true version
+write_csv(ccf_mfg_amyg_results, path(here(), "results", "ccf_mfg_amyg_results.csv"))
+
+```

@@ -171,7 +171,7 @@ sg_df <- conn_clean_df %>%
 ```
 
 
-```{r save}
+```{r save, eval = F}
 
 # write to csv #
 write_csv(sg_df, path(here(), "results", "sig_theta_pairs.csv"))
@@ -205,6 +205,23 @@ conn_summary_df <- conn_clean_df %>%
          sig_percent = sig/total,
          ns_percent = ns/total) 
 
+conn_roi_summary_df <- conn_clean_df %>%
+  mutate(metric = if_else(metric == "Pairwise Phase Consistency", "Pairwise Phase\nConsistency", metric)) %>%
+  mutate(regions = paste(detailed_first_region, detailed_second_region, sep = "_")) %>%
+  filter(!grepl("insula", regions)) %>%
+  filter(!grepl("sfg", regions)) %>%
+  select(subject, pairs, detailed_first_region, detailed_second_region, first_pair, metric, sig_pair) %>%
+  distinct() %>%
+  group_by(subject, metric, detailed_first_region, detailed_second_region, sig_pair) %>%
+  summarize(n = n()) %>%
+  pivot_wider(names_from = sig_pair, values_from = n, values_fill = 0) %>%
+  rowwise() %>%
+  mutate(total = sig + ns,
+         sig_percent = sig/total,
+         ns_percent = ns/total) %>%
+  select(subject, metric, detailed_first_region, detailed_second_region, total, sig_percent, ns_percent) %>%
+  distinct()
+
 conn_avg_summary_df <- conn_summary_df %>%
   group_by(subject, metric) %>%
   summarize(mean_sig = mean(sig_percent), sd_sig = sd(sig_percent), min_sig = min(sig_percent), max_sig = max(sig_percent)) 
@@ -233,7 +250,7 @@ conn_summary_plot <- conn_summary_df %>%
 conn_summary_plot
 ggsave(path(here(), "figures", "connectivity", paste0("figure3_theta_coherence_across_metrics.png")), 
        plot = conn_summary_plot, 
-       width = 3.5, height = 2.95, units = "in", dpi = 300)
+       width = 3.5, height = 2.5, units = "in", dpi = 300)
 
 ```
 
@@ -282,17 +299,52 @@ conn_avg_summary_df <- conn_summary_df %>%
   summarize(mean_sig = mean(sig_percent), sd_sig = sd(sig_percent), min_sig = min(sig_percent), max_sig = max(sig_percent))
 
            
-conn_summary_df %>%
+conn_summary_roi_plot <- conn_summary_df %>%
   filter(!(is.na(region_pair))) %>%
-  group_by(region_pair) %>%
+  group_by(region_pair, metric) %>%
   mutate(mean_sig = mean(sig_percent)) %>%
   ggplot(., aes(x = fct_reorder(region_pair, mean_sig), y = sig_percent, fill = metric)) +
   geom_violin(alpha = .7,  position = position_dodge(width = .75)) +
   geom_boxplot(position = position_dodge(width = .75), width = .25, alpha = .7) +
   geom_point(position = position_dodge(width = .75), shape = 21, color = "black") +
-  theme(panel.background = element_rect(fill = "white")) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
   labs(y = "Percentage of Significant Electrodes", x = "Region Pair", fill = "Connectivity Metric") +
   ggtitle("Theta coherence across region pairs")
+
+conn_count_roi_plot <- conn_summary_df %>%
+  filter(!(is.na(region_pair))) %>%
+  group_by(region_pair, metric) %>%
+  ggplot(., aes(x = fct_reorder(region_pair, sig), y = sig, fill = metric)) +
+  geom_violin(alpha = .7,  position = position_dodge(width = .75)) +
+  geom_boxplot(position = position_dodge(width = .75), width = .25, alpha = .7) +
+  geom_point(position = position_dodge(width = .75), shape = 21, color = "black") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~region_pair, scales = "free", nrow = 1) +
+  labs(y = "Count of Significant Electrodes", x = "Region Pair", fill = "Connectivity Metric") +
+  ggtitle("Theta coherence across region pairs")
+
+
+
+conn_total_roi_plot <- conn_summary_df %>%
+  filter(!(is.na(region_pair))) %>%
+  group_by(region_pair, metric) %>%
+  ggplot(., aes(x = fct_reorder(region_pair, total), y = total)) +
+  geom_boxplot(position = position_dodge(width = .75), width = .25, alpha = .7) +
+  geom_point(position = position_dodge(width = .75), shape = 21, color = "black") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  facet_wrap(~region_pair, scales = "free", nrow = 1) +
+  labs(y = "Count of Significant Electrodes", x = "Region Pair", fill = "Connectivity Metric") +
+  ggtitle("Theta coherence across region pairs")
+
+
+ggsave(path(here(), "figures", "connectivity", paste0("theta_coherence_across_metrics_by_region.png")), 
+       plot = conn_summary_roi_plot, 
+       width = 10, height = 3, units = "in", dpi = 300)
+
+
+ggsave(path(here(), "figures", "connectivity", paste0("theta_coherence_across_metrics_by_region_count.png")), 
+       plot = conn_count_roi_plot, 
+       width = 10, height = 3, units = "in", dpi = 300)
 
 ```
 

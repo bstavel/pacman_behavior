@@ -224,7 +224,7 @@ approach_roi_plot
 
 ggsave(path(here(), "figures", "connectivity", "figure3_rising_falling_roi.png"), 
        plot = approach_roi_plot, 
-       width = 3.5, height = 1.5, units = "in", dpi = 2000)
+       width = 3.5, height = 2, units = "in", dpi = 2000)
 
 
 ```
@@ -371,7 +371,7 @@ avoid_roi_plot
 
 ggsave(path(here(), "figures", "connectivity", "figure3_falling_falling_roi.png"), 
        plot = avoid_roi_plot, 
-       width = 3.5, height = 1.5, units = "in", dpi = 2000)
+       width = 3.5, height = 2, units = "in", dpi = 2000)
 
 
 ```

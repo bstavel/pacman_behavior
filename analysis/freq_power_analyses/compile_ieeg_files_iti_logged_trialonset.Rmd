@@ -108,20 +108,24 @@ dlpfc_list <- c('BJH046', 'BJH050', 'BJH051',
                 'BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH039',
               'LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
-insula_list <- c('BJH046', 'BJH050',  'BJH051',
-                 'BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH041', 'LL12')
+# insula_list <- c('BJH046', 'BJH050',  'BJH051',
+#                  'BJH021', 'BJH025',  'BJH026', 'BJH016', 'SLCH002', 'BJH027', 'BJH029', 'BJH041', 'LL12')
 
 ## loma linda list ##
 ll_list <- c('LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
 freq_list <- c("delta", "theta", "alpha", "beta", "gamma", "hfa")
+freq_list <- "hfa"
+file_tag <- "_onset_locked_logged_itibase_highres.csv"
+
+
 
 ```
 
 
 ## Merge HC
 
-```{r merge-and-combine-hc, eval = F}
+```{r merge-and-combine-hc, eval = T}
 
 for(frq in freq_list){
 
@@ -135,7 +139,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 512, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
     
         
@@ -146,7 +150,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 1000, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
       }
       
@@ -165,7 +169,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_hc_all_subs_logged_iti_onset.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_hc_all_subs_logged_iti_onset_highres.csv")))
 
 }
 
@@ -173,7 +177,7 @@ for(frq in freq_list){
 
 ## Merge Amygdala
 
-```{r merge-and-combine-amyg, eval = F}
+```{r merge-and-combine-amyg, eval = T}
 
 for(frq in freq_list){
 
@@ -187,7 +191,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 512, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
     
         
@@ -198,7 +202,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 1000, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
       }
       
@@ -217,7 +221,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_amyg_all_subs_logged_iti_onset.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_amyg_all_subs_logged_iti_onset_highres.csv")))
 
 }
 
@@ -225,7 +229,7 @@ for(frq in freq_list){
 
 ## Merge OFC
 
-```{r merge-and-combine-ofc, eval = F}
+```{r merge-and-combine-ofc, eval = T}
 
 for(frq in freq_list){
 
@@ -239,7 +243,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 512, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
     
         
@@ -250,7 +254,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 1000, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
       }
       
@@ -269,7 +273,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_ofc_all_subs_logged_iti_onset.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_ofc_all_subs_logged_iti_onset_highres.csv")))
 
 }
 
@@ -277,7 +281,7 @@ for(frq in freq_list){
 
 ## Merge Ant. Cingulate
 
-```{r merge-and-combine-cing, eval = F}
+```{r merge-and-combine-cing, eval = T}
 
 for(frq in freq_list){
 
@@ -291,7 +295,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 512, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
     
         
@@ -302,7 +306,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 1000, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
       }
       
@@ -321,7 +325,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_cing_all_subs_logged_iti_onset.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_cing_all_subs_logged_iti_onset_highres.csv")))
 
 }
 
@@ -330,9 +334,9 @@ for(frq in freq_list){
 
 ## Merge dlPFC
 
-```{r merge-and-combine-dlpfc, eval = F}
+```{r merge-and-combine-dlpfc, eval = T}
 
-for(frq in freq_list[5:6]){
+for(frq in freq_list){
 
     onset_df <- NULL
     
@@ -344,7 +348,7 @@ for(frq in freq_list[5:6]){
                                                     sub = cur_sub, 
                                                     sample_freq = 512, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
     
         
@@ -355,7 +359,7 @@ for(frq in freq_list[5:6]){
                                                     sub = cur_sub, 
                                                     sample_freq = 1000, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
       }
       
@@ -374,7 +378,7 @@ for(frq in freq_list[5:6]){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_dlpfc_all_subs_logged_iti_onset.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_dlpfc_all_subs_logged_iti_onset_highres.csv")))
 
 }
 
@@ -382,7 +386,7 @@ for(frq in freq_list[5:6]){
 
 ## Merge Insula
 
-```{r merge-and-combine-insula}
+```{r merge-and-combine-insula, eval = F}
 
 for(frq in freq_list){
 
@@ -396,7 +400,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 512, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
     
         
@@ -407,7 +411,7 @@ for(frq in freq_list){
                                                     sub = cur_sub, 
                                                     sample_freq = 1000, 
                                                     timelock_folder = "trial_onset",
-                                                    keyword_include = paste0("trial_", frq, "_onset_locked_logged_itibase.csv"),
+                                                    keyword_include = paste0("trial_", frq, file_tag),
                                                     keyword_exclude = "99999")
       }
       
@@ -426,7 +430,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_insula_all_subs_logged_iti_onset.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_insula_all_subs_logged_iti_onset_highres.csv")))
 
 }
 

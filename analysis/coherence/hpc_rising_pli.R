@@ -8,13 +8,10 @@ library(brms)
 
 
 ## load data ##
-conn_df <- read_csv(path(here(), "combined_ghost_connectivity_newsubs.csv"))
-
-
+conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman", "connectivity", "ieeg", "imcoh_ppc_pli", "combined_ghost_connectivity_newsubs.csv"))
 
 ## split the dlpfc electrodes into MFG and SFG ##
-
-regions_df <- read_csv(path(here(),  "mni_coordinates_all_subs_with_detailed_regions.csv"))
+regions_df <- read_csv(path(here(), "munge",  "mni_coordinates_all_subs_with_detailed_regions.csv"))
 
 mfg_df <- regions_df %>%
   filter(region == "mfg") %>%
@@ -70,7 +67,7 @@ conn_detailed_df <- conn_detailed_df %>%
 ### Approach Dynamics
 
 # only use sig electrodes based on full dataset
-sig_df <- read_csv(path(here(), "sig_theta_pairs.csv"))
+sig_df <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
 
 # pull the sig electrode key ##
 sig_electrodes <- sig_df %>%
@@ -148,8 +145,8 @@ rising_model <- brm(
   iter = 7000,
   warmup = 3000,
   chains = 4,
-  control = list(adapt_delta = 0.99,
-                 max_treedepth = 12),
+  control = list(adapt_delta = 0.99),
+  init = 0,
   seed = 4242
 )
 
