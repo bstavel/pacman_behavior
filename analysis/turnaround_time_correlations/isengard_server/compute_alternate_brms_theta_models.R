@@ -2,15 +2,12 @@
 ## libraries ##
 library(tidyverse)
 library(ggplot2)
-library(lmerTest)
 library(doParallel)
 library(parallel)
 library(foreach)
 library(here)
 library(fs)
-library(lmtest)
 library(scales)
-library(ggthemr)
 library(brms)
 
 ## hand written functions ##
@@ -21,9 +18,14 @@ source(path(here(), "R", 'compile_ieeg_csv_files.R'))
 source(path(here(), "R", 'run_and_plot_lme_models.R'))
 source(path(here(), "R", "bayesian_helpers.R"))
 
-# load correlations #
+### Load and Prep DF ###
+
+# load correlations 
 correlation_df <- read_csv(path(here(), "results", "theta_correlations_newsubs.csv"))
 
+## separate dlpfc data into mfg and sfg data ##
+
+# load localization data
 regions_df <- read_csv(path(here(), "munge", "mni_coordinates_all_subs_with_detailed_regions.csv"))
 
 mfg_df <- regions_df %>%
@@ -88,13 +90,12 @@ correlation_df <- correlation_detailed_df %>%
   ungroup()
 
 
-## load threshold csv ##
+## get list of sig theta pairs ##
+
+# load threshold csv 
 sig_thresh_df <- read_csv(path(here(), "results", "sig_theta_threshold_pairs.csv"))
 
-
-#### Run 50 Threshold Model
-
-# separate subject lists
+# separate significance lists
 sub_elec_lists <- sig_thresh_df %>%
   # get rid of unused regions
   filter(!grepl("sfg", roi_pair)) %>%
@@ -106,6 +107,10 @@ sub_elec_lists <- sig_thresh_df %>%
 
 sig_50_list <- sub_elec_lists %>% filter(threshold == 50) %>% distinct()
 
+
+#### Run 50 Threshold Model ####
+
+## prep brms ##
 
 # Set the number of cores for parallel processing
 options(mc.cores = parallel::detectCores())
@@ -119,7 +124,7 @@ priors <- c(
 )
 
 
-# Fit the model
+## Fit the model
 model <- brm(
   formula = scale_correlation ~ scale_logged_times * region_pair + (1 + scale_logged_times | subject/roi_pair1),
   data = correlation_sig_df,
@@ -132,7 +137,7 @@ model <- brm(
   seed = 1234
 )
 
-# save full model #
+## save full model ##
 save(model, file = path(here(), "results", "full_hfa_all_roi_50_elecs_model_brms.RData"))
 
 
