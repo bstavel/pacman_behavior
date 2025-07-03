@@ -106,6 +106,32 @@ sig_50_list <- sub_elec_lists %>% filter(threshold == 50) %>% distinct()
 
 #### Run 50 Threshold Model ####
 
+## threshold df and clean up region pair names ##
+correlation_clean_df <- correlation_df %>%
+  filter(first_region != second_region) %>%
+  filter(!is.na(correlation)) %>%
+  filter(!is.infinite(logged_times)) %>%
+  filter( (roi_pair1 %in% sig_50_list$pair_id) | (roi_pair2 %in% sig_50_list$pair_id) ) %>%
+  mutate(scale_correlation = scale(correlation)[,1]) %>%
+  mutate(scale_logged_times = scale(logged_times)[,1]) %>%
+  ungroup() %>%
+  mutate(regions = paste(first_region, second_region, sep = "_")) %>%
+  filter(!grepl("insula", regions)) %>%
+  filter(!grepl("sfg", regions)) %>%
+  mutate(
+    region_pair = case_when(
+      grepl("ofc", regions) & grepl("hc", regions) ~ "ofc_hc",
+      grepl("ofc", regions) & grepl("amyg", regions) ~ "ofc_amyg",
+      grepl("ofc", regions) & grepl("mfg", regions) ~ "ofc_mfg",
+      grepl("ofc", regions) & grepl("cing", regions) ~ "ofc_cing",
+      grepl("hc", regions) & grepl("amyg", regions) ~ "hc_amyg",
+      grepl("hc", regions) & grepl("mfg", regions) ~ "hc_mfg",
+      grepl("hc", regions) & grepl("cing", regions) ~ "hc_cing",
+      grepl("amyg", regions) & grepl("mfg", regions) ~ "amyg_mfg",
+      grepl("amyg", regions) & grepl("cing", regions) ~ "amyg_cing",
+      grepl("mfg", regions) & grepl("cing", regions) ~ "mfg_cing"
+    ))
+
 ## prep brms ##
 
 # Set the number of cores for parallel processing
@@ -123,7 +149,7 @@ priors <- c(
 ## Fit the model
 model <- brm(
   formula = scale_correlation ~ scale_logged_times * region_pair + (1 + scale_logged_times | subject/roi_pair1),
-  data = correlation_sig_df,
+  data = correlation_clean_df,
   prior = priors,
   family = gaussian(),
   iter = 4000,
