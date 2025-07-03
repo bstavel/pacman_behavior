@@ -135,7 +135,7 @@ correlation_clean_df <- correlation_df %>%
 ## prep brms ##
 
 # Set the number of cores for parallel processing
-options(mc.cores = parallel::detectCores())
+options(mc.cores = parallel::detectCores(), options(brms.backend = "cmdstanr"))
 
 # set the priors #
 priors <- c(
