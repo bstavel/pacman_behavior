@@ -143,7 +143,7 @@ table(conn_detailed_df$subject)
 ```{r create-sig-elecs}
 
 ## FDR correct/make symmetric
-conn_clean_df <- prep_detailed_conn_allsubs_plot_df(conn_detailed_df)
+conn_clean_df <- prep_detailed_conn_allsubs_plot_df(conn_detailed_df) # makes the df symmetric, so we have all instances of ofc_amyg and amyg_ofc
 
 sig_electrode_df <- conn_clean_df %>%
   mutate(time = round(time, 2)) %>%
@@ -155,6 +155,9 @@ sig_electrode_df <- conn_clean_df %>%
   distinct() 
 
 ```
+
+
+### EDA of Number of Sig Bins By Threshold
 
 ```{r}
 
@@ -181,31 +184,51 @@ sig_timepoint_df %>%
 
 ```
 
+### Create Different Threshold Lists
+
 ```{r}
 
+# orig, 100ms
 sg_orig_df <- sig_electrode_df %>%
   filter(metric == "Imaginary Coherence") %>%
   filter(sig_time_bins > 10) %>% 
-  mutate(threshold = 10)
+  mutate(threshold = "10")
 
+# 500ms
 sg_50_df <- sig_electrode_df %>%
   filter(metric == "Imaginary Coherence") %>%
   filter(sig_time_bins > 50) %>% 
-  mutate(threshold = 50)
+  mutate(threshold = "50")
 
-
+# 1000ms
 sg_100_df <- sig_electrode_df %>%
   filter(metric == "Imaginary Coherence") %>%
   filter(sig_time_bins > 100) %>% 
-  mutate(threshold = 100)
+  mutate(threshold = "100")
+
+# 100ms, approach only
+sg_10app_df <- conn_clean_df %>%
+  mutate(time = round(time, 2)) %>%
+  filter(time >= -1.5 & time <= 0) %>%
+  group_by(subject, pairs, roi_pair, metric) %>%
+  mutate(sig_time_bins = sum(sig)) %>%
+  ungroup %>%
+  select(subject, pairs, roi_pair, metric, sig_time_bins) %>%
+  distinct()  %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(sig_time_bins > 10) %>% 
+  mutate(threshold = "10a")
 
 # bind
-sig_thresh_df <- bind_rows(sg_orig_df, sg_50_df, sg_100_df)
+sig_thresh_df <- bind_rows(sg_orig_df, sg_50_df, sg_100_df, sg_10app_df)
 
 
 # write to csv #
 write_csv(sig_thresh_df, path(here(), "results", "sig_theta_threshold_pairs.csv"))
 ```
+
+
+### Original Threshold, used in biorxiv
 
 ```{r save, eval = F}
 
@@ -224,6 +247,10 @@ write_csv(sg_df, path(here(), "results", "sig_theta_pairs.csv"))
 
 ```
 
+
+
+
+### Create Figures for Significant Pairs by region, metric
 
 ```{r percentages-overall, fig.width = 3.5, fig.height = 2.5}
 
@@ -394,6 +421,9 @@ ggsave(path(here(), "figures", "connectivity", paste0("theta_coherence_across_me
 
 ```
 
+
+### Create Table for Significant Pairs by region, metric
+
 ```{r}
 
 conn_avg_summary_df <- conn_clean_df %>%
@@ -513,13 +543,4 @@ gtsave(conn_avg_table, path(here(), "figures", "connectivity", "percentage_of_si
        vheight =2400)
 
 ```
-
-
-
-```{r}
-
-
-
-```
-
 
