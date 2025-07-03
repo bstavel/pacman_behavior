@@ -194,44 +194,42 @@ correlation_sig_df %>%
   geom_histogram() +
   theme(panel.background = element_rect(fill = "white"))
 
-
 table(correlation_sig_df$region_pair)
-
-
 
 ```
 
+### Original Version, 100ms Threshold
 
 ```{r}
 
-
-# Set the number of cores for parallel processing
-options(mc.cores = parallel::detectCores())
-
-# set the priors #
-priors <- c(
-  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
-  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
-  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
-  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
-)
-
-
-# Fit the model
-model <- brm(
-  formula = scale_correlation ~ scale_logged_times * region_pair + (1 + scale_logged_times | subject/roi_pair1),
-  data = correlation_sig_df,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-
-# save full model #
-save(model, file = path(here(), "results", "full_all_roi_model_brms_newsubs_noinsula.RData"))
+# Originally ran locally, kept for reproducibility
+# # Set the number of cores for parallel processing
+# options(mc.cores = parallel::detectCores())
+# 
+# # set the priors #
+# priors <- c(
+#   prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+#   prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+#   prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+#   prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+# )
+# 
+# 
+# # Fit the model
+# model <- brm(
+#   formula = scale_correlation ~ scale_logged_times * region_pair + (1 + scale_logged_times | subject/roi_pair1),
+#   data = correlation_sig_df,
+#   prior = priors,
+#   family = gaussian(),
+#   iter = 4000,
+#   warmup = 1000,
+#   chains = 4,
+#   control = list(adapt_delta = 0.99),
+#   seed = 1234
+# )
+# 
+# # save full model #
+# save(model, file = path(here(), "results", "full_all_roi_model_brms_newsubs_noinsula.RData"))
 
 # load full model #
 load(path(here(), "results", "full_all_roi_model_brms_newsubs_noinsula.RData"))
@@ -267,67 +265,8 @@ write_csv(slopes_summary_df, path(here(), "results", "turn_time_prediction", "th
 
 ### All Electrode Pairs Version
 
-```{r only-sig-elecs}
-
-# filter ofc_turnDf to sig pairs
-correlation_clean_df <- correlation_df %>%
-  filter(first_region != second_region) %>%
-  filter(!is.na(correlation)) %>%
-  filter(!is.infinite(logged_times)) %>%
-  mutate(scale_correlation = scale(correlation)[,1]) %>%
-  mutate(scale_logged_times = scale(logged_times)[,1]) %>%
-  ungroup() %>%
-  mutate(regions = paste(first_region, second_region, sep = "_")) %>%
-  filter(!grepl("insula", regions)) %>%
-  filter(!grepl("sfg", regions)) %>%
-  mutate(
-    region_pair = case_when(
-      grepl("ofc", regions) & grepl("hc", regions) ~ "ofc_hc",
-      grepl("ofc", regions) & grepl("amyg", regions) ~ "ofc_amyg",
-      grepl("ofc", regions) & grepl("mfg", regions) ~ "ofc_mfg",
-      grepl("ofc", regions) & grepl("cing", regions) ~ "ofc_cing",
-      grepl("hc", regions) & grepl("amyg", regions) ~ "hc_amyg",
-      grepl("hc", regions) & grepl("mfg", regions) ~ "hc_mfg",
-      grepl("hc", regions) & grepl("cing", regions) ~ "hc_cing",
-      grepl("amyg", regions) & grepl("mfg", regions) ~ "amyg_mfg",
-      grepl("amyg", regions) & grepl("cing", regions) ~ "amyg_cing",
-      grepl("mfg", regions) & grepl("cing", regions) ~ "mfg_cing"
-    ))
-
-
-```
-
 
 ```{r}
-
-
-# Set the number of cores for parallel processing
-options(mc.cores = parallel::detectCores())
-
-# set the priors #
-priors <- c(
-  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
-  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
-  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
-  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
-)
-
-
-# Fit the model
-theta_all_elec_model <- brm(
-  formula = scale_correlation ~ scale_logged_times * region_pair + (1 + scale_logged_times | subject/roi_pair1),
-  data = correlation_clean_df,
-  prior = priors,
-  family = gaussian(),
-  iter = 5000, 
-  warmup = 2000,
-  chains = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-
-# save full model #
-save(theta_all_elec_model, file = path(here(), "results", "full_theta_all_roi_all_elecs_model_brms.RData"))
 
 # load full model #
 load(path(here(), "results", "full_theta_all_roi_all_elecs_model_brms.RData"))
