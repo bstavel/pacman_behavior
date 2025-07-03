@@ -187,7 +187,7 @@ mcmc_trace(power_model, regex_pars = c("b_"), facet_args = list(ncol = 1))
 ```{r, eval = F}
 
 # For each region pair
-regions <- unique(power_sig_df$region)
+regions <- unique(power_model$data$region)
 
 # values to find CI intervals in the density function
 closest_value <- function(x, v) {

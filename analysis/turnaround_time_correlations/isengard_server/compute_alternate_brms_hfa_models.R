@@ -89,7 +89,7 @@ correlation_df <- correlation_detailed_df %>%
 ## get list of sig hfa pairs ##
 
 # load threshold csv 
-sig_thresh_df <- read_csv(path(here(), "results", "sig_hfa_threshold_pairs.csv"))
+sig_thresh_df <- read_csv(path(here(), "results", "sig_theta_threshold_pairs.csv"))
 
 # separate significance lists
 sub_elec_lists <- sig_thresh_df %>%
