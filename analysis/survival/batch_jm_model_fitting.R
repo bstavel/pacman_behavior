@@ -71,10 +71,11 @@ ns_game_data_distance <- read_csv(path(here(), "munge", "prolific", "cleaned_pil
 # game_data_distance <- bind_rows(pilot_game_data_distance, ns_game_data_distance)
 game_data_distance <- pilot_game_data_distance
 
-
+no_converge_subs <- c("Subject_5")
 
 failed_subjects <- c()
-for(current_subject in unique(game_data_distance$subject)[40:69]){
+# for(current_subject in unique(game_data_distance$subject)){
+for(current_subject in no_converge_subs){
   
   tryCatch({
     

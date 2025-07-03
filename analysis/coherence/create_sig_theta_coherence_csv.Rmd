@@ -18,32 +18,18 @@ knitr::opts_chunk$set(
 ## libraries ##
 library(tidyverse)
 library(ggplot2)
-library(magrittr)
-library(ggthemr)
 library(grid)
 library(gtable)
-library(gridExtra)
-library(wesanderson)
-library(ggsci)
-library(zoo)
-library(kableExtra)
 library(lme4)
-library(RColorBrewer)
 library(doParallel)
 library(parallel)
 library(foreach)
 library(here)
 library(fs)
-library(ggcorrplot)
-library(viridis)
-library(lmtest)
 library(gt)
-library(survminer)
-library(survival)
 library(effectsize)
 library(scales)
 library(JMbayes2)
-library(caret)
 library(rmarkdown)
 
 ## hand written functions ##
@@ -84,7 +70,7 @@ c25 <- c(
 
 ```{r load-data}
 ## load data ##
-conn_df <- read_csv(path(here(), "data_mount", "remote", "pacman/connectivity/ieeg/imcoh_ppc_pli/",  "combined_connectivity_newsubs.csv"))
+conn_df <- read_csv(path(here(), "results", "combined_connectivity_newsubs.csv"))
 
 
 ```
@@ -159,6 +145,71 @@ table(conn_detailed_df$subject)
 ## FDR correct/make symmetric
 conn_clean_df <- prep_detailed_conn_allsubs_plot_df(conn_detailed_df)
 
+sig_electrode_df <- conn_clean_df %>%
+  mutate(time = round(time, 2)) %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  group_by(subject, pairs, roi_pair, metric) %>%
+  mutate(sig_time_bins = sum(sig)) %>%
+  ungroup %>%
+  select(subject, pairs, roi_pair, metric, sig_time_bins) %>%
+  distinct() 
+
+```
+
+```{r}
+
+sig_electrode_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  ggplot(., aes(x = sig_time_bins)) + 
+  geom_histogram(binwidth = 10) +
+  theme(panel.background = element_rect(fill = "white")) 
+```
+```{r}
+
+sig_timepoint_df <- conn_clean_df %>%
+  mutate(time = round(time, 1)) %>%
+  filter(time >= -2 & time <= 2) %>%
+  filter(sig == T) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  select(subject, pairs, roi_pair, time) %>%
+  distinct() 
+
+sig_timepoint_df %>%
+  ggplot(., aes(x = time)) +
+  geom_bar()
+
+
+```
+
+```{r}
+
+sg_orig_df <- sig_electrode_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(sig_time_bins > 10) %>% 
+  mutate(threshold = 10)
+
+sg_50_df <- sig_electrode_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(sig_time_bins > 50) %>% 
+  mutate(threshold = 50)
+
+
+sg_100_df <- sig_electrode_df %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(sig_time_bins > 100) %>% 
+  mutate(threshold = 100)
+
+# bind
+sig_thresh_df <- bind_rows(sg_orig_df, sg_50_df, sg_100_df)
+
+
+# write to csv #
+write_csv(sig_thresh_df, path(here(), "results", "sig_theta_threshold_pairs.csv"))
+```
+
+```{r save, eval = F}
+
+# original calculation
 sg_df <- conn_clean_df %>%
   filter(time >= -1.5 & time <= 1.5) %>%
   group_by(subject, pairs, roi_pair, metric) %>%
@@ -167,11 +218,6 @@ sg_df <- conn_clean_df %>%
   filter(sig_time_bins > 10) %>%
   select(subject, pairs, roi_pair, metric) %>%
   distinct() 
-
-```
-
-
-```{r save, eval = F}
 
 # write to csv #
 write_csv(sg_df, path(here(), "results", "sig_theta_pairs.csv"))

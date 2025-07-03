@@ -17,6 +17,7 @@ knitr::opts_chunk$set(
 
 ## libraries ##
 library(tidyverse)
+library(gt)
 library(ggplot2)
 library(magrittr)
 library(ggthemr)
@@ -37,7 +38,6 @@ library(fs)
 library(ggcorrplot)
 library(viridis)
 library(lmtest)
-library(gt)
 library(survminer)
 library(survival)
 library(effectsize)
@@ -79,6 +79,7 @@ c25 <- c(
 
 ```
 
+## iEEG Behavioral Data 
 
 ```{r load-files}
 
@@ -124,134 +125,149 @@ theta_joint_df <- full_join(fit_metrics_df, survival_df, by = c("subject", "seed
 
 ```
 
+## iEEG Example Behavioral Data
 
-```{r, fig.width=15, fig.height=5}
+```{r, example-ieeg-sub}
 
+example_theta_joint_df <- theta_joint_df %>%
+  filter(subject == "BJH016") %>%
+  filter(seed != 66) # remove duplicate run
 
-auc_plot <- theta_joint_df %>%
-  ggplot(., aes(x = subject, y = auc, fill = case)) +
-  geom_boxplot(color = "black") +
-  geom_point(position = position_dodge(.75), shape = 21, color = "black") +
-  theme(panel.background = element_rect(fill = "white"), legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
-  scale_color_manual(values = c("darkgrey", "#86C8B7")) +
-  labs(y = "", x = "", fill = "") +
-  ggtitle("AUC")
+example_threat_df <- example_theta_joint_df %>%
+  filter(predictor == "value(distance_to_ghost)")
 
+example_reward_df <- example_theta_joint_df %>%
+  filter(predictor == "value(points_remaining)")
 
-cor_plot <- theta_joint_df %>%
-  ggplot(., aes(x = subject, y = cor, fill = case)) +
-  geom_boxplot(color = "black") +
-  geom_point(position = position_dodge(.75), shape = 21, color = "black") +
-  theme(panel.background = element_rect(fill = "white"), legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
-  scale_color_manual(values = c("darkgrey", "#86C8B7")) +
-  labs(y = "", x = "", fill = "") +
-  ggtitle("True vs Predicted Correlation")
+## print mean coefficients
+# Reward
+print(paste0(" Reward Mean: ", example_reward_df %>% filter(case == "true") %>% pull(Mean) %>% mean()))
+print(paste0(" Reward SD: ", example_reward_df %>% filter(case == "true") %>% pull(Mean) %>% sd()))
+print(paste0(" Reward Min: ", example_reward_df %>% filter(case == "true") %>% pull(Mean) %>% min()))
+print(paste0(" Reward Max: ", example_reward_df %>% filter(case == "true") %>% pull(Mean) %>% max()))
+# Threat
+print(paste0(" Threat Mean: ", example_threat_df %>% filter(case == "true") %>% pull(Mean) %>% mean()))
+print(paste0(" Threat SD: ", example_threat_df %>% filter(case == "true") %>% pull(Mean) %>% sd()))
+print(paste0(" Threat Min: ", example_threat_df %>% filter(case == "true") %>% pull(Mean) %>% min()))
+print(paste0(" Threat Max: ", example_threat_df %>% filter(case == "true") %>% pull(Mean) %>% max()))
 
-threat_coef_plot <- theta_joint_df %>%
-  filter(predictor == "value(distance_to_ghost)") %>%
-  ggplot(., aes(x = subject, y = Mean, fill = case)) +
-  geom_boxplot(color = "black") +
-  geom_point(position = position_dodge(.75), shape = 21, color = "black") +
-  theme(panel.background = element_rect(fill = "white"), legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
-  scale_color_manual(values = c("darkgrey", "#86C8B7")) +
-  labs(y = "", x = "", fill = "") +
-  ggtitle("Coefficient - Threat")
+# AUC
+print(paste0(" AUC Mean: ", example_threat_df %>% filter(case == "true") %>% pull(auc) %>% mean()))
+print(paste0(" AUC SD: ", example_threat_df %>% filter(case == "true") %>% pull(auc) %>% sd()))
+
+# Correlation
+print(paste0(" Correlation Mean: ", example_threat_df %>% filter(case == "true") %>% pull(cor) %>% mean()))
+print(paste0(" Correlation SD: ", example_threat_df %>% filter(case == "true") %>% pull(cor) %>% sd()))
 
 
-reward_coef_plot <- theta_joint_df %>%
-  filter(predictor == "value(points_remaining)") %>%
-  ggplot(., aes(x = subject, y = Mean, fill = case)) +
-  geom_boxplot(color = "black") +
-  geom_point(position = position_dodge(.75), shape = 21, color = "black") +
-  theme(panel.background = element_rect(fill = "white"), legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
-  scale_color_manual(values = c("darkgrey", "#86C8B7")) +
-  labs(y = "", x = "", fill = "") +
-  ggtitle("Coefficient - Reward")
+```
+```{r}
+
+folds <- 1:5
+
+reward_model <- NULL
+threat_model <- NULL
+for(f in folds){
 
 
-p_threat_plot <- theta_joint_df %>%
-  filter(predictor == "value(distance_to_ghost)") %>%
-  ggplot(., aes(x = subject, y = P, fill = case)) +
-  geom_boxplot(color = "black") +
-  geom_point(position = position_dodge(.75), shape = 21, color = "black") +
-  theme(panel.background = element_rect(fill = "white"), legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
-  scale_color_manual(values = c("darkgrey", "#86C8B7")) +
-  labs(y = "", x = "", fill = "") +
-  ggtitle("'P' Value - Threat")
+  example_model <- readRDS(file = path(here(), "data", "joint_models", paste0("BJH016_FALSE_53-", f, ".rds")))
+  
+  tmp <- summary(example_model)
+  
+  threat_model <- bind_rows(threat_model, tmp$Outcome1 %>% mutate(fold = f) %>% mutate(model = c("Intercept", "Time", "Sigma"))) 
+  reward_model <- bind_rows(reward_model, tmp$Outcome2 %>% mutate(fold = f) %>% mutate(model = c("Intercept", "Time", "Sigma"))) 
+  
+  
 
-p_reward_plot <- theta_joint_df %>%
-  filter(predictor == "value(points_remaining)") %>%
-  ggplot(., aes(x = subject, y = P, fill = case)) +
-  geom_boxplot(color = "black") +
-  geom_point(position = position_dodge(.75), shape = 21, color = "black") +
-  theme(panel.background = element_rect(fill = "white"), legend.position = "top",
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
-  scale_color_manual(values = c("darkgrey", "#86C8B7")) +
-  labs(y = "", x = "", fill = "") +
-  ggtitle("'P' Value - Reward")
-
-
-ggsave(path(here(), "figures", "survival", "ieeg_base_model_threat_coef_plot.png"), plot = threat_coef_plot, width = 18, height =4, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "ieeg_base_model_reward_coef_plot.png"), plot = reward_coef_plot, width = 18, height = 4, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "ieeg_base_model_threat_p_plot.png"), plot = p_threat_plot, width = 18, height = 4, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "ieeg_base_model_reward_p_plot.png"), plot = p_reward_plot, width = 18, height = 4, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "ieeg_base_model_auc_plot.png"), plot = auc_plot, width = 18, height = 4, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "ieeg_base_model_cor_plot.png"), plot = cor_plot, width = 18, height = 4, units = "in", dpi = 300)
-
-
+}
 
 ```
 
 ```{r}
 
-joint_dist_df %>%
-  mutate(jm_time = round(jm_time, 2)) %>%
-  ggplot(., aes(x = jm_time, y = distance_to_ghost)) +
-  geom_line(aes(group = trial_numeric), alpha = .5) +
-  geom_smooth(method = "lm", formula = "y~x", color = "black", fill = "lightgrey") +
-  theme_bw() +
-  theme(axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +
-  labs(x = "Trial Time", y = "Distance to ghost")
+print(paste0(" Threat Time Min: ", threat_model %>% filter(model == "Time") %>% pull(Mean) %>% min()))
+print(paste0(" Threat Time Max: ", threat_model %>% filter(model == "Time") %>% pull(Mean) %>% max()))
 
-joint_dist_df %>%
-  mutate(jm_time = round(jm_time, 2)) %>%
-  ggplot(., aes(x = jm_time, y = points_remaining)) +
-  geom_line(aes(group = trial_numeric), alpha = .5, color = "#FB6087") +
-  geom_smooth(method = "lm", formula = "y~x", color = "black", fill = "lightgrey") +
-  theme_bw() +
-  theme(axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
-  labs(x = "Trial Time", y = "Points remaning in the trial")
+print(paste0(" Reward Time Min: ", reward_model %>% filter(model == "Time") %>% pull(Mean) %>% min()))
+print(paste0(" Reward Time Max: ", reward_model %>% filter(model == "Time") %>% pull(Mean) %>% max()))
+
+```
+
+
+```{r model-tables}
+
+threat_time_model_table <- threat_model %>%
+  filter(model != "Sigma") %>%
+  group_by(model) %>%
+  summarize(Estimate = mean(Mean), 
+            StDev = mean(StDev),
+            `2.5%` = mean(`2.5%`),
+            `97.5%` = mean(`97.5%`),
+            `P+` = mean(P),
+            Rhat = mean(Rhat)) %>%
+  mutate(predictor = "Threat ~ Time")
+
+reward_time_model_table <- reward_model %>%
+  filter(model != "Sigma") %>%
+  group_by(model) %>%
+  summarize(Estimate = mean(Mean), 
+            StDev = mean(StDev),
+            `2.5%` = mean(`2.5%`),
+            `97.5%` = mean(`97.5%`),
+            `P+` = mean(P),
+            Rhat = mean(Rhat))  %>%
+  mutate(predictor = "Reward ~ Time")
+
+pred_model_table <- example_theta_joint_df %>%
+  filter(case == "true") %>%
+  mutate(model = if_else(predictor == "value(points_remaining)", "Reward", "Threat")) %>%
+  group_by(model) %>%
+  summarize(Estimate = mean(Mean), 
+            StDev = mean(StDev),
+            `2.5%` = mean(`2.5%`),
+            `97.5%` = mean(`97.5%`),
+            `P+` = mean(P),
+            Rhat = mean(Rhat))  %>%
+  mutate(predictor = "Avoidance ~ Reward + Threat")
+
+complete_table <- bind_rows(threat_time_model_table, reward_time_model_table, pred_model_table) %>%
+  select(predictor, model, Estimate, StDev, `2.5%`, `97.5%`, `P+`, Rhat) %>%
+  mutate(Estimate = round(Estimate, 2),
+         StDev = round(StDev, 2),
+         `2.5%` = round(`2.5%`, 2),
+         `97.5%` = round(`97.5%`, 2),
+         `P+` = round(`P+`, 2),
+         Rhat = round(Rhat, 2))
+
+complete_gt_table <- complete_table %>%
+  group_by(predictor) %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(5)
+  ) %>%
+  tab_style(
+    style = cell_text(indent = px(40)), # Add space to the right
+    locations = cells_body(columns = 2) # Apply only to the first column
+  ) %>%
+  tab_style(
+    style = cell_text(indent = px(20)), # Add space to the right
+    locations = cells_body(columns = 3:6) # Apply only to the first column
+  ) %>%  
+  tab_style(
+    style = cell_text(style = "italic", align = 'left'), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("**Joint Behavior Model Results: Example Patient**"))
+
+complete_gt_table
+
+
+gtsave(complete_gt_table, path(here(), "figures", "survival", "figure3_example_sub_model_table.html"))
+
+pagedown::chrome_print(input = path(here(), "figures", "survival", "figure3_example_sub_model_table.html"), 
+                       output = path(here(), "figures", "survival", "figure3_example_sub_model_table.png"))
 
 
 ```
@@ -259,18 +275,430 @@ joint_dist_df %>%
 
 
 
+```{r convergence-checks}
 
-## BJH016
+# Generate `n_chains` colors from the magma palette
+reward_colors <- setNames(viridis(8, option = "magma"), as.character(seq_len(8)))
+threat_colors <- setNames(viridis(8, option = "viridris"), as.character(seq_len(8)))
+
+reward_traceplot <- ggtraceplot(example_model, "alphas", custom_theme = reward_colors, grid = T)
+threat_traceplot <- ggtraceplot(example_model, "alphas", custom_theme = threat_colors, grid = T)
+
+reward_densityplot <- ggdensityplot(example_model, "alphas", custom_theme = reward_colors, grid = T)
+threat_denistyplot <- ggdensityplot(example_model, "alphas", custom_theme = threat_colors, grid = T)
+
+ggsave(path(here(), "figures", "survival", "fig3_2_reward_traceplot.png"), plot = reward_traceplot, width = 12, height =16, units = "in", dpi = 600)
+ggsave(path(here(), "figures", "survival", "fig3_2_threat_traceplot.png"), plot = threat_traceplot, width = 12, height = 16, units = "in", dpi = 600)
+ggsave(path(here(), "figures", "survival", "fig3_2_reward_densplot.png"), plot = reward_densityplot, width = 6, height = 16, units = "in", dpi = 600)
+ggsave(path(here(), "figures", "survival", "fig3_2_threat_densplot.png"), plot = threat_denistyplot, width = 6, height = 16, units = "in", dpi = 600)
+
+
+reward_time_traceplot <- ggtraceplot(example_model, "betas", custom_theme = reward_colors, grid = T)
+threat_time_traceplot <- ggtraceplot(example_model, "betas", custom_theme = threat_colors, grid = T, gridrows = 4)
+
+reward_time_densityplot <- ggdensityplot(example_model, "betas", custom_theme = reward_colors, grid = T)
+threat_time_denistyplot <- ggdensityplot(example_model, "betas", custom_theme = threat_colors, grid = T, gridrows = 4)
+
+ggsave(path(here(), "figures", "survival", "fig3_2_reward_time_traceplot.png"), plot = reward_time_traceplot, width = 12, height =16, units = "in", dpi = 600)
+ggsave(path(here(), "figures", "survival", "fig3_2_threat_time_traceplot.png"), plot = threat_time_traceplot, width = 12, height = 21.33, units = "in", dpi = 600)
+ggsave(path(here(), "figures", "survival", "fig3_2_reward_time_densplot.png"), plot = reward_time_densityplot, width = 6, height = 16, units = "in", dpi = 600)
+ggsave(path(here(), "figures", "survival", "fig3_2_threat_time_densplot.png"), plot = threat_time_denistyplot, width = 6, height = 21.33, units = "in", dpi = 600)
+
+
+
+
+```
+
+```{r example-tests}
+
+## reward
+t.test(example_reward_df$Mean ~ example_reward_df$case)
+
+## threat
+t.test(example_threat_df$Mean ~ example_threat_df$case)
+
+## AUC 
+t.test(example_threat_df$auc ~ example_threat_df$case)
+
+## correlation
+t.test(example_threat_df$cor ~ example_threat_df$case)
+
+
+```
+
+
+```{r, fig.width = 5, fig.height = 5}
+
+coef_threat_plot <- example_theta_joint_df %>%
+  filter(predictor == "value(distance_to_ghost)") %>%
+  ggplot(., aes(x = case, y = Mean, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_boxplot(color = "black") +
+  geom_point(position = position_dodge2(.25), shape = 21, color = "black") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
+  scale_color_manual(values = c("darkgrey", "#86C8B7")) +
+  labs(y = "Beta Coefficient", x= "") +
+  ylim(-4.5, .5) +
+  ggtitle("Coefficient - Threat")
+
+
+coef_reward_plot <- example_theta_joint_df %>%
+  filter(predictor == "value(points_remaining)") %>%
+  ggplot(., aes(x = case, y = Mean, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_boxplot(color = "black") +
+  geom_point(position = position_dodge2(.25), shape = 21, color = "black") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#FB6087")) +
+  scale_color_manual(values = c("darkgrey", "#FB6087")) +
+  labs(y = "Beta Coefficient", x= "") + ylim(-4.5, .5) +
+  ggtitle("Coefficient - Reward")
+
+
+auc_plot <- example_theta_joint_df %>%
+  ggplot(., aes(x = case, y = auc, fill = case)) +
+  geom_hline(yintercept = 0.5, color = '#2D2327', linetype = "dashed") +
+  geom_boxplot(color = "black") +
+  geom_point(position = position_dodge2(.25), shape = 21, color = "black") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +   
+  scale_fill_manual(values = c("darkgrey", "#8fbf6d")) +
+  scale_color_manual(values = c("darkgrey", "#8fbf6d")) +
+  labs(y = "AUC", x= "") +
+  ggtitle("AUC")
+
+
+cor_plot <- example_theta_joint_df %>%
+  ggplot(., aes(x = case, y = cor, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_boxplot(color = "black") +
+  geom_point(position = position_dodge2(.25), shape = 21, color = "black") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +   
+  scale_fill_manual(values = c("darkgrey", "#f1bd39")) +
+  scale_color_manual(values = c("darkgrey", "#f1bd39")) +
+  labs(y = "Pearson's Correlation", x= "") +
+  ggtitle("Turnaround Corr.")
+
+ggsave(path(here(), "figures", "survival", "BJH016_behave_coef_threat_plot.png"), plot = coef_threat_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "BJH016_behave_coef_reward_plot.png"), plot = coef_reward_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+# ggsave(path(here(), "figures", "survival", "BJH016_behave_p_plot.png"), plot = p_plot, width = 4, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "BJH016_behave_auc_plot.png"), plot = auc_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "BJH016_behave_cor_plot.png"), plot = cor_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+
+
+
+```
+
+
+### iEEG Bheavioral Data tests and figures
+
+
+```{r, fig.width=15, fig.height=5}
+
+ieeg_behave_joint_df <- theta_joint_df %>%
+  filter(!(subject == "BJH016" & seed == 66))
+
+threat_coef_ieeg_behave_df <- ieeg_behave_joint_df %>%
+  filter(predictor == "value(distance_to_ghost)")
+
+reward_coef_ieeg_behave_df <- ieeg_behave_joint_df %>%
+  filter(predictor == "value(points_remaining)")
+  
+
+coef_threat_plot <- threat_coef_ieeg_behave_df %>%
+  ggplot(., aes(x = case, y = Mean, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
+  scale_color_manual(values = c("darkgrey", "#86C8B7")) +
+  labs(y = "Beta Coefficient", x= "") +
+  ylim(-4.5, .5) +
+  ggtitle("Coefficient - Threat")
+
+
+coef_reward_plot <- reward_coef_ieeg_behave_df %>%
+  ggplot(., aes(x = case, y = Mean, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#FB6087")) +
+  scale_color_manual(values = c("darkgrey", "#FB6087")) +
+  labs(y = "Beta Coefficient", x= "") + ylim(-4.5, .5) +
+  ggtitle("Coefficient - Reward")
+
+
+auc_plot <- reward_coef_ieeg_behave_df %>%
+  ggplot(., aes(x = case, y = auc, fill = case)) +
+  geom_hline(yintercept = 0.5, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#8fbf6d")) +
+  scale_color_manual(values = c("darkgrey", "#8fbf6d")) +
+  labs(y = "AUC", x= "") +
+  ggtitle("AUC")
+
+
+cor_plot <- reward_coef_ieeg_behave_df %>%
+  ggplot(., aes(x = case, y = cor, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#f1bd39")) +
+  scale_color_manual(values = c("darkgrey", "#f1bd39")) +
+  labs(y = "Pearson's Correlation", x= "") +
+  ggtitle("Turnaround Corr.")
+
+coef_threat_plot
+coef_reward_plot
+auc_plot
+cor_plot
+ggsave(path(here(), "figures", "survival", "iEEG_coef_threat_plot.png"), plot = coef_threat_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "iEEG_coef_reward_plot.png"), plot = coef_reward_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "iEEG_auc_plot.png"), plot = auc_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "iEEG_cor_plot.png"), plot = cor_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+
+
+
+```
+
+
+```{r ieeg_behave-sig}
+
+### Descriptive Stats
+print(paste0(" Rhat Mean: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(Rhat) %>% mean()))
+print(paste0(" Rhat SD: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(Rhat) %>% sd()))
+print(paste0(" Rhat Max: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(Rhat) %>% max()))
+print(paste0(" Rhat Min: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(Rhat) %>% min()))
+
+print(paste0(" Beta Mean: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(Mean) %>% mean()))
+print(paste0(" Beta SD: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(Mean) %>% sd()))
+print(paste0(" Beta Max: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(Mean) %>% max()))
+print(paste0(" Beta Min: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(Mean) %>% min()))
+
+print(paste0(" P+ Mean: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(P) %>% mean()))
+print(paste0(" P+ SD: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(P) %>% sd()))
+print(paste0(" P+ Max: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(P) %>% max()))
+print(paste0(" P+ Min: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(P) %>% min()))
+
+print(paste0(" AUC Mean: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(auc) %>% mean()))
+print(paste0(" AUC SD: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(auc) %>% sd()))
+print(paste0(" AUC Max: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(auc) %>% max()))
+print(paste0(" AUC Min: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(auc) %>% min()))
+
+print(paste0(" Cor Mean: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(cor) %>% mean()))
+print(paste0(" Cor SD: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(cor) %>% sd()))
+print(paste0(" Cor Max: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(cor) %>% max()))
+print(paste0(" Cor Min: ", ieeg_behave_joint_df %>% filter(case == "true") %>% pull(cor) %>% min()))
+
+average_auc <- ieeg_behave_joint_df %>%
+  filter(case == "true") %>%
+  group_by(subject) %>%
+  mutate(mean_auc = mean(auc)) %>%
+  select(subject, mean_auc) %>%
+  distinct()
+
+
+
+## Reward 
+reward_iEEG_model <- lmer(Mean ~ case + (1|subject), data = reward_coef_ieeg_behave_df)
+summary(reward_iEEG_model)
+confint(reward_iEEG_model, method = "Wald")
+
+## Threat
+threat_iEEG_model <- lmer(Mean ~ case + (1|subject), data = threat_coef_ieeg_behave_df)
+summary(threat_iEEG_model)
+confint(threat_iEEG_model, method = "Wald")
+
+## AUC
+auc_iEEG_model <- lmer(auc ~ case + (1|subject), data = reward_coef_ieeg_behave_df)
+summary(auc_iEEG_model)
+confint(auc_iEEG_model, method = "Wald")
+
+## Correlation
+cor_iEEG_model <-lmer(cor ~ case + (1|subject), data = reward_coef_ieeg_behave_df)
+summary(cor_iEEG_model)
+confint(cor_iEEG_model, method = "Wald")
+
+
+```
+
+## Full iEEG Sample ~ Theta
+
+```{r load-files}
+
+file_list <- list.files(path(here(), "data", "joint_models", "model_summaries"), "_fit_metrics_theta_time_model_df.csv")
+file_list <- file_list[!grepl("Subject_", file_list)]
+
+fit_metrics_df <- tibble()
+for(file in file_list){
+  
+  tmp <- read_csv(path(here(), "data", "joint_models", "model_summaries", file))
+    tmp <- tmp %>%
+    mutate(case = if_else(grepl("permuted", file), "permuted", "true"))
+  fit_metrics_df <- bind_rows(fit_metrics_df, tmp)
+  
+  
+}
+
+file_list <- list.files(path(here(), "data", "joint_models", "model_summaries"), "_model_params_theta_time_model_df.csv")
+file_list <- file_list[!grepl("Subject_", file_list)]
+survival_df <- tibble()
+for(file in file_list){
+  
+  tmp <- read_csv(path(here(), "data", "joint_models", "model_summaries", file))
+  tmp <- tmp %>%
+    mutate(case = if_else(grepl("permuted", file), "permuted", "true"))
+  survival_df <- bind_rows(survival_df, tmp)
+  
+  
+}
+
+
+fit_metrics_df <- fit_metrics_df %>%
+  rename(subject = subjects, seed_split =seed)  %>%
+  mutate(seed = as.numeric(gsub("-.*", "", seed_split)))  %>%
+  mutate(fold = as.numeric(gsub(".*-", "", seed_split))) %>%
+  select(-seed_split)
+
+survival_df <- survival_df %>%
+  filter(predictor == "value(mean_theta)") %>%
+  group_by(subject, seed, case) %>%
+  mutate(fold = 1:5)
+
+theta_joint_df <- full_join(fit_metrics_df, survival_df, by = c("subject", "seed", "fold", "case"))
+
+```
+
+```{r, fig.width = 5, fig.height = 5}
+
+
+theta_joint_df <- theta_joint_df %>%
+  filter(subject != "BJH016" | seed != 66) # remove duplicate run
+
+
+coef_theta_plot <- theta_joint_df %>%
+  filter(predictor == "value(mean_theta)") %>%
+  ggplot(., aes(x = case, y = Mean, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#7f6ba6")) +
+  scale_color_manual(values = c("darkgrey", "#7f6ba6")) +
+  labs(y = "", x= "") +
+  ggtitle("Coefficient - Theta")
+
+
+p_plot <- theta_joint_df %>%
+  ggplot(., aes(x = case, y = P, fill = case)) +
+  geom_hline(yintercept = 0.05, color = '#2D2327', linetype = "dashed") +
+  geom_boxplot(color = "black") +
+  geom_point(position = position_dodge2(.25), shape = 21, color = "black") +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 14),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#d67365")) +
+  scale_color_manual(values = c("darkgrey", "#d67365")) +
+  labs(y = "", x= "") +
+  ggtitle("'P' Value")
+
+
+
+auc_plot <- fit_metrics_df %>%
+  ggplot(., aes(x = case, y = auc, fill = case)) +
+  geom_hline(yintercept = 0.5, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#8fbf6d")) +
+  scale_color_manual(values = c("darkgrey", "#8fbf6d")) +
+  labs(y = "AUC", x= "") +
+  ggtitle("AUC")
+
+
+cor_plot <- fit_metrics_df %>%
+  ggplot(., aes(x = case, y = cor, fill = case)) +
+  geom_hline(yintercept = 0, color = '#2D2327', linetype = "dashed") +
+  geom_violin() + 
+  geom_boxplot(color = "black", width = .1) +
+  theme(panel.background = element_rect(fill = "white"), legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 19),
+        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
+        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
+  scale_fill_manual(values = c("darkgrey", "#f1bd39")) +
+  scale_color_manual(values = c("darkgrey", "#f1bd39")) +
+  labs(y = "Pearson's Correlation", x= "") +
+  ggtitle("True vs Predicted Correlation")
+
+ggsave(path(here(), "figures", "survival", "ieeg_coef_theta_plot.png"), plot = coef_theta_plot, width = 5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "ieeg_p_plot.png"), plot = p_plot, width = 5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "ieeg_auc_plot.png"), plot = auc_plot, width = 5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "ieeg_cor_plot.png"), plot = cor_plot, width = 5, height = 4.25, units = "in", dpi = 300)
+
+
+
+```
+
+
+## BJH016 - Theta
 
 ```{r load-files}
 
 # true data
-fit_metrics_true_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "BJH016fit_metrics_theta_time_model_df.csv"))
-survival_true_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "BJH016model_params_theta_time_model_df.csv"))
+fit_metrics_true_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "BJH016_fit_metrics_theta_power_model_df_hc.csv"))
+survival_true_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "BJH016_model_params_theta_power_model_df_hc.csv"))
 
 # permuted data
-fit_metrics_perm_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "BJH016_permuted_fit_metrics_theta_time_model_df.csv"))
-survival_perm_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "BJH016_permuted_model_params_theta_time_model_df.csv"))
+fit_metrics_perm_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "BJH016_permuted_fit_metrics_theta_power_model_df_hc.csv"))
+survival_perm_df <- read_csv(path(here(), "data", "joint_models", "model_summaries", "BJH016_permuted_model_params_theta_power_model_df_hc.csv"))
 
 # combine
 fit_metrics_df <- bind_rows(fit_metrics_true_df %>% mutate(case = "true"), fit_metrics_perm_df %>% mutate(case = "permuted"))
@@ -283,6 +711,95 @@ fit_metrics_df <- fit_metrics_df %>%
 survival_df$seed <- fit_metrics_df$seed
 
 theta_joint_df <- full_join(fit_metrics_df, survival_df, by = c("subject", "seed", "case"))
+
+```
+
+```{r}
+
+folds <- 1:5
+
+theta_model <- NULL
+for(f in folds){
+
+
+  example_model <- readRDS(file = path(here(), "data", "joint_models", paste0("BJH016_FALSE_1-", f, "_theta_time.rds")))
+  
+  tmp <- summary(example_model)
+  
+  theta_model <- bind_rows(theta_model, tmp$Outcome1 %>% mutate(fold = f) %>% mutate(model = c("Intercept", "Time", "Sigma"))) 
+  
+  
+
+}
+
+```
+
+
+```{r model-tables}
+
+theta_time_model_table <- theta_model %>%
+  filter(model != "Sigma") %>%
+  group_by(model) %>%
+  summarize(Estimate = mean(Mean), 
+            StDev = mean(StDev),
+            `2.5%` = mean(`2.5%`),
+            `97.5%` = mean(`97.5%`),
+            `P+` = mean(P),
+            Rhat = mean(Rhat)) %>%
+  mutate(predictor = "Theta ~ Time")
+
+
+pred_model_table <- theta_joint_df %>%
+  filter(case == "true") %>%
+  mutate(model = "Theta Power") %>%
+  group_by(model) %>%
+  summarize(Estimate = mean(Mean), 
+            StDev = mean(StDev),
+            `2.5%` = mean(`2.5%`),
+            `97.5%` = mean(`97.5%`),
+            `P+` = mean(P),
+            Rhat = mean(Rhat))  %>%
+  mutate(predictor = "Avoidance ~ Theta Power")
+
+complete_table <- bind_rows(theta_time_model_table, pred_model_table) %>%
+  select(predictor, model, Estimate, StDev, `2.5%`, `97.5%`, `P+`, Rhat) %>%
+  mutate(Estimate = round(Estimate, 2),
+         StDev = round(StDev, 2),
+         `2.5%` = round(`2.5%`, 2),
+         `97.5%` = round(`97.5%`, 2),
+         `P+` = round(`P+`, 2),
+         Rhat = round(Rhat, 2))
+
+complete_gt_table <- complete_table %>%
+  group_by(predictor) %>%
+  gt() %>%
+  tab_options(
+    table.font.names = "Gill Sans",
+    table.font.size = px(12),
+    data_row.padding = px(5)
+  ) %>%
+  tab_style(
+    style = cell_text(indent = px(40)), # Add space to the right
+    locations = cells_body(columns = 2) # Apply only to the first column
+  ) %>%
+  tab_style(
+    style = cell_text(indent = px(20)), # Add space to the right
+    locations = cells_body(columns = 3:6) # Apply only to the first column
+  ) %>%  
+  tab_style(
+    style = cell_text(style = "italic", align = 'left'), # Apply italics to the first column
+    locations = cells_body(columns = 1)  # Apply only to the first column
+  ) %>%
+  tab_header(title = md("**Joint Neural Model Results: Example Patient**"))
+
+complete_gt_table
+
+
+gtsave(complete_gt_table, path(here(), "figures", "survival", "figure3_example_sub_model_theta_table.html"))
+
+pagedown::chrome_print(input = path(here(), "figures", "survival", "figure3_example_sub_model_theta_table.html"), 
+                       output = path(here(), "figures", "survival", "figure3_example_sub_model_theta_table.png"))
+
 
 ```
 
@@ -361,6 +878,57 @@ ggsave(path(here(), "figures", "survival", "BJH016_cor_plot.png"), plot = cor_pl
 ```
 
 
+```{r sig}
+
+### Descriptive Stats
+print(paste0(" Rhat Mean: ", theta_joint_df %>% filter(case == "true") %>% pull(Rhat) %>% mean()))
+print(paste0(" Rhat SD: ", theta_joint_df %>% filter(case == "true") %>% pull(Rhat) %>% sd()))
+print(paste0(" Rhat Max: ", theta_joint_df %>% filter(case == "true") %>% pull(Rhat) %>% max()))
+print(paste0(" Rhat Min: ", theta_joint_df %>% filter(case == "true") %>% pull(Rhat) %>% min()))
+
+print(paste0(" Beta Mean: ", theta_joint_df %>% filter(case == "true") %>% pull(Mean) %>% mean()))
+print(paste0(" Beta SD: ", theta_joint_df %>% filter(case == "true") %>% pull(Mean) %>% sd()))
+print(paste0(" Beta Max: ", theta_joint_df %>% filter(case == "true") %>% pull(Mean) %>% max()))
+print(paste0(" Beta Min: ", theta_joint_df %>% filter(case == "true") %>% pull(Mean) %>% min()))
+
+print(paste0(" P+ Mean: ", theta_joint_df %>% filter(case == "true") %>% pull(P) %>% mean()))
+print(paste0(" P+ SD: ", theta_joint_df %>% filter(case == "true") %>% pull(P) %>% sd()))
+print(paste0(" P+ Max: ", theta_joint_df %>% filter(case == "true") %>% pull(P) %>% max()))
+print(paste0(" P+ Min: ", theta_joint_df %>% filter(case == "true") %>% pull(P) %>% min()))
+
+print(paste0(" AUC Mean: ", theta_joint_df %>% filter(case == "true") %>% pull(auc) %>% mean()))
+print(paste0(" AUC SD: ", theta_joint_df %>% filter(case == "true") %>% pull(auc) %>% sd()))
+print(paste0(" AUC Max: ", theta_joint_df %>% filter(case == "true") %>% pull(auc) %>% max()))
+print(paste0(" AUC Min: ", theta_joint_df %>% filter(case == "true") %>% pull(auc) %>% min()))
+
+print(paste0(" Cor Mean: ", theta_joint_df %>% filter(case == "true") %>% pull(cor) %>% mean()))
+print(paste0(" Cor SD: ", theta_joint_df %>% filter(case == "true") %>% pull(cor) %>% sd()))
+print(paste0(" Cor Max: ", theta_joint_df %>% filter(case == "true") %>% pull(cor) %>% max()))
+print(paste0(" Cor Min: ", theta_joint_df %>% filter(case == "true") %>% pull(cor) %>% min()))
+
+average_auc <- theta_joint_df %>%
+  filter(case == "true") %>%
+  group_by(subject) %>%
+  mutate(mean_auc = mean(auc)) %>%
+  select(subject, mean_auc) %>%
+  distinct()
+
+
+
+## Theta
+t.test(theta_joint_df$Mean ~ theta_joint_df$case)
+
+## AUC 
+t.test(theta_joint_df$auc ~ theta_joint_df$case)
+
+## correlation
+t.test(theta_joint_df$cor ~ theta_joint_df$case)
+
+## P+
+t.test(theta_joint_df$P ~ theta_joint_df$case)
+
+```
+
 ## Online Sample
 
 
@@ -407,6 +975,28 @@ survival_df <- survival_df %>%
 
 ```
 
+```{r convergence}
+
+survival_true_df <- survival_df %>%
+  filter(case == "true") #%>%
+  # group_by(predictor) %>%
+  # summarise()
+
+fail_converge_subs <- survival_true_df %>%
+  filter(Rhat > 1.05) %>%
+  pull(subject) %>%
+  unique()
+
+### Descriptive Stats
+print(paste0(" Rhat Mean: ", survival_true_df  %>% pull(Rhat) %>% mean()))
+print(paste0(" Rhat SD: ", survival_true_df %>% pull(Rhat) %>% sd()))
+print(paste0(" Rhat Max: ", survival_true_df  %>% pull(Rhat) %>% max()))
+print(paste0(" Rhat Min: ", survival_true_df %>% pull(Rhat) %>% min()))
+
+```
+
+
+
 ```{r, fig.width = 5, fig.height = 5}
 
 coef_threat_plot <- survival_df %>%
@@ -417,12 +1007,12 @@ coef_threat_plot <- survival_df %>%
   geom_boxplot(color = "black", width = .1) +
   theme(panel.background = element_rect(fill = "white"), legend.position = "none",
         axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
   scale_fill_manual(values = c("darkgrey", "#86C8B7")) +
   scale_color_manual(values = c("darkgrey", "#86C8B7")) +
-  labs(y = "", x= "") +
+  labs(y = "Beta Coefficient", x= "") +
   ylim(-4.5, .5) +
   ggtitle("Coefficient - Threat")
 
@@ -435,12 +1025,12 @@ coef_reward_plot <- survival_df %>%
   geom_boxplot(color = "black", width = .1) +
   theme(panel.background = element_rect(fill = "white"), legend.position = "none",
         axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
   scale_fill_manual(values = c("darkgrey", "#FB6087")) +
   scale_color_manual(values = c("darkgrey", "#FB6087")) +
-  labs(y = "", x= "") + ylim(-4.5, .5) +
+  labs(y = "Beta Coefficient", x= "") + ylim(-4.5, .5) +
   ggtitle("Coefficient - Reward")
 
 
@@ -451,12 +1041,12 @@ auc_plot <- fit_metrics_df %>%
   geom_boxplot(color = "black", width = .1) +
   theme(panel.background = element_rect(fill = "white"), legend.position = "none",
         axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
   scale_fill_manual(values = c("darkgrey", "#8fbf6d")) +
   scale_color_manual(values = c("darkgrey", "#8fbf6d")) +
-  labs(y = "", x= "") +
+  labs(y = "AUC", x= "") +
   ggtitle("AUC")
 
 
@@ -467,18 +1057,18 @@ cor_plot <- fit_metrics_df %>%
   geom_boxplot(color = "black", width = .1) +
   theme(panel.background = element_rect(fill = "white"), legend.position = "none",
         axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
+        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
         axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18)) +  
   scale_fill_manual(values = c("darkgrey", "#f1bd39")) +
   scale_color_manual(values = c("darkgrey", "#f1bd39")) +
-  labs(y = "", x= "") +
-  ggtitle("True vs Predicted Correlation")
+  labs(y = "Pearson's Correlation", x= "") +
+  ggtitle("Turnaround Corr.")
 
-ggsave(path(here(), "figures", "survival", "prolific_coef_threat_plot.png"), plot = coef_threat_plot, width = 5, height = 4.5, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "prolific_coef_reward_plot.png"), plot = coef_reward_plot, width = 5, height = 4.5, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "prolific_auc_plot.png"), plot = auc_plot, width = 5, height = 4.5, units = "in", dpi = 300)
-ggsave(path(here(), "figures", "survival", "prolific_cor_plot.png"), plot = cor_plot, width = 5, height = 4.5, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "prolific_coef_threat_plot.png"), plot = coef_threat_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "prolific_coef_reward_plot.png"), plot = coef_reward_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "prolific_auc_plot.png"), plot = auc_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
+ggsave(path(here(), "figures", "survival", "prolific_cor_plot.png"), plot = cor_plot, width = 3.5, height = 4.25, units = "in", dpi = 300)
 
 
 
@@ -493,14 +1083,47 @@ coef_reward_df <- survival_df %>%
 coef_threat_df <- survival_df %>%
   filter(predictor == "value(distance_to_ghost)") 
 
+## Reward 
+reward_prolific_model <- lmer(Mean ~ case + (1|subject), data = coef_reward_df)
+summary(reward_prolific_model)
+confint(reward_prolific_model, method = "Wald")
+
+## Threat
+threat_prolific_model <- lmer(Mean ~ case + (1|subject), data = coef_threat_df)
+summary(threat_prolific_model)
+confint(threat_prolific_model, method = "Wald")
+
+## AUC
+auc_prolific_model <- lmer(auc ~ case + (1|subject), data = fit_metrics_df)
+summary(auc_prolific_model)
+confint(auc_prolific_model, method = "Wald")
+
+## Threat
+cor_prolific_model <-lmer(cor ~ case + (1|subject), data = fit_metrics_df)
+summary(cor_prolific_model)
+confint(cor_prolific_model, method = "Wald")
 
 
-summary(lmer(Mean ~ case + (1|subject), data = coef_reward_df))
-summary(lmer(Mean ~ case + (1|subject), data = coef_threat_df))
 
-summary(lmer(auc ~ case + (1|subject), data = fit_metrics_df))
-summary(lmer(cor ~ case + (1|subject), data = fit_metrics_df))
+### Descriptive Stats
+print(paste0(" AUC Mean: ", fit_metrics_df %>% filter(case == "true") %>% pull(auc) %>% mean()))
+print(paste0(" AUC SD: ", fit_metrics_df %>% filter(case == "true") %>% pull(auc) %>% sd()))
+print(paste0(" AUC Max: ", fit_metrics_df %>% filter(case == "true") %>% pull(auc) %>% max()))
+print(paste0(" AUC Min: ", fit_metrics_df %>% filter(case == "true") %>% pull(auc) %>% min()))
 
+print(paste0(" Cor Mean: ", fit_metrics_df %>% filter(case == "true") %>% pull(cor) %>% mean()))
+print(paste0(" Cor SD: ", fit_metrics_df %>% filter(case == "true") %>% pull(cor) %>% sd()))
+print(paste0(" Cor Max: ", fit_metrics_df %>% filter(case == "true") %>% pull(cor) %>% max()))
+print(paste0(" Cor Min: ", fit_metrics_df %>% filter(case == "true") %>% pull(cor) %>% min()))
+
+average_auc <- fit_metrics_df %>%
+  filter(case == "true") %>%
+  group_by(subject) %>%
+  mutate(mean_auc = mean(auc)) %>%
+  select(subject, mean_auc) %>%
+  distinct()
+
+length(average_auc$mean_auc[average_auc$mean_auc >= .6]) / length(average_auc$mean_auc)
 
 ```
 

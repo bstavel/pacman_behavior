@@ -287,20 +287,20 @@ chase_died_plot <- chase_died_df %>%
   theme(panel.background = element_rect(fill = "white"),
         legend.position = "right",
         panel.grid =  element_blank(),
-        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
-        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
         axis.text.y = element_blank(),
-        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
-        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20, face = 'bold')) + 
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8, face = 'bold'),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, face = 'bold')) + 
   facet_wrap(~case, nrow = 1, scales = "free") +
-  ggtitle("Right MFG activity during Chase vs Strike trials")
+  ggtitle("")
 
 ggsave(path(here(), "figures", "attack", "figure6_chase_death_rmfg_plot.png"), 
        plot = chase_died_plot, 
-       width = 9, height = 5.5, units = "in", dpi = 300)
+       width = 4.1, height = 3, units = "in", dpi = 600)
 
 ```
 

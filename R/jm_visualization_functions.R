@@ -29,11 +29,12 @@ predict_on_test_set <- function(jm_fit, test_long_data, test_cox_df){
   test_pred_df <- test_long_data %>% 
     filter(turnaround_time > 0.5) %>%
     filter(jm_time < .5) %>%
-    select(-turnaround_time, -EVENT)
+    mutate(EVENT = 0) %>%
+    mutate(turnaround_time = .5)
   
   test_predictions <- predict(jm_fit, 
                         newdata = test_pred_df, process = "event", return_newdata = TRUE, 
-                        idVar = "trial_numeric", times = seq(.5, 2.5, .05))
+                        times = seq(.5, 2.5, .05))
   
   test_cox_df <- test_cox_df %>% rename(turntime_real = turnaround_time) %>% select(trial_numeric, turntime_real)
   test_predictions <- left_join(test_predictions, test_cox_df, by = "trial_numeric")

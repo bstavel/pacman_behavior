@@ -30,6 +30,7 @@ source(path(here(), "R", "clean_behavioral_data.R"))
 source(path(here(), "R", "create_distance_df.R"))
 source(path(here(), "R", "joint_modeling_functions.R"))
 source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
 
 ## plotting helpers ##
 ggthemr("light")
@@ -56,45 +57,45 @@ nCores <- 8
 registerDoParallel(nCores)
 
 
-## Load Data ##
+## Load iEEG Data ##
 hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
-game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
 
-## Clean ieeg data ##
-game_data_distance <- game_data_distance %>%
-  filter(subject != "BJH026") %>% # no hc data
-  filter(trial_time <= 5.10) 
+# # separate dlpfc into sfg and mfg -- hfa
+# dlpfc_hfa_data <- dlpfc_hfa_data %>%
+#   mutate(electrode = gsub("_.*", "", electrode))
+# dlpfc_hfa_data <- separate_mfg_sfg(dlpfc_hfa_data)
+# sfg_hfa_data <- dlpfc_hfa_data %>% filter(sfg == 1) %>% select(-sfg, -mfg)
+# mfg_hfa_data <- dlpfc_hfa_data %>% filter(mfg == 1) %>% select(-sfg, -mfg)
 
+sub_list <- "BJH016"
 
-### Base Model, iEEG Sample
+### mfg hfa iEEG Model
 
-# failed_subjects <- c()
-# for(current_subject in unique(game_data_distance$subject)){
-# 
-# 
-#   tryCatch({
-#     
+failed_subjects <- c()
+for(current_subject in sub_list){
+  
 
-current_subject <- "BJH016"
-output_file_name <- paste("jm_permuted_time_theta_modeling_for_", current_subject, ".html", sep = "")
+  tryCatch({
 
-# Render the R Markdown document, passing the current subject as a parameter
-render(input = path(here(), "R", "jm_fit_ieeg_theta_plot_template.Rmd"),
-       output_file = output_file_name,
-       params = list(subject = current_subject),
-       output_dir = path(here(), "analysis", "survival")
-)
+    output_file_name <- paste("jm_time_theta_power_permuted_modeling_for_", current_subject, "_2025.html", sep = "")
     
-#   }, error = function(e) {
-#   # If an error occurs, print the error message and add the subject to the failed list
-#   message("Failed to render report for ", current_subject, ": ", e$message)
-#   failed_subjects <- c(failed_subjects, current_subject)
-#   })
-# }
+    # Render the R Markdown document, passing the current subject as a parameter
+    render(input = path(here(), "R", "jm_fit_ieeg_theta_plot_template.Rmd"),
+           output_file = output_file_name,
+           params = list(subject = current_subject, permuted = T),
+           output_dir = path(here(), "analysis", "survival")
+    )
+    
+   }, error = function(e) {
+   # If an error occurs, print the error message and add the subject to the failed list
+   message("Failed to render report for ", current_subject, ": ", e$message)
+   failed_subjects <- c(failed_subjects, current_subject)
+   })
+ }
 
-# 
-# print("failed subjects:")  
-# print(failed_subjects)
+
+ print("failed subjects:")
+ print(failed_subjects)
 
 
 

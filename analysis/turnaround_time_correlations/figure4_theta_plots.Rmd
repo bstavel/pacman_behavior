@@ -322,6 +322,8 @@ ggsave(path(here(), "figures", "correl_turn_predictions", "figure4_turn_time_exa
        width = 2.5, height = 4.5, units = "in", dpi = 300)
 
 
+# write csv
+write_csv(example_correlation_dfs, path(here(), "results", "turn_time_prediction", "theta_example_correlation_df.csv"))
 
 ```
 
@@ -402,6 +404,11 @@ slopes_summary_plot_df <- slopes_summary_df %>%
 
 # merge
 full_sample_summary_plot_df <- left_join(slopes_summary_plot_df, full_sample_plot_df) 
+
+# write csv
+write_csv(full_sample_summary_plot_df, path(here(), "results", "turn_time_prediction", "theta_model_results_summary_plot_df.csv"))
+
+
 
 ```
 

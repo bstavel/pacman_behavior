@@ -49,6 +49,8 @@ c25 <- c(
   "darkorange4", "brown"
 )
 
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "Ant. Cingulate"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087", "SFG" = "#FB9A99")
+
 ```
 
 
@@ -67,6 +69,53 @@ granger_sig_df <- granger_df %>%
   mutate(case = if_else(times <= 0, "Approach", "Avoid"))
 
 glimpse(granger_sig_df)
+
+```
+
+```{r, fig.width = 4, fig.height = 2.5}
+
+granger_approach_sig_df <- granger_sig_df %>%
+  filter(region %in% c("amyg_cing", "amyg_ofc", "mfg_cing", "ofc_mfg")) %>%
+  mutate(granger = if_else(region == "ofc_mfg", granger* -1, granger)) %>%
+  filter(case == "Approach") %>%
+  group_by(region, subject, pair_id) %>%
+  summarize(pair_granger = mean(granger), .groups = "drop") %>%
+  mutate(region = if_else(region == "amyg_cing", " Amyg. -> ACC Theta",
+                          if_else(region == "amyg_ofc", " Amyg. -> OFC Theta",
+                                  if_else(region == "mfg_cing", " MFG -> ACC Theta", " MFG -> OFC Theta"))))
+
+granger_sub_plot_df <- granger_approach_sig_df %>%
+  group_by(region, subject) %>%
+  summarize(sub_granger = mean(pair_granger), .groups = "drop") 
+
+
+
+granger_all_roi_plot <- granger_sub_plot_df %>%
+  ggplot(., aes(x = region, y = sub_granger, fill = region)) +
+  geom_hline(yintercept = 0, color = "#2D2327") +
+  geom_violin(data = granger_approach_sig_df, aes(x = region, y = pair_granger, fill = region), alpha = .7, color = "#2D2327") +
+  geom_boxplot(color = "#2D2327",  width = .5) +
+  geom_jitter(aes(x = region, y = sub_granger), color = "#2D2327", width = .2, size = 2, shape = 4) +
+  # geom_errorbar(aes(ymin = lower_sem, ymax = upper_sem), color = "#2D2327", width = .2) +
+    theme(panel.background = element_rect(fill = "white"),
+        legend.position = "none",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7.5),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = 1),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7, margin = margin(b = 0)))  +
+  scale_fill_manual(values = c("#DE4A4D", "#DE4A4D", "#FB6087", "#FB6087")) +
+  labs(x = "", y = "Net Granger (a.u.)\n") +
+  facet_wrap(~region, scale = "free_x", nrow = 1) +
+  ylim(-.26, .26)
+
+ggsave(path(here(), "figures", "granger", "figure4_granger_combined_plot.png"), 
+       plot = granger_all_roi_plot, 
+       width = 4.5, height = 2.5, units = "in", dpi = 600)
 
 ```
 
@@ -92,15 +141,15 @@ amyg_acc_plot <- amyg_acc_sig_df %>%
         legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = -.1, margin = margin(b = 5)),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = 1),
         plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7, margin = margin(b = 0)))  +
   scale_color_viridis(discrete = T, option = "D") +
   scale_alpha_manual(values = c(.01, 1)) +
   ylim(-0.25, 0.25) +
-  labs(x = "Time (s)", y = "Net Granger (a.u.)") +
-  ggtitle(" Amyg. ~ ACC Theta", 
+  labs(x = "Approach Time (s)", y = "Net Granger (a.u.)\n") +
+  ggtitle(" Amyg. -> ACC Theta", 
           subtitle = paste0("Number of sig. pairs: ", length(unique(amyg_acc_sig_df$pair_id)), 
-                            "\n Number of tested pairs: ", length(unique(amyg_acc_df$pair_id)))) 
+                            "\nNumber of tested pairs: ", length(unique(amyg_acc_df$pair_id)))) 
 
 ggsave(path(here(), "figures", "granger", "figure4_amyg_acc_plot.png"), 
        plot = amyg_acc_plot, 
@@ -130,13 +179,13 @@ amyg_ofc_plot <- amyg_ofc_sig_df %>%
         legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = -.1, margin = margin(b = 5)),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = 1),
         plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7, margin = margin(b = 0)))  +
   scale_color_viridis(discrete = T, option = "D") +
   scale_alpha_manual(values = c(.01, 1)) +
   ylim(-0.38, 0.38) +
-  labs(x = "Time (s)", y = "Net Granger (a.u.)") +
-  ggtitle(" Amyg. ~ OFC Theta", 
+  labs(x = "Approach Time (s)", y = "Net Granger (a.u.)\n") +
+  ggtitle(" Amyg. -> OFC Theta", 
           subtitle = paste0("Number of sig. pairs: ", length(unique(amyg_ofc_sig_df$pair_id)), 
                             "\nNumber of tested pairs: ", length(unique(amyg_ofc_df$pair_id)))) 
 
@@ -167,13 +216,13 @@ mfg_ofc_plot <- mfg_ofc_sig_df %>%
         legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = -.1, margin = margin(b = 5)),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = 1),
         plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7, margin = margin(b = 0)))  +
   scale_color_viridis(discrete = T, option = "D") +
   scale_alpha_manual(values = c(.01, 1)) +
   ylim(-0.2, 0.2) +
-  labs(x = "Time (s)", y = "Net Granger (a.u.)") +
-  ggtitle(" MFG ~ OFC Theta", 
+  labs(x = "Approach Time (s)", y = "Net Granger (a.u.)\n") +
+  ggtitle(" MFG -> OFC Theta", 
           subtitle = paste0("Number of sig. pairs: ", length(unique(mfg_ofc_sig_df$pair_id)), 
                             "\nNumber of tested pairs: ", length(unique(mfg_ofc_df$pair_id)))) 
 
@@ -206,13 +255,13 @@ mfg_acc_plot <- mfg_acc_sig_df %>%
         legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = -.1, margin = margin(b = 5)),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8,  hjust = 1),
         plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7, margin = margin(b = 0)))  +
   scale_color_viridis(discrete = T, option = "D") +
   scale_alpha_manual(values = c(.01, .8)) +
   ylim(-0.4, 0.4) +
-  labs(x = "Time (s)", y = "Net Granger (a.u.)") +
-  ggtitle(" MFG ~ ACC Theta", 
+  labs(x = "Approach Time (s)", y = "Net Granger (a.u.)\n") +
+  ggtitle(" MFG -> ACC Theta", 
           subtitle = paste0("Number of sig. pairs: ", length(unique(mfg_acc_sig_df$pair_id)), 
                             "\nNumber of tested pairs: ", length(unique(mfg_acc_df$pair_id)))) 
 

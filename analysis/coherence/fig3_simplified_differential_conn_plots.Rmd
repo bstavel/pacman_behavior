@@ -1,0 +1,399 @@
+---
+title: "Visualize Region Differences"
+output: html_document
+date: "2024-11-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(tidybayes)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(ggforce)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "ACC"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087")
+
+```
+
+```{r load-approach-results}
+
+# load data
+load(file = path(here(), "results", "imcoh_app_amyg_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_ofc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_hc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_acc_second_roi_model.RData"))
+load(file = path(here(), "results", "imcoh_app_mfg_second_roi_model.RData"))
+
+# summary
+summary(amyg_model)
+summary(ofc_model)
+summary(hc_model)
+summary(acc_model)
+summary(mfg_model)
+
+
+```
+
+
+
+```{r, fig.width = 3, fig.height = 2}
+
+amyg_model_data <- amyg_model$data
+
+
+amyg_elec_data <- amyg_model_data %>%
+  filter(second_region %in% c("Hippocampus", "MFG")) %>%
+  group_by(subject, second_region, `subject:first_pair_key`) %>%
+   summarise(
+    mean_elec_coherence = mean(`log(average_aac_conn)`, na.rm = TRUE),
+    n_elecs = n(),
+    .groups = 'drop'
+  ) 
+
+amyg_sub_data <- amyg_elec_data %>%
+  group_by(subject, second_region) %>%
+  summarise( mean_sub_coherenece = mean(mean_elec_coherence, na.rm = TRUE)) 
+
+
+amyg_plot <- amyg_elec_data %>%
+  mutate(second_region = fct_relevel(second_region, "Hippocampus", "MFG")) %>%
+  ggplot(., aes(x = second_region, y = mean_elec_coherence)) +
+  geom_violin(aes(fill = second_region), alpha = .7, color = "#2D2327") +
+  geom_boxplot(aes(fill = second_region), color = "#2D2327", width = .3, notch = T) +
+  geom_jitter(data = amyg_sub_data, aes(y = mean_sub_coherenece, fill = second_region), color = "#2D2327", shape = 25, width = .1, size = .75) +
+  geom_text(x = 1.5, y = -1.4, alpha = 1, label = "***", size = 10, color = "#2D2327", show.legend = FALSE, check_overlap = T) +
+  theme_minimal() +
+  theme(axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 9, hjust = 0.5, margin = margin(b= 5)),
+  ) +
+  scale_fill_manual(values = roi_colors, guide = F) +
+  labs(
+    x = "",
+    y = "Mean coherence with Amyg. (log)",
+    title = "Amygdala Coherence:\nHippocampus vs MFG"
+  ) 
+
+
+amyg_plot
+ggsave(path(here(), "figures", "connectivity", paste0("figure3_differential_theta_coherence_amyg.png")),
+       plot = amyg_plot,
+       width = 2.6, height = 2.5, units = "in", dpi = 300)
+
+```
+
+
+
+```{r, fig.width = 3, fig.height = 2}
+
+hc_model_data <- hc_model$data
+
+
+hc_elec_data <- hc_model_data %>%
+  filter(second_region %in% c("Amygdala", "MFG")) %>%
+  group_by(subject, second_region, `subject:first_pair_key`) %>%
+   summarise(
+    mean_elec_coherence = mean(`log(average_aac_conn)`, na.rm = TRUE),
+    n_elecs = n(),
+    .groups = 'drop'
+  ) 
+
+hc_sub_data <- hc_elec_data %>%
+  group_by(subject, second_region) %>%
+  summarise( mean_sub_coherenece = mean(mean_elec_coherence, na.rm = TRUE)) 
+
+
+hc_plot <- hc_elec_data %>%
+  mutate(second_region = fct_relevel(second_region, "Amygdala", "MFG")) %>%
+  ggplot(., aes(x = second_region, y = mean_elec_coherence)) +
+  geom_violin(aes(fill = second_region), alpha = .7, color = "#2D2327") +
+  geom_boxplot(aes(fill = second_region), color = "#2D2327", width = .3, notch = T) +
+  geom_jitter(data = hc_sub_data, aes(y = mean_sub_coherenece, fill = second_region), color = "#2D2327", shape = 25, width = .1, size = .75) +
+  geom_text(x = 1.5, y = -1.4, alpha = 1, label = "***", size = 10, color = "#2D2327", show.legend = FALSE, check_overlap = T) +
+  theme_minimal() +
+  theme(axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 9, hjust = 0.5, margin = margin(b= 5)),
+  ) +
+  scale_fill_manual(values = roi_colors, guide = F) +
+  labs(
+    x = "",
+    y = "Mean coherence with HC (log)",
+    title = "Hippocampus Coherence:\nAmygdala vs MFG"
+  ) 
+
+
+hc_plot
+ggsave(path(here(), "figures", "connectivity", paste0("figure3_differential_theta_coherence_hc.png")),
+       plot = hc_plot,
+       width = 2.6, height = 2.5, units = "in", dpi = 300)
+
+```
+
+```{r, fig.width = 6, fig.height = 4}
+
+ofc_model_data <- ofc_model$data
+
+
+ofc_elec_data <- ofc_model_data %>%
+  filter(second_region %in% c("Ant. Cingulate", "MFG")) %>%
+  mutate(second_region = if_else(second_region == "MFG", "MFG", "ACC")) %>%
+  group_by(subject, second_region, `subject:first_pair_key`) %>%
+   summarise(
+    mean_elec_coherence = mean(`log(average_aac_conn)`, na.rm = TRUE),
+    n_elecs = n(),
+    .groups = 'drop'
+  ) 
+
+ofc_sub_data <- ofc_elec_data %>%
+  group_by(subject, second_region) %>%
+  summarise( mean_sub_coherenece = mean(mean_elec_coherence, na.rm = TRUE)) 
+
+
+ofc_plot <- ofc_elec_data %>%
+  mutate(second_region = fct_relevel(second_region, "ACC", "MFG")) %>%
+  ggplot(., aes(x = second_region, y = mean_elec_coherence)) +
+  geom_violin(aes(fill = second_region), alpha = .7, color = "#2D2327") +
+  geom_boxplot(aes(fill = second_region), color = "#2D2327", width = .3, notch = T) +
+  geom_jitter(data = ofc_sub_data, aes(y = mean_sub_coherenece, fill = second_region), color = "#2D2327", shape = 25, width = .1, size = .75) +
+  geom_text(x = 1.5, y = -2, alpha = 1, label = "***", size = 10, color = "#2D2327", show.legend = FALSE, check_overlap = T) +
+  theme_minimal() +
+  theme(axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 9, hjust = 0.5, margin = margin(b= 5)),
+  ) +
+  scale_fill_manual(values = roi_colors, guide = F) +
+  labs(
+    x = "",
+    y = "Mean coherence with OFC (log)",
+    title = "OFC Coherence:\nACC vs MFG"
+  ) 
+
+
+ofc_plot
+ggsave(path(here(), "figures", "connectivity", paste0("figure3_differential_theta_coherence_ofc.png")),
+       plot = ofc_plot,
+       width = 2.6, height = 2.5, units = "in", dpi = 300)
+
+```
+
+```{r, fig.width = 6, fig.height = 4}
+
+acc_model_data <- acc_model$data
+
+
+acc_elec_data <- acc_model_data %>%
+  filter(second_region %in% c("OFC", "MFG")) %>%
+  group_by(subject, second_region, `subject:first_pair_key`) %>%
+   summarise(
+    mean_elec_coherence = mean(`log(average_aac_conn)`, na.rm = TRUE),
+    n_elecs = n(),
+    .groups = 'drop'
+  ) 
+
+acc_sub_data <- acc_elec_data %>%
+  group_by(subject, second_region) %>%
+  summarise( mean_sub_coherenece = mean(mean_elec_coherence, na.rm = TRUE)) 
+
+
+acc_plot <- acc_elec_data %>%
+  mutate(second_region = fct_relevel(second_region, "OFC", "MFG")) %>%
+  ggplot(., aes(x = second_region, y = mean_elec_coherence)) +
+  geom_violin(aes(fill = second_region), alpha = .7, color = "#2D2327") +
+  geom_boxplot(aes(fill = second_region), color = "#2D2327", width = .3, notch = T) +
+  geom_jitter(data = acc_sub_data, aes(y = mean_sub_coherenece, fill = second_region), color = "#2D2327", shape = 25, width = .1, size = .75) +
+  geom_text(x = 1.5, y = -2.1, alpha = 1, label = "n.s.", size = 6, color = "#2D2327", show.legend = FALSE, check_overlap = T) +
+  theme_minimal() +
+  theme(axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 9, hjust = 0.5, margin = margin(b= 5)),
+  ) +
+  scale_fill_manual(values = roi_colors, guide = F) +
+  labs(
+    x = "",
+    y = "Mean coherence with ACC (log)",
+    title = "ACC Coherence:\nOFC vs MFG"
+  ) 
+
+
+acc_plot
+ggsave(path(here(), "figures", "connectivity", paste0("figure3_differential_theta_coherence_acc.png")),
+       plot = acc_plot,
+       width = 2.6, height = 2.5, units = "in", dpi = 300)
+
+```
+
+```{r, fig.width = 6, fig.height = 4}
+
+mfg_model_data <- mfg_model$data
+
+
+mfg_elec_data <- mfg_model_data %>%
+  filter(second_region %in% c("Ant. Cingulate", "OFC")) %>%
+  mutate(second_region = if_else(second_region == "OFC", "OFC", "ACC")) %>%
+  group_by(subject, second_region, `subject:first_pair_key`) %>%
+   summarise(
+    mean_elec_coherence = mean(`log(average_aac_conn)`, na.rm = TRUE),
+    n_elecs = n(),
+    .groups = 'drop'
+  ) 
+
+mfg_sub_data <- mfg_elec_data %>%
+  group_by(subject, second_region) %>%
+  summarise( mean_sub_coherenece = mean(mean_elec_coherence, na.rm = TRUE)) 
+
+
+mfg_plot <- mfg_elec_data %>%
+  mutate(second_region = fct_relevel(second_region, "OFC", "ACC")) %>%
+  ggplot(., aes(x = second_region, y = mean_elec_coherence)) +
+  geom_violin(aes(fill = second_region), alpha = .7, color = "#2D2327") +
+  geom_boxplot(aes(fill = second_region), color = "#2D2327", width = .3, notch = T) +
+  geom_jitter(data = mfg_sub_data, aes(y = mean_sub_coherenece, fill = second_region), color = "#2D2327", shape = 25, width = .1, size = .75) +
+  geom_text(x = 1.5, y = -2.1, alpha = 1, label = "n.s.", size = 6, color = "#2D2327", show.legend = FALSE, check_overlap = T) +
+  theme_minimal() +
+  theme(axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 9, hjust = 0.5, margin = margin(b= 5)),
+  ) +
+  scale_fill_manual(values = roi_colors, guide = F) +
+  labs(
+    x = "",
+    y = "Mean coherence with MFG (log)",
+    title = "MFG Coherence:\nOFC vs ACC"
+  ) 
+
+
+mfg_plot
+ggsave(path(here(), "figures", "connectivity", paste0("figure3_differential_theta_coherence_mfg_p2.png")),
+       plot = mfg_plot,
+       width = 2.6, height = 2.5, units = "in", dpi = 300)
+
+```
+
+```{r, fig.width = 6, fig.height = 4}
+
+mfg_model_data <- mfg_model$data
+
+
+mfg_elec_data <- mfg_model_data %>%
+  filter(second_region %in% c("Ant. Cingulate", "Hippocampus")) %>%
+  mutate(second_region = if_else(second_region == "Hippocampus", "Hippocampus", "ACC")) %>%
+  group_by(subject, second_region, `subject:first_pair_key`) %>%
+   summarise(
+    mean_elec_coherence = mean(`log(average_aac_conn)`, na.rm = TRUE),
+    n_elecs = n(),
+    .groups = 'drop'
+  ) 
+
+mfg_sub_data <- mfg_elec_data %>%
+  group_by(subject, second_region) %>%
+  summarise( mean_sub_coherenece = mean(mean_elec_coherence, na.rm = TRUE)) 
+
+
+mfg_plot <- mfg_elec_data %>%
+  mutate(second_region = fct_relevel(second_region, "Hippocampus", "ACC")) %>%
+  ggplot(., aes(x = second_region, y = mean_elec_coherence)) +
+  geom_violin(aes(fill = second_region), alpha = .7, color = "#2D2327") +
+  geom_boxplot(aes(fill = second_region), color = "#2D2327", width = .3, notch = T) +
+  geom_jitter(data = mfg_sub_data, aes(y = mean_sub_coherenece, fill = second_region), color = "#2D2327", shape = 25, width = .1, size = .75) +
+  geom_text(x = 1.5, y = -2.25, alpha = 1, label = "***", size = 10, color = "#2D2327", show.legend = FALSE, check_overlap = T) +
+  theme_minimal() +
+  theme(axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 9, hjust = 0.5, margin = margin(b= 5)),
+  ) +
+  scale_fill_manual(values = roi_colors, guide = F) +
+  labs(
+    x = "",
+    y = "Mean coherence with MFG (log)",
+    title = "MFG Coherence:\nHippocampus vs ACC"
+  ) 
+
+
+mfg_plot
+ggsave(path(here(), "figures", "connectivity", paste0("figure3_differential_theta_coherence_mfg_p1.png")),
+       plot = mfg_plot,
+       width = 2.6, height = 2.5, units = "in", dpi = 300)
+
+```

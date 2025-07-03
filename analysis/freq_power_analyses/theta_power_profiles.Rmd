@@ -332,6 +332,23 @@ turn_avg_theta_df <- turnaround_df %>%
     .groups = 'drop'
   )
 
+turn_sub_avg_theta_df <- turnaround_df %>%
+  filter(freq == "theta") %>%
+  mutate(time = round(time, 2)) %>%
+  filter(time >= -2 & time <= 2) %>%
+  # Calculate mean power per electrode
+  group_by(subject, region, time, elec_id) %>%
+  summarise(elec_power = mean(power), .groups = 'drop') %>%
+  # Calculate mean power per subject
+  group_by(subject, region, time) %>%
+  summarise(
+    sub_power = mean(elec_power),
+    n = n(),
+    sd_sub_power = sd(elec_power, na.rm = TRUE),
+    lower_sem = sub_power - sd_sub_power / sqrt(n),
+    upper_sem = sub_power + sd_sub_power / sqrt(n),
+    .groups = 'drop') 
+
 power_profile_plot <- turn_avg_theta_df %>%
   mutate(region = factor(region, levels = c("Amygdala", "Hippocampus", "OFC", "Ant. Cingulate", "MFG"))) %>%
   select(freq, region, time, mean_power, lower_sem, upper_sem) %>%
@@ -353,7 +370,7 @@ power_profile_plot <- turn_avg_theta_df %>%
       legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
       strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10, margin = margin()),
       plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10, hjust = 0, face = 'bold')) +
-  labs(y = "Mean Power (a.u.)", x = "Time (s)", color = " ", fill = " ") +
+  labs(y = "Mean Power (z - score)", x = "Time (s)", color = " ", fill = " ") +
   ggtitle("Average Power Across Regions") +
   xlim(-1.5, 1.5) +
   facet_wrap(~group, ncol = 2) 
@@ -366,22 +383,6 @@ ggsave(path(here(), "figures", "hfa_theta_power_profile.png"), power_profile_plo
 
 
 ```{r, fig.width = 10, fig.height = 18, eval = F}
-
-turn_sub_avg_theta_df <- turnaround_df %>%
-  mutate(time = round(time, 2)) %>%
-  filter(time >= -2 & time <= 2) %>%
-  # Calculate mean power per electrode
-  group_by(subject, region, time, elec_id) %>%
-  summarise(elec_power = mean(power), .groups = 'drop') %>%
-  # Calculate mean power per subject
-  group_by(subject, region, time) %>%
-  summarise(
-    sub_power = mean(elec_power),
-    n = n(),
-    sd_sub_power = sd(elec_power, na.rm = TRUE),
-    lower_sem = sub_power - sd_sub_power / sqrt(n),
-    upper_sem = sub_power + sd_sub_power / sqrt(n),
-    .groups = 'drop') 
 
 
 insula_supplement_plot <- turn_sub_avg_theta_df %>%
@@ -416,31 +417,103 @@ ggsave(path(here(), "figures", "Supplemental_figure_insula_power.png"), insula_s
 
 ```{r, fig.width = 10, fig.height = 18}
 
+mfg_turn_sub_avg_theta_df <- turn_sub_avg_theta_df %>%
+  filter(region == "MFG")
 
-mfg_supplement_plot <- turn_sub_avg_theta_df %>%
-  filter(region == "MFG") %>%
+
+mfg_supplement_plot <- mfg_turn_sub_avg_theta_df %>%
   ggplot(aes(x = time, y = sub_power, group = subject, color = region, fill = region)) +
   geom_vline(xintercept = 0, color = "#2D2327") +
-  geom_point() + 
-  geom_line(size =1) +
+  geom_line(size =.5) +
   geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = 0.2) +
   scale_color_manual(values = roi_colors) +
   scale_fill_manual(values = roi_colors) +
   theme(panel.background = element_rect(fill = "white"),
       legend.position = "top",
-      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 18),
-      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
-      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
-      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
-      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 20),
-      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 24, face = 'bold')) +
-  labs(y = "Mean Theta Power (a.u.)", x = "Time (s)", color = "Region", fill = "Region") +
-  ggtitle("Supp. Fig 3. Average subject theta power in the MFG")  +
-  facet_wrap(~subject, scale = "free_x", ncol = 3)
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 9, margin = margin()),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11, hjust = 0, face = 'bold')) +
+  labs(y = "Mean Theta Power (z - score)", x = "Time (s)", color = " ", fill = " ") +
+  ggtitle("Average particpant theta power")  +
+  xlim(-1.5, 1.5) +
+  facet_wrap(~subject, scale = "free_x", ncol = 2)
 
 
 
-ggsave(path(here(), "figures", "Supplemental_figure_mfg_power.png"), mfg_supplement_plot, width = 10, height = 18)
+ggsave(path(here(), "figures", "power_analyses", "SuppFig3_figure_mfg_power.png"), mfg_supplement_plot, width = 4, height = 9, dpi = 600)
+
+
+
+```
+
+
+```{r, fig.width = 10, fig.height = 18}
+
+mfg_example_turn_sub_avg_theta_df <- turnaround_df %>%
+  filter(region == "MFG" & freq == "theta" & subject == "BJH021") %>%
+  mutate(time = round(time, 2)) %>%
+  filter(time >= -1.5 & time <= 1.5) %>%
+  # Calculate mean power per electrode
+  group_by(region, subject, time, elec_id) %>%
+  summarise(
+    mean_power = mean(power, na.rm = TRUE),
+    n = n(),
+    sd_power = sd(power, na.rm = TRUE),
+    lower_sem = mean_power - sd_power / sqrt(n),
+    upper_sem = mean_power + sd_power / sqrt(n),
+    .groups = 'drop'
+  )
+  
+mfg_example_turn_sub_avg_theta_df <- ieeg_theta_behave_df %>%
+  filter(region == "MFG" & freq == "theta" & subject == "BJH051") %>%
+  # round time so that we can loop over time later
+  mutate(trial_time = round(trial_time, 2)) %>%
+  rename(time = trial_time) %>%
+  mutate(elec_id = paste0(subject, "_", gsub("_.*", "", electrode))) %>%
+  # filiter out ITI
+  filter(reward_groups != 99 & !is.na(electrode)) %>%
+  filter(time >= -1.5 & time <= 4) %>%
+  # Calculate mean power per electrode
+  group_by(region, subject, time, elec_id) %>%
+  summarise(
+    mean_power = mean(power, na.rm = TRUE),
+    n = n(),
+    sd_power = sd(power, na.rm = TRUE),
+    lower_sem = mean_power - sd_power / sqrt(n),
+    upper_sem = mean_power + sd_power / sqrt(n),
+    .groups = 'drop'
+  ) 
+
+
+mfg_subject_supplement_plot <- mfg_example_turn_sub_avg_theta_df %>%
+  mutate(theta_peak = if_else(elec_id %in% c("BJH021_N11-N12", "BJH021_N12-N13", "BJH021_N13-N14", "BJH021_N15-N16"), "Had Theta Peak", "No Theta Peak")) %>%
+  ggplot(aes(x = time, y = mean_power, group = elec_id, color = theta_peak, fill = theta_peak)) +
+  geom_vline(xintercept = 0, color = "#2D2327") +
+  geom_hline(yintercept = 0, color = "#2D2327", linetype = "dashed") +
+  geom_line(size =.5) +
+  geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = 0.2) +
+  scale_color_manual(values = c("#FB6087", "darkgrey")) +
+  scale_fill_manual(values = c("#FB6087", "darkgrey")) +
+  theme(panel.background = element_rect(fill = "white"),
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+      legend.title  = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 9, margin = margin()),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11, hjust = 0, face = 'bold')) +
+  labs(y = "Mean Theta Power (z - score)", x = "Time (s)", color = " ", fill = " ") +
+  ggtitle("Average electrode theta power from example subject")  +
+  facet_wrap(~elec_id, scale = "free_x", ncol = 3)
+
+
+mfg_subject_supplement_plot
+
+
+ggsave(path(here(), "figures", "power_analyses", "SuppFig3_figure_mfg_power_example_subject.png"), mfg_subject_supplement_plot, width = 5, height = 4.5, dpi = 600)
 
 
 

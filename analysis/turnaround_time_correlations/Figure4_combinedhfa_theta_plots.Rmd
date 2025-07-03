@@ -1,0 +1,166 @@
+---
+title: "Fig 4 HFA/Theta Combined Plot"
+output: html_document
+date: "2025-02-20"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(brms)
+library(RColorBrewer)
+library(broom.mixed)
+library(bayestestR)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# "#F86C60", "#01C0AF"
+```
+
+
+```{r load-data}
+
+# load density data #
+theta_summary_df <- read_csv(path(here(), "results", "turn_time_prediction", "theta_model_results_summary_plot_df.csv"))
+hfa_summary_df <- read_csv(path(here(), "results", "turn_time_prediction", "hfa_model_results_summary_plot_df.csv"))
+
+
+# load example data #
+theta_example_df <- read_csv(path(here(), "results", "turn_time_prediction", "theta_example_correlation_df.csv"))
+hfa_example_df <- read_csv(path(here(), "results", "turn_time_prediction", "hfa_example_correlation_df.csv"))
+
+```
+
+```{r prep-data}
+
+## bind together ##
+# density #
+summary_df <- bind_rows(theta_summary_df %>% mutate(freq = "Theta"),
+                             hfa_summary_df %>% mutate(freq = "HFA")) 
+# example #
+example_df <- bind_rows(theta_example_df %>% mutate(freq = "Theta"),
+                             hfa_example_df %>% mutate(freq = "HFA"))
+
+```
+
+
+```{r, fig.width. = 5, fig.height = 5}
+
+
+
+turn_time_plot <- summary_df %>%
+  mutate(sig_x = if_else(sig == 60, 0.045, .09)) %>%
+  mutate(sig = if_else(sig == 99, 99, 60)) %>%
+  mutate(sig_factor = if_else(sig == 99, "Not Significant", "Significant")) %>%
+  ggplot(., aes(x = samples, color = freq, fill = freq, alpha = sig_factor)) +
+  geom_vline(xintercept = 0, color = "black") +
+  geom_density() +
+  geom_segment(aes(x = Mean, xend = Mean, y = 0, yend = Max_Density, color = freq, alpha = sig_factor), linewidth = 1, linetype = "dotdash") +
+  geom_segment(aes(x = CI_Upper, xend = CI_Upper, y = 0, yend = CI_Upper_Density, color = freq, alpha = sig_factor),  linewidth = 1) +
+  geom_segment(aes(x = CI_Lower, xend = CI_Lower, y = 0, yend = CI_Lower_Density, color = freq, alpha = sig_factor),  linewidth = 1) +
+  geom_text(aes(x = sig_x, y = sig), alpha = 1, label = "*", size = 15, show.legend = FALSE, check_overlap = T) +
+  facet_wrap(~Region_Pair,  ncol = 2) +
+  theme(panel.background = element_rect(fill = "white"), 
+      legend.position = "top",
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 13),
+      legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10, face = 'bold'),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 13, margin = margin(b = 5)),
+      axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 9)) +
+  labs(alpha = "", color = " ", fill = " ", y = "Density", x = "Estimated Beta Coefficient (a.u.)") +
+  scale_color_manual(values = c("#DBE317", "#28AE7E")) +
+  scale_fill_manual(values = c("#DBE317", "#28AE7E")) +
+  scale_alpha_manual(values = c(.01, .3)) +
+  scale_x_continuous(breaks = c(-0.05, 0, 0.05), limits = c(-.1, .1)) + 
+  ylim(0, 80) + 
+  ggtitle(" ")
+
+
+ggsave(path(here(), "figures", "correl_turn_predictions", "figure4_turn_time_posterior_dist_combined_plot.png"), 
+       plot = turn_time_plot, 
+       width = 5, height = 7, units = "in", dpi = 600)
+
+```
+
+
+```{r}
+
+three_example_df <- example_df %>%
+  filter((case == "HC - Amyg.") | (case == "HC - MFG") | (case == "OFC - ACC") ) %>%
+  mutate(case = factor(case, levels = c("HC - Amyg.", "OFC - ACC", "HC - MFG"))) 
+
+
+example_correlation_plot <- three_example_df %>%
+  ggplot(aes(x = log(turn_time), y = scale_correlation, fill = freq, color = freq)) +
+  geom_point(size = 2, shape = 21) +
+  geom_smooth(aes(linetype = freq), method = "lm", formula = 'y ~ x', se = FALSE, color = "#2D2327", size = .5) +
+  labs(
+    color = "",
+    fill = "",
+    linetype = "",
+    x = "Approach Time (log-scaled)",
+    y = "Power correlation during approach (z-score)",
+    title = " "
+  ) +
+    theme(panel.background = element_rect(fill = "white"), 
+      legend.position = "top",
+      axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+      axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+      legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+      legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+      strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10, face = 'bold'),
+      plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 13)) + 
+  scale_color_manual(values = c("#DBE317", "#28AE7E")) +
+  scale_fill_manual(values = c("#EEF27D",  "#7AE1BD")) +
+  facet_wrap(~case, scales = 'free', ncol = 1)
+
+
+
+ggsave(path(here(), "figures", "correl_turn_predictions", "figure4_turn_time_combined_example_plot.png"), 
+       plot = example_correlation_plot, 
+       width = 2.5, height = 5, units = "in", dpi = 300)
+
+
+```
+
+
+
+
+

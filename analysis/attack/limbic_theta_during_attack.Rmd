@@ -284,25 +284,22 @@ pval_df <- attack_sub_test_df %>%
   
   attack_plot <- attack_sub_test_df %>%
     ggplot(.) +
-    geom_boxplot(aes(x = attack, y = sub_theta, fill = attack), color = "#2D2327") +
-    geom_jitter(aes(x = attack, fill = attack, y = sub_theta), color = "#2D2327", width = .1, size = 2, shape = 17) +
-    geom_line(aes(x = attack, y = sub_theta, group = subject), size = .5, alpha = .5, color = "#2D2327") +
-    geom_jitter(data = attack_elec_test_df, aes(x = attack, fill = attack, y = elec_theta), width = .1, size = 2, alpha = .5, shape = 21, color = "#2D2327") +
+    geom_jitter(data = attack_elec_test_df, aes(x = attack, fill = attack, y = elec_theta), width = .3, size = .75, alpha = .5, shape = 21, color = "#2D2327") +
+    geom_boxplot(aes(x = attack, y = sub_theta, fill = attack), color = "#2D2327", outlier.size = .5) +
+    geom_jitter(aes(x = attack, fill = attack, y = sub_theta), color = "#2D2327", alpha = .9, width = .1, size = 1, shape = 17) +
+    geom_line(aes(x = attack, y = sub_theta, group = subject), size = .25, alpha = .9, width = .1, color = "#2D2327") +
     theme(panel.background = element_rect(fill = "white")) +
     scale_fill_manual(values = c("#2c75b3", "#c2383a")) +
     scale_color_manual(values = c("#2c75b3", "#c2383a")) +
     ggsignif::geom_signif(data = pval_df, manual = T, aes(y_position=c(1.8), xmin= c(1), xmax = c(2), annotations = pvalue),
-                family = "Gill Sans", color = "#2D2327", textsize = 5, vjust =-.5) +
+                family = "Gill Sans", color = "#2D2327", textsize = 3, vjust =-.5) +
     theme(panel.background = element_rect(fill = "white"), 
           legend.position = "none",
-          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
-          legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
-          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
-          strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
-          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
-          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17, hjust = .5)) +
-    labs(y = "Average theta power (a.u.)", x = "", fill = "", color = "") +
+          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8.5),
+          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8.5, hjust = .5)) +
+    labs(y = "Average theta power (z - score)", x = "", fill = "", color = "") +
     ggtitle(roi) +
     ylim(-2, 2)
   
@@ -317,26 +314,7 @@ pval_df <- attack_sub_test_df %>%
 ## Conflict Trials
 
 
-## Hippocampus
 
-
-```{r plot-both-hc, fig.width = 8, fig.height = 7, warning = F}
-
-
-# create df for conflict, no conflict trials
-hc_attack_plot_df <- create_sig_test_df(attack_theta_turn_centered_df %>% filter(region == "Hippocampus"))
-
-
-# create plot
-hc_plot <- plot_pre_post_attack(hc_attack_plot_df, "Hippocampus - Attack Trials")
-
-# print plot
-hc_plot
-
-# save plot
-ggsave(path(here(), "figures", "attack", "figure6_hc_attack_theta_plot.png"), plot = hc_plot, width = 5.5, height = 4.5)
-
-```
 
 ```{r brms-hc}
 
@@ -393,6 +371,27 @@ ggsave(path(here(), "figures", "attack", "figure6_amyg_attack_theta_plot.png"), 
 
 ```
 
+## Hippocampus
+
+
+```{r plot-both-hc, fig.width = 8, fig.height = 7, warning = F}
+
+
+# create df for conflict, no conflict trials
+hc_attack_plot_df <- create_sig_test_df(attack_theta_turn_centered_df %>% filter(region == "Hippocampus"))
+
+
+# create plot
+hc_plot <- plot_pre_post_attack(hc_attack_plot_df, "Hippocampus - Attack Trials")
+
+# print plot
+hc_plot
+
+# save plot
+ggsave(path(here(), "figures", "attack", "figure6_hc_attack_theta_plot.png"), plot = hc_plot, width = 2.2, height = 2.7)
+
+```
+
 ## OFC
 
 ```{r plot-ofc, fig.width = 8, fig.height = 7, warning = F}
@@ -409,7 +408,7 @@ ofc_plot <- plot_pre_post_attack(ofc_attack_plot_df, "OFC - Attack Trials")
 ofc_plot
 
 # save plot
-ggsave(path(here(), "figures", "attack", "figure6_ofc_attack_theta_plot.png"), plot = ofc_plot, width = 5.5, height = 4.5)
+ggsave(path(here(), "figures", "attack", "figure6_ofc_attack_theta_plot.png"), plot = ofc_plot, width = 2.2, height = 2.7)
 
 ```
 

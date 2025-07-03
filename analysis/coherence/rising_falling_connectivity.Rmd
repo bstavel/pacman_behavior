@@ -862,10 +862,10 @@ imcoh_sig_ex_app_plot <- indv_imcoh_sig_avg_plot_df %>%
   geom_smooth(method = "lm", color = "black", fill = "grey") +
   theme(panel.background = element_rect(fill = "white"), 
     legend.position = "none",
-    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-    axis.title =  element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = .5, face = 'plain')) +
-  labs(color = "", fill = "", y = "Imaginary Coherence, logged", x = "Approach Time (s)") +
+    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+    axis.title =  element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11, hjust = .5, face = 'plain')) +
+  labs(color = "", fill = "", y = "Imaginary Coherence, log-scaled", x = "App. Time (s)") +
   ggtitle("Approach")
 
 imcoh_sig_ex_app_plot
@@ -873,7 +873,7 @@ imcoh_sig_ex_app_plot
 # save #
 ggsave(path(here(), "figures", "connectivity", "fig3_example_sub_approach.png"), 
        plot = imcoh_sig_ex_app_plot, 
-       width = 1.5, height = 2.75, units = "in", dpi = 600)
+       width = 1.5, height = 3, units = "in", dpi = 600)
 
 
 ```
@@ -890,10 +890,10 @@ imcoh_sig_ex_avd_plot <- indv_imcoh_sig_avg_plot_df %>%
   scale_y_continuous(position = 'right') +
   theme(panel.background = element_rect(fill = "white"), 
     legend.position = "none",
-    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-    axis.title =  element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = .5, face = 'plain')) +
-  labs(color = "", fill = "", y = "Imaginary Coherence, logged", x = " Avoidance Time (s)") +
+    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+    axis.title =  element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11, hjust = .5, face = 'plain')) +
+  labs(color = "", fill = "", y = "Imaginary Coherence, log-scaled", x = " Avd. Time (s)") +
   ggtitle("Avoid")
 
 imcoh_sig_ex_avd_plot
@@ -901,7 +901,7 @@ imcoh_sig_ex_avd_plot
 # save #
 ggsave(path(here(), "figures", "connectivity", "fig3_example_sub_avoid.png"), 
        plot = imcoh_sig_ex_avd_plot, 
-       width = 1.5, height = 2.75, units = "in", dpi = 600)
+       width = 1.5, height = 3, units = "in", dpi = 600)
 
 
 ```

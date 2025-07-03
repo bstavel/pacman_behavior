@@ -81,9 +81,7 @@ game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distanc
 
 ## Clean ieeg data ##
 game_data_distance <- game_data_distance %>%
-  filter(subject != "BJH026") %>% # no hc data
-  filter(trial_time <= 5.10) 
-
+  filter(subject != "BJH026")
 ```
 
 
@@ -183,7 +181,8 @@ predict_on_test_set <- function(jm_fit, test_long_data, test_cox_df){
   test_pred_df <- test_long_data %>% 
     filter(turnaround_time > 0.5) %>%
     filter(trial_time < .5) %>%
-    select(-turnaround_time, -EVENT)
+    mutate(EVENT = 0) %>%
+    mutate(turnaround_time = .5)
   
   test_predictions <- predict(jm_fit, 
                         newdata = test_pred_df, process = "event", return_newdata = TRUE, 
@@ -426,10 +425,10 @@ ggsave(path(here(), "figures", "survival", "correlation_prediction_plot.png"), c
 
 ```
 
-
+width = 9.25, height = 7.5)
 ```{r, fig.width = 7, fig.height = 4}
 
-png(path(here(), "figures", "survival", "roc_behave_plot.png"), width = 7, height = 5.25, units = 'in', res = 300)
+png(path(here(), "figures", "survival", "fig3_3_roc_behave_plot.png"), width = 7, height = 7.5, units = 'in', res = 300)
 
 
 
@@ -499,7 +498,8 @@ predict_on_test_set <- function(jm_fit, test_long_data, test_cox_df){
   test_pred_df <- test_long_data %>% 
     filter(turnaround_time > 0.5) %>%
     filter(jm_time < .5) %>%
-    select(-turnaround_time, -EVENT)
+    mutate(EVENT = 0) %>%
+    mutate(turnaround_time = .5)
   
   test_predictions <- predict(jm_fit, 
                         newdata = test_pred_df, process = "event", return_newdata = TRUE, 
@@ -664,8 +664,8 @@ hc_sub_trials <- hc_theta_data %>%
 joint_dist_df <- joint_dist_df %>%
   filter(trial_numeric %in% hc_sub_trials)
 
-current_seed <- 8
-fold <- 3
+current_seed <- 1
+fold <- 4
 seed_fold <- paste0(current_seed, "-", fold)
 
 # only ieeg trials
@@ -740,7 +740,7 @@ cns_pred_surv_plot <- surv_plot +
   labs(color = "") +
   ggtitle("Prediction on 24 held out trials", subtitle = "vertical lines indicate true turnaround times\n") 
   
-ggsave(path(here(), "figures", "survival", "survival_theta_prediction_plot.png"), cns_pred_surv_plot, width = 7, height = 7.5)
+ggsave(path(here(), "figures", "survival", "survival_theta_prediction_plot.png"), cns_pred_surv_plot, width = 9.25, height = 7.5)
 
 
 ```
@@ -758,7 +758,7 @@ cns_cor_plot <- cor_plot +
   
 
 
-ggsave(path(here(), "figures", "survival", "correlation_theta_prediction_plot.png"), cns_cor_plot, width = 6, height = 7.5)
+ggsave(path(here(), "figures", "survival", "correlation_theta_prediction_plot.png"), cns_cor_plot, width = 7, height = 7.5)
 
 
 ```
@@ -766,7 +766,7 @@ ggsave(path(here(), "figures", "survival", "correlation_theta_prediction_plot.pn
 
 ```{r, fig.width = 7, fig.height = 4}
 
-png(path(here(), "figures", "survival", "roc_theta_behave_plot.png"), width = 6, height = 5.75, units = 'in', res = 300)
+png(path(here(), "figures", "survival", "roc_theta_behave_plot.png"), width = 7, height = 7.5, units = 'in', res = 300)
 
 
 
@@ -784,7 +784,7 @@ plot(roc_plot, pch = 30, col = "#278BD2", cex = 1.4,
 # abline(lm(y ~ x), col = "black")
 
 
-title(main = "ROC Curve ~ AUC = .68",
+title(main = "ROC Curve ~ AUC = .67",
       col.main = "#2D2327", font.main = 2, cex.main = 1.8)
 
 

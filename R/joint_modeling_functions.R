@@ -293,7 +293,7 @@ fit_null_models <- function(train_long_data, train_cox_df, name){
 }
 
 
-fit_joint_models <- function(train_long_data, train_cox_df, name){
+fit_joint_models <- function(train_long_data, train_cox_df, name, burn = 6000, iter = 40000){
   
   # longitudinal model #
   control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
@@ -305,7 +305,7 @@ fit_joint_models <- function(train_long_data, train_cox_df, name){
   
   # joint model #
   jm_fit <- jm(cox_fit, list(lm_threat, lm_reward), time_var = "jm_time", data_Surv = train_cox_df, 
-               n_burnin = 2000, n_iter = 40000, n_chains =8, cores = 6)
+               n_burnin = burn, n_iter = iter, n_chains =8, cores = 6)
   
   # print summary #
   print(kable(summary(lm_threat)$tTable, caption = "Threat Model") %>% kable_styling())
@@ -321,7 +321,7 @@ fit_joint_models <- function(train_long_data, train_cox_df, name){
 fit_joint_models_all_trials <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000, msMaxIter = 200000)
   lm_threat <- lme(distance_to_ghost ~ trial_time:ghost_trial, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
   lm_reward <- lme(points_remaining ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
   
@@ -346,7 +346,7 @@ fit_joint_models_all_trials <- function(train_long_data, train_cox_df, name){
 fit_joint_time_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_theta <- lme(mean_theta ~ jm_time, data = train_long_data, random = ~jm_time | trial_numeric)
   
   # survival model #
@@ -354,7 +354,7 @@ fit_joint_time_theta_models <- function(train_long_data, train_cox_df, name){
   
   # joint model #
   jm_fit <- jm(cox_fit, list(lm_theta), time_var = "jm_time", data_Surv = train_cox_df, 
-               n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
+               n_burnin = 6000, n_iter = 30000, n_chains =8, cores = 8)
   
   # print summary #
   print(kable(summary(lm_theta)$tTable, caption = "Theta Model") %>% kable_styling())
@@ -380,7 +380,7 @@ fit_joint_slope_theta_models <- function(train_long_data, train_cox_df, name){
                n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
   
   # print summary #
-  print(kable(summary(lm_theta)$tTable, caption = "Threat Model") %>% kable_styling())
+  print(kable(summary(lm_theta)$tTable, caption = "Time Model") %>% kable_styling())
   
   # save joint model #
   saveRDS(jm_fit, path(here(), "data", "joint_models", paste0(name, "_theta_time.rds")))
@@ -466,7 +466,7 @@ fit_joint_spline_theta_models <- function(train_long_data, train_cox_df, name){
 fit_joint_time_slope_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000, msMaxIter = 200000)
   lm_theta <- lme(mean_theta ~ jm_time, data = train_long_data, random = ~jm_time | trial_numeric)
   
   # survival model #
@@ -490,7 +490,7 @@ fit_joint_time_slope_theta_models <- function(train_long_data, train_cox_df, nam
 fit_joint_spline_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_theta <- lme(mean_theta ~  ns(jm_time, knots = c(.5)), 
                   data = train_long_data, 
                   random = ~jm_time | trial_numeric, control = control)
@@ -502,7 +502,7 @@ fit_joint_spline_theta_models <- function(train_long_data, train_cox_df, name){
                n_burnin = 1000, n_iter = 30000, n_chains =8, cores = 6)
   
   # print summary #
-  print(kable(summary(lm_theta)$tTable, caption = "Threat Model") %>% kable_styling())
+  print(kable(summary(lm_theta)$tTable, caption = "Spline Model") %>% kable_styling())
   
   # save joint model #
   saveRDS(jm_fit, path(here(), "data", "joint_models", paste0(name, "_theta_spline.rds")))

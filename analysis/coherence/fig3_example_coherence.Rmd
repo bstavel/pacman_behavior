@@ -147,7 +147,7 @@ example_plot <- example_plot_df %>%
         strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = 0.5, margin = margin(b = 5)),
         plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7, margin = margin(b = 0)))  +
-  labs(title = "Example Electrode Pair", subtitle = "Electrodes were placed in Hippocmpaus & Amygdala", x = "Time (s)", y = "Absolute Value of Imaginary Coherence") 
+  labs(title = "Example Electrode Pair", subtitle = "Electrodes were placed in Hippocampus & Amygdala", x = "Time (s)", y = "Absolute Value of Imaginary Coherence") 
 example_plot
 
 ggsave(path(here(), "figures", "connectivity", "figure3_example_elec_pair.png"), 

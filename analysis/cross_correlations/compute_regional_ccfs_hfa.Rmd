@@ -163,26 +163,35 @@ write_csv(all_subs_hfa_data, path(here(), "munge", "ccf_all_subs_hfa_df.csv"))
 
 ```{r amyg-acc-prep}
 
-amyg_cing_sig_pairs <- all_sig_pairs %>%
-  mutate(pair_id = paste0(subject, "_", pairs)) %>%
-  filter(metric == "Imaginary Coherence") %>%
-  filter(roi_pair == "amyg_cing") %>%
-  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
-  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
-
-
-amyg_acc_df <- onset_lme_df %>%
-  filter(region %in% c("amyg", "cing"))
-
-
-ccf_amyg_acc_results <- calculate_overall_ccf(amyg_cing_sig_pairs, amyg_acc_df)
-ccf_amyg_acc_null_results <- run_and_save_perms(amyg_acc_df, amyg_cing_sig_pairs, all_subs_hfa_data, "null_ccf_amyg_acc_hfa_results.csv")
+# amyg_cing_sig_pairs <- all_sig_pairs %>%
+#   mutate(pair_id = paste0(subject, "_", pairs)) %>%
+#   filter(metric == "Imaginary Coherence") %>%
+#   filter(roi_pair == "amyg_cing") %>%
+#   mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+#   mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+# 
+# 
+# amyg_acc_df <- onset_lme_df %>%
+#   filter(region %in% c("amyg", "cing"))
+# 
+# 
+# ccf_amyg_acc_results <- calculate_overall_ccf(amyg_cing_sig_pairs, amyg_acc_df)
+ccf_amyg_acc_null_results <- run_and_save_perms(amyg_acc_df, amyg_cing_sig_pairs, 
+                                                all_subs_hfa_data, "null_ccf_amyg_acc_hfa_results.csv", perms_run = 186)
 
 # save true version
-write_csv(ccf_amyg_acc_results, path(here(), "results", "ccf_amyg_acc_hfa_results.csv"))
+# write_csv(ccf_amyg_acc_results, path(here(), "results", "ccf_amyg_acc_hfa_results.csv"))
 
 ```
+```{r}
+### I think we can limit all_subs_hfa_data to 6 seconds!
+tmp <- all_subs_hfa_data %>%
+  group_by(subject) %>%
+  mutate(trial_length = max(trial_time)) %>%
+  select(subject,  trial_length) %>%
+  distinct()
 
+```
 
 # HC ~ Amygdala
 
@@ -198,9 +207,12 @@ sig_pairs <- all_sig_pairs %>%
 hc_amyg_df <- onset_lme_df %>%
   filter(region %in% c("hc", "amyg"))
 
+all_subs_hfa_data <- all_subs_hfa_data %>%
+  filter(trial_time < 6)
 
 ccf_hc_amyg_results <- calculate_overall_ccf(sig_pairs, hc_amyg_df)
-ccf_hc_amyg_null_results <- run_and_save_perms(hc_amyg_df, sig_pairs, "null_ccf_hc_amyg_hfa_results.csv")
+ccf_hc_amyg_null_results <- run_and_save_perms(hc_amyg_df, sig_pairs, all_subs_hfa_data, 
+                                               "null_ccf_hc_amyg_hfa_results.csv", perms_run = 181)
 
 # save true version
 write_csv(ccf_hc_amyg_results, path(here(), "results", "ccf_hc_amyg_hfa_results.csv"))
@@ -223,7 +235,7 @@ hc_cing_df <- onset_lme_df %>%
   filter(region %in% c("hc", "cing"))
 
 ccf_hc_cing_results <- calculate_overall_ccf(sig_pairs, hc_cing_df)
-ccf_hc_cing_null_results <- run_and_save_perms(hc_cing_df, sig_pairs, "null_ccf_hc_cing_hfa_results.csv")
+ccf_hc_cing_null_results <- run_and_save_perms(hc_cing_df, sig_pairs, all_subs_hfa_data, "null_ccf_hc_cing_hfa_results.csv")
 
 # save true version
 write_csv(ccf_hc_cing_results, path(here(), "results", "ccf_hc_cing_hfa_results.csv"))
@@ -246,7 +258,7 @@ ofc_amyg_df <- onset_lme_df %>%
   filter(region %in% c("ofc", "amyg"))
 
 ccf_ofc_amyg_results <- calculate_overall_ccf(sig_pairs, ofc_amyg_df)
-ccf_ofc_amyg_null_results <- run_and_save_perms(ofc_amyg_df, sig_pairs, "null_ccf_ofc_amyg_hfa_results.csv")
+ccf_ofc_amyg_null_results <- run_and_save_perms(ofc_amyg_df, sig_pairs, all_subs_hfa_data, "null_ccf_ofc_amyg_hfa_results.csv")
 
 # save true version
 write_csv(ccf_ofc_amyg_results, path(here(), "results", "ccf_ofc_amyg_hfa_results.csv"))
@@ -269,10 +281,31 @@ ofc_hc_df <- onset_lme_df %>%
 
 
 ccf_ofc_hc_results <- calculate_overall_ccf(sig_pairs, ofc_hc_df)
-ccf_ofc_hc_null_results <- run_and_save_perms(ofc_hc_df, sig_pairs, "null_ccf_ofc_hc_results.csv", perms_run = 50)
+# ccf_ofc_hc_null_results <- run_and_save_perms(ofc_hc_df, sig_pairs, all_subs_hfa_data, "null_ccf_ofc_hc_hfa_results.csv", perms_run = 50)
+
+perms <- 1:50
+null_ccf_results <- read_csv(path(here(), "results", "ccf", "null_ccf_ofc_hc_hfa_results.csv"))
+for(perm in perms){
+  
+  print(perm)
+  df_final_null <- create_permuted_data(ofc_hc_df, all_subs_hfa_data)
+  
+  null_ccf_tmp <- calculate_overall_ccf(sig_pairs, df_final_null)
+  
+  null_ccf_tmp$perm <- perm
+  
+  null_ccf_results <- rbind(null_ccf_results, null_ccf_tmp)
+  
+  if(perm %% 5 == 0){
+    
+    write_csv(null_ccf_results, path(here(), "results", "ccf", "null_ccf_ofc_hc_hfa_results.csv"))
+  }
+  
+  
+}
 
 # save true version
-write_csv(ccf_ofc_hc_results, path(here(), "results", "ccf_ofc_hc_hfa_results.csv"))
+# write_csv(ccf_ofc_hc_results, path(here(), "results", "ccf_ofc_hc_hfa_results.csv"))
 ```
 
 # OFC ~ ACC
@@ -291,7 +324,8 @@ ofc_acc_df <- onset_lme_df %>%
 
 
 ccf_ofc_acc_results <- calculate_overall_ccf(sig_pairs, ofc_acc_df)
-ccf_ofc_acc_null_results <- run_and_save_perms(ofc_acc_df, sig_pairs, "null_ccf_ofc_acc_results.csv", perms_run = 36)
+ccf_ofc_acc_null_results <- run_and_save_perms(ofc_acc_df, sig_pairs, all_subs_hfa_data, "null_ccf_ofc_acc_hfa_results.csv", perms_run = 121)
+
 
 # save true version
 write_csv(ccf_ofc_acc_results, path(here(), "results", "ccf_ofc_acc_hfa_results.csv"))
@@ -302,7 +336,7 @@ write_csv(ccf_ofc_acc_results, path(here(), "results", "ccf_ofc_acc_hfa_results.
 
 # OFC ~ MFG
 
-```{r ofc-mfg-prep}
+```{r ofc-mfg-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -316,7 +350,7 @@ ofc_mfg_df <- onset_lme_df %>%
 
 
 ccf_ofc_mfg_results <- calculate_overall_ccf(sig_pairs, ofc_mfg_df)
-ccf_ofc_mfg_null_results <- run_and_save_perms(ofc_mfg_df, sig_pairs, "null_ccf_ofc_mfg_hfa_results.csv")
+ccf_ofc_mfg_null_results <- run_and_save_perms(ofc_mfg_df, sig_pairs, all_subs_hfa_data, "null_ccf_ofc_mfg_hfa_results.csv")
 
 # save true version
 write_csv(ccf_ofc_mfg_results, path(here(), "results", "ccf_ofc_mfg_hfa_results.csv"))
@@ -342,7 +376,7 @@ mfg_cing_df <- onset_lme_df %>%
 
 
 ccf_mfg_cing_results <- calculate_overall_ccf(sig_pairs, mfg_cing_df)
-ccf_mfg_cing_null_results <- run_and_save_perms(mfg_cing_df, sig_pairs, "null_ccf_mfg_cing_hfa_results.csv")
+ccf_mfg_cing_null_results <- run_and_save_perms(mfg_cing_df, sig_pairs, all_subs_hfa_data, "null_ccf_mfg_cing_hfa_results.csv")
 
 # save true version
 write_csv(ccf_mfg_cing_results, path(here(), "results", "ccf_mfg_cing_hfa_results.csv"))
@@ -352,7 +386,7 @@ write_csv(ccf_mfg_cing_results, path(here(), "results", "ccf_mfg_cing_hfa_result
 
 # MFG ~ HC
 
-```{r ofc-acc-prep}
+```{r ofc-acc-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -375,7 +409,7 @@ write_csv(ccf_mfg_hc_results, path(here(), "results", "ccf_mfg_hc_hfa_results.cs
 
 # MFG ~ Amyg
 
-```{r ofc-acc-prep}
+```{r ofc-acc-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%

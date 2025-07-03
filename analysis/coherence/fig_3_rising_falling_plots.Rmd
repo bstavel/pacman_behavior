@@ -209,7 +209,7 @@ rising_falling_dist_plot
 
 ggsave(path(here(), "figures", "connectivity", "figure3_rising_falling_posterior_distributions.png"), 
        plot = rising_falling_dist_plot, 
-       width = 3, height = 4, units = "in", dpi = 600)
+       width = 2.75, height = 6, units = "in", dpi = 600)
 
 
 ```
@@ -249,15 +249,15 @@ approach_sub_eff_plot <- ggplot() +
             aes(x = time, y = pred, group = subject), 
             color = "#D75356") +
   theme(panel.background = element_rect(fill = "white"), 
-    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
-    axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
-    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11, hjust = .5)) +
-  labs(x = "Time", y = "Scaled Log Coherence",
+    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 13),
+    axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 15),
+    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 15, hjust = .5)) +
+  labs(x = "Time", y = "Imaginary Coherence, log-scaled",
        title = "Approach")
 
 ggsave(path(here(), "figures", "connectivity", "figure3_rising_sub_eff.png"), 
        plot = approach_sub_eff_plot, 
-       width = 2.75, height = 4, units = "in", dpi = 600)
+       width = 2.75, height = 4.5, units = "in", dpi = 600)
 
 ```
 
@@ -295,16 +295,16 @@ avoid_sub_eff_plot <- ggplot() +
             aes(x = time, y = pred, group = subject), 
             color = "#6390C8") +
   theme(panel.background = element_rect(fill = "white"), 
-    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
-    axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
-    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11, hjust = .5)) +
+    axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 13),
+    axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 15),
+    plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 15, hjust = .5)) +
   scale_y_continuous(position = "right") +
-  labs(x = "Time", y = "Scaled Log Coherence",
+  labs(x = "Time", y = "Imaginary Coherence, log-scaled",
        title = "Avoid")
 
 ggsave(path(here(), "figures", "connectivity", "figure3_falling_sub_eff.png"), 
        plot = avoid_sub_eff_plot, 
-       width = 2.75, height = 4, units = "in", dpi = 600)
+       width = 2.75, height = 4.5, units = "in", dpi = 600)
 
 ```
 

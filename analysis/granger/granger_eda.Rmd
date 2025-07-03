@@ -1,0 +1,155 @@
+---
+title: "Granger Dir"
+output: html_document
+date: "2025-02-11"
+---
+---
+title: "Granger Analyses"
+output: html_document
+date: "2025-02-11"
+---
+
+```{r setup, include=FALSE}
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(lmerTest)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(lmtest)
+library(scales)
+library(ggthemr)
+library(RColorBrewer)
+library(broom.mixed)
+library(brms)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", 'create_distance_df.R'))
+source(path(here(), "R", 'clean_behavioral_data.R'))
+source(path(here(), "R", 'compile_ieeg_csv_files.R'))
+source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'separate_mfg_sfg.R'))
+
+## plotting helpers ##
+ggthemr("light")
+ghost_colors <- c("#E48DB7","#55BBC8", "#DE0D16")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+```
+
+
+```{r load-data}
+
+granger_df <- read_csv(path(here(), "results", "granger", "all_subs_all_roi_true_granger_dir.csv"))
+
+table(granger_df$subject, granger_df$region)
+glimpse(granger_df)
+```
+
+```{r}
+
+granger_clean_df <- granger_df %>%
+  mutate(times = round(times, 2)) %>%
+  group_by(times, subject, pair, region) %>%
+  mutate(pval_abs = mean(pval_abs)) %>%
+  mutate(pval_dir = mean(pval_dir)) %>%
+  distinct() %>%
+  ungroup() %>%
+  group_by(subject, pair) %>%
+  mutate(pval_abs_fdr = p.adjust(pval_abs)) %>%
+  mutate(first_region_leads = if_else(pval_abs_fdr < 0.05 & pval_dir < 0.05, T, F)) %>%
+  mutate(second_region_leads = if_else(pval_abs_fdr < 0.05 & pval_dir > 0.95, T, F)) 
+
+granger_overall_df <- granger_clean_df %>%
+  group_by(times,  region) %>%
+  summarise(first_region_leads = sum(first_region_leads), second_region_leads = sum(second_region_leads))
+
+granger_overall_df$binom_p <- NA
+for(row in 1:nrow(granger_overall_df)){
+  
+    tmp_df <- granger_overall_df %>%
+      ungroup() %>%
+      slice(row)
+    
+    total <- tmp_df$first_region_leads + tmp_df$second_region_leads
+    
+    if(total > 0){
+
+      binom_pval <- binom.test(tmp_df$first_region_leads, total,
+                                     p=0.5, alternative="two.sided")$p.value
+
+    } else {
+      binom_pval <- 1
+    }
+  granger_overall_df[row, "binom_p"] <- binom_pval
+}
+
+```
+
+```{r, fig.width = 10}
+
+
+for(roi in unique(granger_overall_df$region)){
+
+  p <- granger_overall_df %>%
+    filter(region == roi) %>%
+    ungroup() %>%
+    mutate(binom_pval_fdr = p.adjust(binom_p, method = "fdr") ) %>%
+    mutate(binom_sig = if_else(binom_pval_fdr < 0.05, "sig", "nsig")) %>%
+    ggplot(., aes(x = times, alpha = binom_sig)) + 
+    geom_col(aes(y = first_region_leads), fill = "#DBE317") +
+    geom_col(aes(y = -1 *second_region_leads), fill = "#28AE7E") +
+    theme(panel.background = element_rect(fill = "white")) +
+    scale_alpha_manual(values = c("nsig" = .2, "sig" =  1)) + 
+    ggtitle(roi)
+  
+  plot(p)
+
+}
+
+```
+
+```{r}
+
+granger_counts_df <- granger_clean_df %>%
+  group_by(times, subject, region) %>%
+  mutate(first_region_sum = sum(first_region_leads), 
+         second_region_sum = sum(second_region_leads)) %>%
+  select(times, region, first_region_sum, second_region_sum) %>%
+  distinct()
+
+slice_df <- granger_counts_df %>%
+  filter(region == "amyg_cing") %>%
+  filter(times == -.5)
+  
+
+num_positive <- sum(slice_df$first_region_sum)
+num_negative <- sum(slice_df$second_region_sum)
+total <- num_positive + num_negative  # Only considering significant shifts
+
+# Binomial test: Testing if positive shifts occur more than chance
+tmp <-binom.test(num_positive, total, p=0.5, alternative="two.sided")
+
+```
+
+

@@ -213,3 +213,22 @@ run_and_save_perms <- function(df, sig_pairs_df, all_time_df = all_subs_theta_da
   return(null_ccf_results)
   
 }
+
+get_p_values <- function(df, df_null){
+  
+  df$prop_greater <- NA
+  for(i in 1:nrow(df)){
+    
+    row <- df[i, ]
+    
+    null_vals <- df_null %>%
+      filter(elec1 == row$elec1 & elec2 == row$elec2) %>%
+      pull(best_cor)
+    
+    prop_greater <- sum(null_vals > row$best_cor) / length(null_vals)
+    
+    df[i, "prop_greater"] <- prop_greater
+    
+  }
+  return(df)
+}

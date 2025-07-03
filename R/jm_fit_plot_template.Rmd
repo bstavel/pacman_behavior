@@ -151,7 +151,7 @@ for(fold in c(1:5)){
 
     ## Fit Joint Model ##
     file_name <- paste0(current_subject, "_", permuted, "_", seed_fold)
-    jm_fit <- fit_joint_models(train_long_data, train_cox_df, file_name)
+    jm_fit <- fit_joint_models(train_long_data, train_cox_df, file_name, burn = 7500, iter = 50000)
 
     ## Print summary ##
     tmp <- kable(summary(jm_fit)$Survival, caption = "Joint Model",  format = "html")  %>%

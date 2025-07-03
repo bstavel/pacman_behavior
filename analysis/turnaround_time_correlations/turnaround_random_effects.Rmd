@@ -1,0 +1,223 @@
+---
+title: "Rising and Falling By Electrode"
+output: html_document
+date: "2025-06-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(blme)
+library(brms)
+library(bayesplot)
+library(posterior)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+source(path(here(), "R", "bayesian_helpers.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+```{r, load-data}
+
+## load models ##
+## Theta
+# load
+load(path(here(), "results", "full_all_roi_model_brms_newsubs_noinsula.RData"))
+theta_model <- model
+## HFA
+# load
+load(path(here(), "results","full_hfa_all_roi_model_brms_newsubs.RData"))
+hfa_model <- model
+
+## load threshold csv ##
+sig_thresh_df <- read_csv(path(here(), "results", "sig_theta_threshold_pairs.csv"))
+
+# separate subject lists
+sub_elec_lists <- sig_thresh_df %>%
+  # get rid of unused regions
+  filter(!grepl("sfg", roi_pair)) %>%
+  filter(!grepl("insula", roi_pair)) %>%
+  filter(roi_pair != "mfg_mfg") %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  mutate(sig = "True") %>%
+  select(pair_id, roi_pair, threshold, sig) 
+
+sig_orig_list <- sub_elec_lists %>% filter(threshold == 10) %>% distinct()
+sig_50_list <- sub_elec_lists %>% filter(threshold == 50) %>% distinct()
+sig_100_list <- sub_elec_lists %>% filter(threshold == 100) %>% distinct()
+
+
+
+full_sample_summary_plot_df <- read_csv(path(here(), "results", "turn_time_prediction", "hfa_model_results_summary_plot_df.csv"))
+
+short_summary_df <- full_sample_summary_plot_df %>%
+  select(-samples) %>%
+  distinct()
+
+```
+
+### Theta
+
+```{r random-effects-amg-cing}
+
+# Calculate Random Effects
+sub_elec_ci_theta <- get_subject_elec_res_with_intercept(theta_model, "scale_logged_times", "region_pair", "roi_pair1")
+
+# Clean Key
+sub_elec_ci_theta <- sub_elec_ci_theta %>%
+  ungroup() %>%
+  mutate(electrode_pair = str_remove(subject_key,
+                                   pattern = paste0(subject, "_", subject))) %>%
+  mutate(pair_id = paste0(subject,  electrode_pair))
+table(sub_elec_ci_theta$significant_key)/nrow(sub_elec_ci_theta)
+table(sub_elec_ci_theta$significant_key, sub_elec_ci_theta$region)
+
+sub_ci_theta <- sub_elec_ci_theta %>%
+  select(subject, region, mean_sub, lower_sub, upper_sub, significant_sub) %>%
+  distinct()
+
+table(sub_ci_theta$significant_sub, sub_ci_theta$region)
+
+```
+
+```{r, random-effects-sig}
+
+## orgi, should be exactly the same
+sub_elec_ci_theta_orig <- left_join(sub_elec_ci_theta, sig_orig_list) %>%
+  filter(!is.na(sig))
+table(sub_elec_ci_theta_orig$significant_key, sub_elec_ci_theta_orig$roi_pair)
+table(sub_elec_ci_theta_orig$significant_key)/nrow(sub_elec_ci_theta_orig)
+
+## 50 
+sub_elec_ci_theta_50 <- left_join(sub_elec_ci_theta, sig_50_list) %>%
+  filter(!is.na(sig))
+table(sub_elec_ci_theta_50$significant_key, sub_elec_ci_theta_50$roi_pair)
+table(sub_elec_ci_theta_50$significant_key)/nrow(sub_elec_ci_theta_50)
+
+## 50 
+sub_elec_ci_theta_100 <- left_join(sub_elec_ci_theta, sig_100_list) %>%
+  filter(!is.na(sig))
+table(sub_elec_ci_theta_100$significant_key, sub_elec_ci_theta_100$roi_pair)
+table(sub_elec_ci_theta_100$significant_key)/nrow(sub_elec_ci_theta_100)
+
+
+```
+
+### HFA
+
+```{r random-effects-hfa}
+
+# Calculate Random Effects
+sub_elec_ci_hfa <- get_subject_elec_res_with_intercept(hfa_model, "scale_logged_times", "region_pair",  "roi_pair1")
+
+# Clean Key
+sub_elec_ci_hfa <- sub_elec_ci_hfa %>%
+  ungroup() %>%
+  mutate(electrode_pair = str_remove(subject_key,
+                                   pattern = paste0(subject, "_", subject))) %>%
+  mutate(pair_id = paste0(subject,  electrode_pair))
+table(sub_elec_ci_hfa$significant_key)/nrow(sub_elec_ci_hfa)
+
+table(sub_elec_ci_hfa$significant_sub)/nrow(sub_elec_ci_hfa)
+
+sub_ci_hfa <- sub_elec_ci_hfa %>%
+  select(subject, region, mean_sub, lower_sub, upper_sub, significant_sub) %>%
+  distinct()
+
+table(sub_ci_hfa$significant_sub, sub_ci_hfa$region)
+```
+
+```{r, random-effects-sig}
+
+## orgi, should be exactly the same
+sub_elec_ci_hfa_orig <- left_join(sub_elec_ci_hfa, sig_orig_list) %>%
+  filter(!is.na(sig))
+table(sub_elec_ci_hfa_orig$significant_key, sub_elec_ci_hfa_orig$roi_pair)
+table(sub_elec_ci_hfa_orig$significant_key)/nrow(sub_elec_ci_hfa_orig)
+
+## 50 
+sub_elec_ci_hfa_50 <- left_join(sub_elec_ci_hfa, sig_50_list) %>%
+  filter(!is.na(sig))
+table(sub_elec_ci_hfa_50$significant_key, sub_elec_ci_hfa_50$roi_pair)
+table(sub_elec_ci_hfa_50$significant_key)/nrow(sub_elec_ci_hfa_50)
+
+## 1000 
+sub_elec_ci_hfa_100 <- left_join(sub_elec_ci_hfa, sig_100_list) %>%
+  filter(!is.na(sig))
+table(sub_elec_ci_hfa_100$significant_key, sub_elec_ci_hfa_100$roi_pair)
+table(sub_elec_ci_hfa_100$significant_key)/nrow(sub_elec_ci_hfa_100)
+
+
+
+
+```

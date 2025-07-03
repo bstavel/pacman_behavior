@@ -1,0 +1,285 @@
+---
+title: "Rising and Falling By Electrode"
+output: html_document
+date: "2025-06-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.width = 8,  # set default width of figures
+  fig.height = 5,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)  # cache results
+
+## libraries ##
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggthemr)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(wesanderson)
+library(ggsci)
+library(zoo)
+library(kableExtra)
+library(lme4)
+library(RColorBrewer)
+library(doParallel)
+library(parallel)
+library(foreach)
+library(here)
+library(fs)
+library(ggcorrplot)
+library(viridis)
+library(lmtest)
+library(gt)
+library(survminer)
+library(survival)
+library(effectsize)
+library(scales)
+library(JMbayes2)
+library(caret)
+library(rmarkdown)
+library(blme)
+library(brms)
+library(bayesplot)
+library(posterior)
+
+## hand written functions ##
+source(path(here(), "R", 'mutate_cond.R'))
+source(path(here(), "R", "clean_behavioral_data.R"))
+source(path(here(), "R", "create_distance_df.R"))
+source(path(here(), "R", "joint_modeling_functions.R"))
+source(path(here(), "R", "jm_visualization_functions.R"))
+source(path(here(), "R", "connectivity_prep_functions.R"))
+source(path(here(), "R", "bayesian_helpers.R"))
+
+## plotting helpers ##
+ggthemr("light")
+getPalette = colorRampPalette(brewer.pal(17, "Set1"))
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+# # ## parallelization ##
+# nCores <- 8
+# registerDoParallel(nCores)
+
+
+```
+
+
+```{r, load-data}
+
+## load models ##
+## Amyg ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_approach_amyg_cing.RData"))
+## OFC ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_approach_amyg_ofc.RData"))
+## MFG ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_approach_mfg_cing.RData"))
+## OFC ~ MFG
+# load
+load(path(here(), "results", "granger", "granger_approach_ofc_mfg.RData"))
+
+## load threshold csv ##
+sig_thresh_df <- read_csv(path(here(), "results", "sig_theta_threshold_pairs.csv"))
+
+# separate subject lists
+sub_elec_lists <- sig_thresh_df %>%
+  # get rid of unused regions
+  filter(!grepl("sfg", roi_pair)) %>%
+  filter(!grepl("insula", roi_pair)) %>%
+  filter(roi_pair != "mfg_mfg") %>%
+  mutate(pairs = gsub("_to_", "-", pairs)) %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  select(pair_id, threshold) 
+
+sig_orig_list <- sub_elec_lists %>% filter(threshold == 10) %>% distinct()
+sig_50_list <- sub_elec_lists %>% filter(threshold == 50) %>% distinct()
+sig_100_list <- sub_elec_lists %>% filter(threshold == 100) %>% distinct()
+
+```
+
+### Amyg Cing Model
+
+```{r random-effects-amg-cing}
+
+# Calculate Random Effects
+sub_elec_ci_amyg_ci <- get_subject_elec_res(amyg_cing_app_model, "Intercept", "pair_id")
+
+# Clean Key
+sub_elec_ci_amyg_ci <- sub_elec_ci_amyg_ci %>%
+  ungroup() %>%
+  mutate(electrode_pair = str_remove(subject_key,
+                                   pattern = paste0(subject, "_", subject))) %>%
+  mutate(pair_id = paste0(subject,  electrode_pair))
+table(sub_elec_ci_amyg_ci$significant_key)/nrow(sub_elec_ci_amyg_ci)
+
+
+```
+
+```{r, random-effects-sig}
+
+## orgi, should be exactly the same
+sub_elec_ci_amyg_ci_orig <- sub_elec_ci_amyg_ci %>%
+  filter(pair_id %in% sig_orig_list$pair_id) 
+table(sub_elec_ci_amyg_ci_orig$significant_key)
+table(sub_elec_ci_amyg_ci_orig$significant_key)/nrow(sub_elec_ci_amyg_ci_orig)
+
+## 50 
+sub_elec_ci_amyg_ci_50 <- sub_elec_ci_amyg_ci %>%
+  filter( pair_id %in% sig_50_list$pair_id) 
+table(sub_elec_ci_amyg_ci_50$significant_key)
+table(sub_elec_ci_amyg_ci_50$significant_key)/nrow(sub_elec_ci_amyg_ci_50)
+
+## 50 
+sub_elec_ci_amyg_ci_100 <- sub_elec_ci_amyg_ci %>%
+  filter( !pair_id %in% sig_100_list$pair_id) 
+table(sub_elec_ci_amyg_ci_100$significant_key)
+table(sub_elec_ci_amyg_ci_100$significant_key)/nrow(sub_elec_ci_amyg_ci_100)
+
+
+```
+
+### Amyg OFC Model
+
+```{r random-effects-amg-cing}
+
+# Calculate Random Effects
+sub_elec_ci_amyg_ofc <- get_subject_elec_res(amyg_ofc_app_model, "Intercept", "pair_id")
+
+# Clean Key
+sub_elec_ci_amyg_ofc <- sub_elec_ci_amyg_ofc %>%
+  ungroup() %>%
+  mutate(electrode_pair = str_remove(subject_key,
+                                   pattern = paste0(subject, "_", subject))) %>%
+  mutate(pair_id = paste0(subject,  electrode_pair))
+table(sub_elec_ci_amyg_ofc$significant_key)/nrow(sub_elec_ci_amyg_ofc)
+
+```
+
+```{r, random-effects-sig}
+
+## orgi, should be exactly the same
+sub_elec_ci_amyg_ofc_orig <- sub_elec_ci_amyg_ofc %>%
+  filter(pair_id %in% sig_orig_list$pair_id) 
+table(sub_elec_ci_amyg_ofc_orig$significant_key)
+table(sub_elec_ci_amyg_ofc_orig$significant_key)/nrow(sub_elec_ci_amyg_ofc_orig)
+
+## 50 
+sub_elec_ci_amyg_ofc_50 <- sub_elec_ci_amyg_ofc %>%
+  filter( pair_id %in% sig_50_list$pair_id) 
+table(sub_elec_ci_amyg_ci_50$significant_key)
+table(sub_elec_ci_amyg_ci_50$significant_key)/nrow(sub_elec_ci_amyg_ci_50)
+
+## 50 
+sub_elec_ci_amyg_ofc_100 <- sub_elec_ci_amyg_ofc %>%
+  filter( !pair_id %in% sig_100_list$pair_id) 
+table(sub_elec_ci_amyg_ci_100$significant_key)
+table(sub_elec_ci_amyg_ci_100$significant_key)/nrow(sub_elec_ci_amyg_ci_100)
+
+
+```
+### MFG Cing Model
+
+```{r random-effects-amg-cing}
+
+# Calculate Random Effects
+sub_elec_ci_mfg_cing <- get_subject_elec_res(mfg_cing_app_model, "Intercept", "pair_id")
+
+# Clean Key
+sub_elec_ci_mfg_cing <- sub_elec_ci_mfg_cing %>%
+  ungroup() %>%
+  mutate(electrode_pair = str_remove(subject_key,
+                                   pattern = paste0(subject, "_", subject))) %>%
+  mutate(pair_id = paste0(subject,  electrode_pair))
+table(sub_elec_ci_mfg_cing$significant_key)/nrow(sub_elec_ci_mfg_cing)
+
+
+```
+
+```{r, random-effects-sig}
+
+## orgi, should be exactly the same
+sub_elec_ci_mfg_cing_orig <- sub_elec_ci_mfg_cing %>%
+  filter(pair_id %in% sig_orig_list$pair_id) 
+table(sub_elec_ci_mfg_cing_orig$significant_key)
+table(sub_elec_ci_mfg_cing_orig$significant_key)/nrow(sub_elec_ci_mfg_cing_orig)
+
+## 50 
+sub_elec_ci_mfg_cing_50 <- sub_elec_ci_mfg_cing %>%
+  filter( pair_id %in% sig_50_list$pair_id) 
+table(sub_elec_ci_mfg_cing_50$significant_key)
+table(sub_elec_ci_mfg_cing_50$significant_key)/nrow(sub_elec_ci_mfg_cing_50)
+
+## 50 
+sub_elec_ci_mfg_cing_100 <- sub_elec_ci_mfg_cing %>%
+  filter( !pair_id %in% sig_100_list$pair_id) 
+table(sub_elec_ci_mfg_cing_100$significant_key)
+table(sub_elec_ci_mfg_cing_100$significant_key)/nrow(sub_elec_ci_mfg_cing_100)
+
+
+```
+
+### MFG OFC
+
+```{r random-effects-amg-cing}
+
+# Calculate Random Effects
+sub_elec_ci_mfg_ofc <- get_subject_elec_res(ofc_mfg_app_model, "Intercept", "pair_id")
+
+# Clean Key
+sub_elec_ci_mfg_ofc <- sub_elec_ci_mfg_ofc %>%
+  ungroup() %>%
+  mutate(electrode_pair = str_remove(subject_key,
+                                   pattern = paste0(subject, "_", subject))) %>%
+  mutate(pair_id = paste0(subject,  electrode_pair))
+table(sub_elec_ci_mfg_ofc$significant_key)/nrow(sub_elec_ci_mfg_ofc)
+
+```
+
+```{r, random-effects-sig}
+
+## orgi, should be exactly the same
+sub_elec_ci_mfg_ofc_orig <- sub_elec_ci_mfg_ofc %>%
+  filter(pair_id %in% sig_orig_list$pair_id) 
+table(sub_elec_ci_mfg_ofc_orig$significant_key)
+table(sub_elec_ci_mfg_ofc_orig$significant_key)/nrow(sub_elec_ci_mfg_ofc_orig)
+
+## 50 
+sub_elec_ci_mfg_ofc_50 <- sub_elec_ci_mfg_ofc %>%
+  filter( pair_id %in% sig_50_list$pair_id) 
+table(sub_elec_ci_mfg_ofc_50$significant_key)
+table(sub_elec_ci_mfg_ofc_50$significant_key)/nrow(sub_elec_ci_mfg_ofc_50)
+
+## 50 
+sub_elec_ci_mfg_ofc_100 <- sub_elec_ci_mfg_ofc %>%
+  filter( !pair_id %in% sig_100_list$pair_id) 
+table(sub_elec_ci_mfg_ofc_100$significant_key)
+table(sub_elec_ci_mfg_ofc_100$significant_key)/nrow(sub_elec_ci_mfg_ofc_100)
+
+
+```
+

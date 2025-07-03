@@ -61,18 +61,57 @@ c25 <- c(
 
 ```{r load-data}
 
-## Load Data ##
-hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
-game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+## get file lists
+all_files <- list.files(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta"))
+all_files <- all_files[grep("baseline", all_files)]
+hc_files <- all_files[grep("hc", all_files)]
+amyg_files <- all_files[grep("amyg", all_files)]
+ofc_files <- all_files[grep("ofc", all_files)]
+cing_files <- all_files[grep("cing", all_files)]
+mfg_files <- all_files[grep("mfg", all_files)]
 
-## Clean ieeg data ##
-game_data_distance <- game_data_distance %>%
-  filter(subject != "BJH026") %>% # no hc data
-  filter(trial_time <= 5.10) 
+# # load hc data
+# hc_theta_data <- NULL
+# for(file in hc_files){
+#   hc_theta_data <- rbind(hc_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+# }
+# 
+# # load amyg data
+# amyg_theta_data <- NULL
+# for(file in amyg_files){
+#   amyg_theta_data <- rbind(amyg_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+# }
+#   
+# load ofc data
+ofc_theta_data <- NULL
+for(file in ofc_files){
+  ofc_theta_data <- rbind(ofc_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+}
 
-permuted <- FALSE
+# # load cing data
+# cing_theta_data <- NULL
+# for(file in cing_files){
+#   cing_theta_data <- rbind(cing_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+# }
+# 
+# # load mfg data
+# mfg_theta_data <- NULL
+# for(file in mfg_files){
+#   mfg_theta_data <- rbind(mfg_theta_data, read_csv(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta", file)))
+# }
+# 
+
+
+# behavioral data #
+all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
+
+all_subs_g_dist <- all_subs_g_dist %>%
+  filter(attack_chase_bob == "Bob") 
+
+
 
 ```
+
 ## EDA
 
 
@@ -80,20 +119,23 @@ permuted <- FALSE
 
 ```{r prep-for-eda}
 
-example_elec_df <- hc_theta_data %>%
-  filter(subject == "SLCH002") %>%
-  mutate(trial_time = round(trial_time, 2)) %>%
-  group_by(trial_time, trial_numeric) %>%
+example_elec_df <- ofc_theta_data %>%
+  rename(trial_time = time, theta = value, trial_numeric = trial) %>%
+  # filter(subject == "SLCH002") %>%
+  filter(trial_time >= 0) %>%
+  # create game_time which is rounded to the nearest .5
+  mutate(game_time = round(floor(trial_time / 0.05) * 0.05, 2)) %>%
+  mutate(game_time = round(game_time, 2)) %>%
+  group_by(subject, trial_time, trial_numeric) %>%
   mutate(mean_theta = mean(theta)) %>%
   select(-theta, -electrode) %>%
   distinct() %>%
-  ungroup() %>%
-  mutate(trial_time = round(trial_time - .5, 2))
+  ungroup() 
 
 
-example_behave_df <- game_data_distance %>%
-  filter(subject == "SLCH002") %>%
-  # filter(Direction != "Still") %>%
+example_behave_df <- all_subs_g_dist %>%
+  # filter(subject == "SLCH002") %>%
+  filter(Direction != "Still") %>%
   filter(dots_eaten != 0) %>%  
   group_by(trial_numeric) %>%
   # prep time variables
@@ -107,15 +149,18 @@ example_behave_df <- game_data_distance %>%
          UserLocation, GhostLocation, points_remaining, distance_to_ghost,
          away_choice, TrialType, reward_groups) %>%
   mutate(EVENT = 1) %>%
-  mutate(points_remaining = scale(points_remaining)) %>%
-  mutate(distance_to_ghost = scale(distance_to_ghost)) %>%
-  mutate(trial_time = round(trial_time, 2))
+  mutate(points_remaining = scale(points_remaining)[,]) %>%
+  mutate(distance_to_ghost = scale(distance_to_ghost)[,]) %>%
+  mutate(trial_time = round(trial_time, 2)) %>% 
+  rename(game_time = trial_time)
 
 
 
-ex_df <- inner_join(example_elec_df, example_behave_df, by = c("subject", "trial_numeric", "trial_time"))
-
-
+ex_df <- full_join(example_elec_df, example_behave_df, by = join_by(subject, trial_numeric, game_time)) %>% 
+  filter(!is.na(jm_time)) %>%
+  group_by(trial_numeric) %>%
+  mutate(jm_time = trial_time - first(trial_time)) %>%
+  ungroup()
 
 ```
 
@@ -133,7 +178,7 @@ example_behave_df %>%
 
 example_behave_df %>%
   group_by(trial_numeric) %>%
-  mutate(true_turn_time = turnaround_time + first(trial_time)) %>%
+  mutate(true_turn_time = turnaround_time + first(game_time)) %>%
   select(trial_numeric, true_turn_time) %>%
   distinct() %>%
   ggplot(., aes(x = true_turn_time)) +
@@ -148,8 +193,9 @@ example_behave_df %>%
 ```{r theta-eda, fig.width=10, fig.height=5}
 
 ex_df <- ex_df %>%
-  mutate(long_short_trial = if_else(is.na(turnaround_time), "discard", if_else(turnaround_time <= 2, "short", "long"))) %>%
-  filter(trial_time >= 0)
+  # mutate(long_short_trial = if_else(is.na(turnaround_time), "discard", if_else(turnaround_time <= 2, "short", "long"))) %>%
+  filter(trial_time >= 0) %>%
+  ungroup()
 
 ggthemr("solarized")
 
@@ -272,13 +318,33 @@ ex_df %>%
 ```{r model-prep}
 
 long_data_df <- ex_df %>%
-  filter(long_short_trial != "discard") %>%
   mutate(jm_time = round(jm_time, 2)) %>%
   filter(jm_time <= turnaround_time) %>%
   filter(!is.na(mean_theta)) %>%
-  mutate(sin_term = sin(2 * pi * jm_time )) %>%
-  mutate(cos_term = cos(2 * pi * jm_time )) %>%
-  ungroup()
+  mutate(sin_term = sin(5 * pi * jm_time )) %>%
+  mutate(cos_term = cos(5 * pi * jm_time )) %>%
+  ungroup() 
+
+```
+
+
+```{r, fig.width=12, fig.height=6}
+
+test_trials <- sample(long_data_df$trial_numeric, 6)
+
+long_data_df %>%
+  filter(trial_numeric %in% test_trials) %>%
+  ggplot(., aes(x = jm_time, y = mean_theta, group = trial_numeric)) +
+  geom_line() + 
+  facet_wrap(~trial_numeric, scale = "free") 
+
+
+long_data_df %>%
+  filter(trial_numeric %in% test_trials) %>%
+  ggplot(., aes(x = jm_time, y = sin_term, group = trial_numeric)) +
+  geom_line() + 
+  facet_wrap(~trial_numeric, scale = "free") 
+
 
 ```
 
@@ -318,14 +384,73 @@ ggsave(path(here(), "figures", "survival", "simple_long_model_plot.png"), simple
 
 ```
 
+```{r model-cin-cos}
+
+long_data_df <- ex_df %>%
+  mutate(trial_id = paste0(subject, "_", trial_numeric)) %>%
+  mutate(jm_time = round(jm_time, 2)) %>%
+  filter(jm_time <= turnaround_time) %>%
+  filter(!is.na(mean_theta)) %>%
+  # mutate(jm_time = scale(jm_time)[,]) %>%
+  mutate(mean_theta = scale(mean_theta)[,]) %>%
+  mutate(sin_term = sin(7 * pi * jm_time )) %>%
+  mutate(cos_term = cos(7 * pi * jm_time )) 
+  
+
+# fit model #
+sin_cos_time_model <- lme(mean_theta ~ jm_time + sin_term + cos_term,
+                     data = long_data_df,
+                     random = ~ sin_term + cos_term + jm_time | trial_id,
+                     control = lmeControl(opt = "optim", msMaxIter = 200))
+
+
+sin_cos_model <- lme(mean_theta ~ jm_time + sin_term + cos_term,
+                     data = long_data_df,
+                     random = ~ sin_term + cos_term | trial_id,
+                     control = lmeControl(opt = "optim", msMaxIter = 200))
+
+sin_model <- lme(mean_theta ~ jm_time + sin_term ,
+                     data = long_data_df,
+                     random = ~ jm_time | trial_id,
+                     control = lmeControl(opt = "optim", msMaxIter = 200))
+
+lin_model <- lme(mean_theta ~ jm_time + cos_term + sin_term,
+                 data = long_data_df,
+                 random = ~ jm_time | trial_id,
+                 control = lmeControl(opt = "optim", msMaxIter = 200))
+
+summary(sin_model)
+summary(sin_cos_model)
+summary(sin_cos_time_model)
+
+# save predictions #
+long_data_df$prediction <- predict(sin_cos_time_model, long_data_df, type = "response")
+
+# plot predictions #
+long_data_df %>%
+  filter(trial_id %in% sample(trial_id, 6)) %>%
+  arrange(turnaround_time) %>%
+  mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
+  pivot_longer(cols = c(mean_theta, prediction), names_to = "type", values_to = "value") %>%
+  ggplot(., aes(x = jm_time, y = value, color = type)) +
+  geom_point() +
+  facet_wrap(~trial_numeric) +
+  theme(panel.background = element_rect(fill = "white")) +
+  xlim(0, 1.5)
+
+
+
+```
+
 ```{r jm-fits-prep}
 
 cox_df <- long_data_df %>%
-  # filter(long_short_trial != "discard") %>%
+  group_by(trial_id) %>%
   filter(jm_time == first(jm_time)) %>%
   ungroup() %>%
   mutate(event = 1) %>%
-  select(trial_numeric, turnaround_time, event, EVENT) 
+  # mutate(trial = factor(trial_numeric)) %>%
+  select(trial_id, turnaround_time, event, EVENT) 
 
 # survival model #
 cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
@@ -335,10 +460,10 @@ cox_fit <- coxph(Surv(turnaround_time, EVENT) ~ 1, data = cox_df)
 ```{r jm-fits-basic}
 
 # joint model #
-jm_basic_fit <- jm(cox_fit, list(time_model), 
-             time_var = "jm_time", data_Surv = cox_df, 
-             functional_forms = ~value(mean_theta), #+ slope(mean_theta),
-             n_burnin = 15000, n_iter = 40000, n_chains =8, cores = 8)
+jm_basic_fit <- jm(cox_fit, list(sin_cos_time_model), 
+             time_var = "jm_time",  data_Surv = cox_df, 
+             functional_forms = ~value(mean_theta),
+             n_burnin = 100000, n_iter = 200000, n_chains =8, cores = 8)
 
 
 summary(jm_basic_fit)
@@ -563,8 +688,7 @@ long_data_df$prediction <- predict(single_split_model, long_data_df, type = "res
 
 # plot predictions #
 long_data_df %>%
-  filter(long_short_trial == "long") %>%
-  filter(trial_numeric %in% sample(trial_numeric, 20)) %>%
+  filter(trial_numeric %in% sample(trial_numeric, 6)) %>%
   arrange(turnaround_time) %>%
   mutate(trial_numeric = factor(trial_numeric, levels = unique(trial_numeric))) %>%
   pivot_longer(cols = c(mean_theta, prediction), names_to = "type", values_to = "value") %>%

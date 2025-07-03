@@ -242,20 +242,23 @@ dots_plot <- all_vars_df %>%
   ggplot(., aes(x = factor(block), y = average_dots_per_block, fill = 'f')) +
   geom_violin(alpha = .7, fill = "#FB6087") +
   geom_boxplot(notch = T, width =.2, fill = "#FB6087") +
-  geom_point(data = ieeg_dot_df, aes(x = factor(block), y = average_dots_per_block), color = "#FB6087", fill = 'darkgrey', size = 3, shape = 23) +
+  geom_point(data = ieeg_dot_df, aes(x = factor(block), y = average_dots_per_block), color = "#FB6087", fill = 'darkgrey', size = 2, shape = 23) +
  theme(panel.background = element_rect(fill = "white"), 
        legend.position = "none",
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold")) +
-  labs(subtitle = "Participants balanced the rewards against the risks by collecting most, but not all,\nof the reward on a given trial", x = "\nBlock (each block consists of twenty trials)", y = "Average dots collected\n") +
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 12, margin = margin(b = 5)),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 11, margin = margin(b = 0))) +
+  labs(subtitle = "Participants balanced the rewards against the risks by\ncollecting most, but not all, of the reward on a given trial", 
+       x = "Block (each block consists of twenty trials)", y = "Average dots collected\n") +
   ggtitle("Average reward collected across blocks")
 
-dots_plot
 
 ggsave(path(here(), "figures", "behavior", "figure1_dots_plot.png"), 
-       plot = dots_plot, width = 9.5, height = 7)
+       plot = dots_plot, width = 4.5, height = 4, dpi = 600)
 
 ```
 
@@ -283,7 +286,7 @@ last_away_df_ieeg <- game_data_distance %>%
   # distinct #
   select(trial_numeric, subject, last_away, case) %>%
   distinct() %>%
-  filter(subject %in% sample(subject, 5))
+  filter(subject %in% sample(subject, 4))
   
 last_away_df <- bind_rows(last_away_df_prolific, last_away_df_ieeg)  
   
@@ -292,25 +295,28 @@ last_away_plot <- last_away_df %>%
   arrange(desc(case)) %>%
   mutate(subject = factor(subject)) %>%
   ggplot(., aes(x = subject, y = last_away)) +
-  geom_jitter(alpha = .5, color = "grey") +
+  geom_jitter(alpha = .5, color = "grey", size = 1) +
   geom_boxplot(aes(fill = ieeg), notch = T, show.legend = F) +
   geom_vline(xintercept = 4.5, color = "darkgrey") +
-  ylab("Distance to ghost at final turnaround (a.u.)") + xlab("\n") +
+  ylab("Distance to ghost at turnaround (game units, max = 180)") + xlab("\n") +
   theme(panel.background = element_rect(fill = "white"),
         legend.position = "top",
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold"),
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 12, margin = margin(b = 5)),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 11, margin = margin(b = 0)),
         axis.ticks.x = element_blank(),
         axis.text.x = element_blank()) +
   scale_fill_manual(values = c("#B9DFD5", "#61BBA5")) +
-  ggtitle("Variability in risk tolerance", subtitle = "Random sample of 20 participants shows across- and within- subject variability\nin the degree of risk incurred on a given trial")
+  ggtitle("Variability in risk tolerance", subtitle = "Random sample of 20 participants shows across- and within- subject\nvariability in the degree of risk incurred on a given trial")
 
 last_away_plot
 
 ggsave(path(here(), "figures", "behavior", "figure1_last_away_plot.png"), 
-       plot = last_away_plot, width = 9.5, height = 7)
+       plot = last_away_plot, width = 4.5, height = 4, dpi = 600)
 
 ```
 
@@ -329,7 +335,7 @@ turn_reward_df <- game_data_distance %>%
   ungroup() %>%
   mutate(last_away = scale(last_away)) %>%
   mutate(avg_last_away = scale(avg_last_away)) %>%
-  mutate(ieeg = if_else(case == "ieeg", "iEEG", "Prolific"))
+  mutate(ieeg = if_else(case == "ieeg", "iEEG", "Online"))
 
 summary(lmer(last_away ~ large_reward + (1|subject), data = turn_reward_df))
 summary(lmer(avg_last_away ~ large_reward + (1|subject), 
@@ -346,32 +352,34 @@ turn_reward_plot <- turn_reward_df %>%
   distinct() %>% 
   ggplot(., aes(x = large_reward, y = avg_last_away)) +
   geom_hline(yintercept = 0, color = "#2D2327", linetype = "dashed", size = 1) +
-  geom_boxplot(aes(, fill = large_reward), notch = T, show.legend = F) +
-  geom_jitter(aes(color = ieeg)) +
+  geom_point(aes(color = ieeg)) +
+  geom_line(aes(alpha = ieeg, group = subject, color = ieeg, size = ieeg)) +
+  geom_boxplot(aes(fill = large_reward), notch = T, show.legend = F, color = "#2D2327", alpha = .9) +
   ylim(-1.25, 1.25) +
   coord_flip() +
   theme(panel.background = element_rect(fill = "white"), 
-        legend.position = c(.87, 1),
+        legend.position = c(.85, 1),
         legend.direction = 'horizontal',
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20),
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 20, face = "bold")) +
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 12),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 12, margin = margin(b = 5)),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 11, margin = margin(b = 0))) +
   scale_fill_manual(values = c("#31ABED", "#A1D9F7")) +
-  scale_color_manual(values = c("#2D2327", "darkgrey")) +
+  scale_color_manual(values = c("black", "darkgrey")) +
+  scale_alpha_manual(values = c(1, 0.75), guide = F) +
+  scale_size_manual(values = c(1, .25), guide = F) +
   labs(x = "Last Reward", y = "\nDistance to ghost at turnaround, scaled (a.u.)", color = "", title = "Turnaround Distance by Reward Groups", subtitle = 
-         "Participants were willing to get closer to the ghost when the last reward\nwas large")
+         "Participants were willing to get closer to the ghost when the\nlast reward was large")
 
 turn_reward_plot
 
 
  
 ggsave(path(here(), "figures", "behavior", "figure1_turnaround_reward_plot.png"),
-         plot = turn_reward_plot,
-         width = 9.5,
-         height = 7,
-         units = "in",
-         dpi = 300)
+         plot = turn_reward_plot, width = 5, height = 3.9, dpi = 600)
 
 ```
 
@@ -422,21 +430,20 @@ experienced_plot <- phenom_df %>%
   theme(panel.background = element_rect(fill = "white"), 
         legend.position = "none",
         plot.margin = margin(t = 1, r = 1, b = 1, l = 1),
-        plot.subtitle = element_text(family = "Gill Sans", color = '#2D2327', size = 16),
-        axis.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18),
-        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 16, angle = 45, vjust = 1, hjust = 1),
-        plot.title = element_text(family = "Gill Sans", color = '#2D2327', size = 18, face = "bold")) +
-  ggtitle("Most players report feeling anxiety during the task", subtitle = "Responses to: 'What did you experience when the ghost was close to catching you?'") +
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 11),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 11, margin = margin(b = 0)),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 12, margin = margin(b = 5)),
+        axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 11, angle = 45, vjust = 1, hjust = 1)) +
+  ggtitle("Emotional experience during the task", subtitle = "Responses to: 'What did you experience when the ghost was\nclose to catching you?'") +
   scale_fill_carto_d(palette = "Prism")
 
 experienced_plot
 
 
 ggsave(path(here(), "figures", "behavior", "figure1_experienced_emotions_plot.png"),
-         plot = experienced_plot,
-         width = 9.5,
-         height = 7,
-         units = "in",
-         dpi = 300)
+         plot = experienced_plot, width = 4.5, height = 3.9, dpi = 600)
 
 ```

@@ -209,27 +209,25 @@ lr_mfg_plot <- mfg_hfa_avg_df %>%
   geom_ribbon(aes(ymin = lower_sem, ymax = upper_sem), alpha = .2) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
     theme(panel.background = element_rect(fill = "white"), 
-          legend.position = "top",
-          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 14),
-          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-          legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 17),
-          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-          strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 16),
-          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 20, face = 'bold')) + 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8.5),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8))  +
   scale_color_manual(values = c("darkgrey", "#FB6087")) +
   scale_fill_manual(values = c("darkgrey", "#FB6087")) +
-  labs(title = "MFG HFA Power During Ghost Attack",
-       subtitle = "Centered on Attack",
+  labs(title = "",
        fill = "Hemisphere",
        color = "Hemisphere",
        x = "Time (s)",
-       y = "Power (z)") 
+       y = "HFA (z - score)") 
 
 
 ggsave(path(here(), "figures", "attack", "figure6_ghost_attack_lr_mfg_plot.png"), 
        plot = lr_mfg_plot, 
-       width = 10, height = 6, units = "in", dpi = 300)
+       width = 3, height = 3, units = "in", dpi = 600)
 
 ```
 
