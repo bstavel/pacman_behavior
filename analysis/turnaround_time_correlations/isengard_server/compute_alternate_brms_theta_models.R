@@ -12,10 +12,6 @@ library(brms)
 
 ## hand written functions ##
 source(path(here(), "R", 'mutate_cond.R'))
-source(path(here(), "R", 'create_distance_df.R'))
-source(path(here(), "R", 'clean_behavioral_data.R'))
-source(path(here(), "R", 'compile_ieeg_csv_files.R'))
-source(path(here(), "R", 'run_and_plot_lme_models.R'))
 source(path(here(), "R", "bayesian_helpers.R"))
 
 ### Load and Prep DF ###
