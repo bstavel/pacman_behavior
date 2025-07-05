@@ -181,7 +181,7 @@ avd_sig_elec_df <- conn_detailed_df %>%
   mutate(roi_pair = paste0(first_region, "_", second_region)) %>%
   filter(time >= 0 & time <= avd_time_window) %>%
   mutate(key = paste0(subject, "_", pairs)) %>%
-  filter(key %in% sig_50_list) %>%
+  filter(key %in% sig_50_list$pair_id) %>%
   mutate(time = round(time, 1)) %>%
   group_by(key, time) %>%
   mutate(connectivity = mean(abs(connectivity))) %>%
