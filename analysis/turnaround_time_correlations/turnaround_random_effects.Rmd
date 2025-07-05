@@ -136,9 +136,12 @@ sub_elec_ci_theta <- get_subject_elec_res_with_intercept(theta_model, "scale_log
 # Clean Key
 sub_elec_ci_theta <- sub_elec_ci_theta %>%
   ungroup() %>%
+  filter(!is.na(subject_key)) %>% # still estimated a subject effect for each region pair, even if no electrodes!
   mutate(electrode_pair = str_remove(subject_key,
                                    pattern = paste0(subject, "_", subject))) %>%
   mutate(pair_id = paste0(subject,  electrode_pair))
+
+
 table(sub_elec_ci_theta$significant_key)/nrow(sub_elec_ci_theta)
 table(sub_elec_ci_theta$significant_key, sub_elec_ci_theta$region)
 
@@ -155,19 +158,19 @@ table(sub_ci_theta$significant_sub, sub_ci_theta$region)
 ## orgi, should be exactly the same
 sub_elec_ci_theta_orig <- left_join(sub_elec_ci_theta, sig_orig_list) %>%
   filter(!is.na(sig))
-table(sub_elec_ci_theta_orig$significant_key, sub_elec_ci_theta_orig$roi_pair)
+table(sub_elec_ci_theta_orig$significant_key, sub_elec_ci_theta_orig$region)
 table(sub_elec_ci_theta_orig$significant_key)/nrow(sub_elec_ci_theta_orig)
 
 ## 50 
 sub_elec_ci_theta_50 <- left_join(sub_elec_ci_theta, sig_50_list) %>%
   filter(!is.na(sig))
-table(sub_elec_ci_theta_50$significant_key, sub_elec_ci_theta_50$roi_pair)
+table(sub_elec_ci_theta_50$significant_key, sub_elec_ci_theta_50$region)
 table(sub_elec_ci_theta_50$significant_key)/nrow(sub_elec_ci_theta_50)
 
 ## 50 
 sub_elec_ci_theta_100 <- left_join(sub_elec_ci_theta, sig_100_list) %>%
   filter(!is.na(sig))
-table(sub_elec_ci_theta_100$significant_key, sub_elec_ci_theta_100$roi_pair)
+table(sub_elec_ci_theta_100$significant_key, sub_elec_ci_theta_100$region)
 table(sub_elec_ci_theta_100$significant_key)/nrow(sub_elec_ci_theta_100)
 
 
@@ -183,18 +186,21 @@ sub_elec_ci_hfa <- get_subject_elec_res_with_intercept(hfa_model, "scale_logged_
 # Clean Key
 sub_elec_ci_hfa <- sub_elec_ci_hfa %>%
   ungroup() %>%
+  filter(!is.na(subject_key)) %>% # still estimated a subject effect for each region pair, even if no electrodes!
   mutate(electrode_pair = str_remove(subject_key,
                                    pattern = paste0(subject, "_", subject))) %>%
   mutate(pair_id = paste0(subject,  electrode_pair))
 table(sub_elec_ci_hfa$significant_key)/nrow(sub_elec_ci_hfa)
 
-table(sub_elec_ci_hfa$significant_sub)/nrow(sub_elec_ci_hfa)
+table(sub_elec_ci_hfa$significant_key, sub_elec_ci_hfa$region)
 
 sub_ci_hfa <- sub_elec_ci_hfa %>%
   select(subject, region, mean_sub, lower_sub, upper_sub, significant_sub) %>%
   distinct()
 
 table(sub_ci_hfa$significant_sub, sub_ci_hfa$region)
+
+
 ```
 
 ```{r, random-effects-sig}
@@ -202,19 +208,19 @@ table(sub_ci_hfa$significant_sub, sub_ci_hfa$region)
 ## orgi, should be exactly the same
 sub_elec_ci_hfa_orig <- left_join(sub_elec_ci_hfa, sig_orig_list) %>%
   filter(!is.na(sig))
-table(sub_elec_ci_hfa_orig$significant_key, sub_elec_ci_hfa_orig$roi_pair)
+table(sub_elec_ci_hfa_orig$significant_key, sub_elec_ci_hfa_orig$region)
 table(sub_elec_ci_hfa_orig$significant_key)/nrow(sub_elec_ci_hfa_orig)
 
 ## 50 
 sub_elec_ci_hfa_50 <- left_join(sub_elec_ci_hfa, sig_50_list) %>%
   filter(!is.na(sig))
-table(sub_elec_ci_hfa_50$significant_key, sub_elec_ci_hfa_50$roi_pair)
+table(sub_elec_ci_hfa_50$significant_key, sub_elec_ci_hfa_50$region)
 table(sub_elec_ci_hfa_50$significant_key)/nrow(sub_elec_ci_hfa_50)
 
-## 1000 
+## 100
 sub_elec_ci_hfa_100 <- left_join(sub_elec_ci_hfa, sig_100_list) %>%
   filter(!is.na(sig))
-table(sub_elec_ci_hfa_100$significant_key, sub_elec_ci_hfa_100$roi_pair)
+table(sub_elec_ci_hfa_100$significant_key, sub_elec_ci_hfa_100$region)
 table(sub_elec_ci_hfa_100$significant_key)/nrow(sub_elec_ci_hfa_100)
 
 

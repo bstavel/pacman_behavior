@@ -349,7 +349,7 @@ write_csv(slopes_summary_df, path(here(), "results", "turn_time_prediction", "hf
 
 # load full model #
 load(path(here(), "results", "full_hfa_all_roi_100_elecs_model_brms.RData"))
-
+hfa_100_elec_model <- model
 
 ```
 
@@ -374,7 +374,7 @@ mcmc_trace(hfa_100_elec_model, regex_pars = c("b_"), facet_args = list(ncol = 1)
 ```{r}
 
 # Combine posteriors into CIs for each region 
-slopes_summary_df <- get_region_effects_for_turnaround_models(hfa_100_elec_model,unique(correlation_clean_df$region_pair))
+slopes_summary_df <- get_region_effects_for_turnaround_models(hfa_100_elec_model,unique(hfa_100_elec_model$data$region_pair))
 
 # save output
 write_csv(slopes_summary_df, path(here(), "results", "turn_time_prediction", "hfa_all_roi_100_elecs_slopes_summary.csv"))
@@ -382,4 +382,41 @@ write_csv(slopes_summary_df, path(here(), "results", "turn_time_prediction", "hf
 ```
 
 
+### 100ms - Approach Only Threshold Version
 
+```{r}
+
+# load full model #
+load(path(here(), "results",  "full_hfa_all_roi_10a_elecs_model_brms.RData"))
+hfa_10a_elec_model <- model
+
+```
+
+
+
+```{r model-summary}
+
+# summary #
+summary(hfa_10a_elec_model)
+
+```
+
+
+```{r trace-plot, fig.height = 50, fig.width = 8}
+
+# plot #
+mcmc_trace(hfa_10a_elec_model, regex_pars = c("b_"), facet_args = list(ncol = 1))
+
+
+```
+
+
+```{r}
+
+# Combine posteriors into CIs for each region 
+slopes_summary_df <- get_region_effects_for_turnaround_models(hfa_10a_elec_model,unique(hfa_10a_elec_model$data$region_pair))
+
+# save output
+write_csv(slopes_summary_df, path(here(), "results", "turn_time_prediction", "hfa_all_roi_10a_elecs_slopes_summary.csv"))
+
+```
