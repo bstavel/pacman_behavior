@@ -249,14 +249,89 @@ app_time_window <- -2
 # summary(falling_model)
 
 
-## 1000ms Threshold ##
+# ## 1000ms Threshold ##
+# 
+# ## create the approach df ##
+# avd_sig_elec_df <- conn_detailed_df %>%
+#   mutate(roi_pair = paste0(first_region, "_", second_region)) %>%
+#   filter(time >= 0 & time <= avd_time_window) %>%
+#   mutate(key = paste0(subject, "_", pairs)) %>%
+#   filter(key %in% sig_100_list$pair_id) %>%
+#   mutate(time = round(time, 1)) %>%
+#   group_by(key, time) %>%
+#   mutate(connectivity = mean(abs(connectivity))) %>%
+#   select(-percent_sig) %>%
+#   distinct() %>%
+#   # get rid of unused regions
+#   filter(!grepl("sfg", roi_pair)) %>%
+#   filter(!grepl("insula", roi_pair)) %>%
+#   filter(first_region != second_region) %>%
+#   ## unify roi names
+#   mutate(
+#     roi_pair = case_when(
+#       grepl("ofc", roi_pair) & grepl("hc", roi_pair) ~ "ofc_hc",
+#       grepl("ofc", roi_pair) & grepl("amyg", roi_pair) ~ "ofc_amyg",
+#       grepl("ofc", roi_pair) & grepl("mfg", roi_pair) ~ "ofc_mfg",
+#       grepl("ofc", roi_pair) & grepl("cing", roi_pair) ~ "ofc_cing",
+#       grepl("hc", roi_pair) & grepl("amyg", roi_pair) ~ "hc_amyg",
+#       grepl("hc", roi_pair) & grepl("mfg", roi_pair) ~ "hc_mfg",
+#       grepl("hc", roi_pair) & grepl("cing", roi_pair) ~ "hc_cing",
+#       grepl("amyg", roi_pair) & grepl("mfg", roi_pair) ~ "amyg_mfg",
+#       grepl("amyg", roi_pair) & grepl("cing", roi_pair) ~ "amyg_cing",
+#       grepl("mfg", roi_pair) & grepl("cing", roi_pair) ~ "mfg_cing"
+#     ))
+# 
+# imcoh_avd_sig_df <- avd_sig_elec_df %>%
+#   ungroup() %>%
+#   filter(metric == "Imaginary Coherence") %>%
+#   mutate(scaled_log_connectivity = scale(log(connectivity))[,1]) %>%
+#   select(subject, time, scaled_log_connectivity, connectivity, pairs, first_pair, second_pair, roi_pair, first_region, second_region, key) %>%
+#   distinct()
+# 
+# 
+# 
+# # Set the number of cores for parallel processing
+# options(mc.cores = parallel::detectCores(), brms.backend = "cmdstanr")
+# 
+# # set the priors #
+# priors <- c(
+#   prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+#   prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+#   prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+#   prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+# )
+# 
+# 
+# # Fit the model
+# falling_model <- brm(
+#   formula = scaled_log_connectivity ~ time+ (1 + time | subject/key),
+#   data = imcoh_avd_sig_df,
+#   prior = priors,
+#   family = gaussian(),
+#   iter = 5000,
+#   warmup = 2000,
+#   chains = 4,
+#   control = list(adapt_delta = 0.99),
+#   seed = 1234
+# )
+# 
+# 
+# # save rising model #
+# save(falling_model, file = path(here(), "results", paste0(avd_time_window, "_falling_model_100_elecs_brms.RData")))
+# 
+# 
+# # summary #
+# summary(falling_model)
+
+
+## 100ms Approach Only Threshold ##
 
 ## create the approach df ##
 avd_sig_elec_df <- conn_detailed_df %>%
   mutate(roi_pair = paste0(first_region, "_", second_region)) %>%
   filter(time >= 0 & time <= avd_time_window) %>%
   mutate(key = paste0(subject, "_", pairs)) %>%
-  filter(key %in% sig_100_list$pair_id) %>%
+  filter(key %in% sig_10a_list$pair_id) %>%
   mutate(time = round(time, 1)) %>%
   group_by(key, time) %>%
   mutate(connectivity = mean(abs(connectivity))) %>%
@@ -317,7 +392,7 @@ falling_model <- brm(
 
 
 # save rising model #
-save(falling_model, file = path(here(), "results", paste0(avd_time_window, "_falling_model_100_elecs_brms.RData")))
+save(falling_model, file = path(here(), "results", paste0(avd_time_window, "_falling_model_10a_elecs_brms.RData")))
 
 
 # summary #
