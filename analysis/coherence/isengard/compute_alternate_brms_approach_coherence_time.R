@@ -377,8 +377,8 @@ rising_model <- brm(
   data = imcoh_app_sig_df,
   prior = priors,
   family = gaussian(),
-  iter = 7000,
-  warmup = 3000,
+  iter = 8000,
+  warmup = 4000,
   chains = 4,
   control = list(adapt_delta = 0.99),
   seed = 1234
