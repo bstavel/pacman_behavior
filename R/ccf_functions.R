@@ -76,7 +76,7 @@ calculate_overall_ccf <- function(sig_pairs, theta_df){
   
 }
 
-create_permuted_data <- function(df, all_time_df = all_subs_theta_data){
+create_permuted_data <- function(df, all_time_df){
   
   # We'll store final results as list elements, then combine once at the end:
   df_null_list <- vector("list", length = 0)
@@ -180,7 +180,7 @@ create_permuted_data <- function(df, all_time_df = all_subs_theta_data){
 }
 
 
-run_and_save_perms <- function(df, sig_pairs_df, all_time_df = all_subs_theta_data, file_name, perms_run = NA){
+run_and_save_perms <- function(df, sig_pairs_df, all_time_df, file_name, perms_run = NA){
   
   if(is.na(perms_run)){
     
@@ -196,7 +196,7 @@ run_and_save_perms <- function(df, sig_pairs_df, all_time_df = all_subs_theta_da
   on.exit(future::plan(old_plan), add = TRUE)
   set.seed(123)  # reproducible seeds across workers
   
-  batch_size <- 5L
+  batch_size <- 4L
   
   for (i in seq(1L, length(perms), by = batch_size)) {
     batch <- perms[i:min(i + batch_size - 1L, length(perms))]

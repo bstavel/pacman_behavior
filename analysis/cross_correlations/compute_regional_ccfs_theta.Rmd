@@ -31,6 +31,7 @@ source(path(here(), "R", 'clean_behavioral_data.R'))
 source(path(here(), "R", 'compile_ieeg_csv_files.R'))
 source(path(here(), "R", 'ccf_functions.R'))
 source(path(here(), "R", 'separate_mfg_sfg.R'))
+options(future.globals.maxSize = 5 * 1024^3)
 
 ## plotting helpers ##
 ggthemr("light")

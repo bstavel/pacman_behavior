@@ -148,7 +148,7 @@ priors <- c(
 # Fit the model
 roi_falling_model <- brm(
   formula = scaled_log_connectivity ~ time*roi_pair + (1 + time | subject/key),
-  data = avd_sig_elec_df,
+  data = imcoh_avd_sig_df,
   prior = priors,
   family = gaussian(),
   iter = 6000,
