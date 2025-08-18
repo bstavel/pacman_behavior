@@ -1,5 +1,5 @@
 ---
-title: "JM Model Fitting - Online Sample"
+title: "JM Model Fitting - iEEG Theta Sample"
 output: html_document
 date: "2024-02-29"
 params:

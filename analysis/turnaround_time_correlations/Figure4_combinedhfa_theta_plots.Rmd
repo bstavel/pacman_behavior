@@ -79,6 +79,33 @@ example_df <- bind_rows(theta_example_df %>% mutate(freq = "Theta"),
 
 ```
 
+```{r create-tables}
+
+table_df <- summary_df %>%
+  select(Region_Pair, Mean, CI_Lower, CI_Upper, Prob_Positive, sig, freq) %>%
+  distinct() %>%
+  mutate(sig = if_else(sig == 99, "Not Significant", "Significant")) %>%
+  rename(Significant = sig) %>%
+  mutate_at(vars(Mean, CI_Lower, CI_Upper, Prob_Positive), ~round(., 3)) %>%
+  arrange(Region_Pair)
+
+
+theta_table <- table_df %>%
+  filter(freq == "Theta") %>%
+  select(-freq) %>%
+  gt()
+
+hfa_table <- table_df %>%
+  filter(freq == "HFA") %>%
+  select(-freq) %>%
+  gt()
+
+
+theta_table
+hfa_table
+
+```
+
 
 ```{r, fig.width. = 5, fig.height = 5}
 
@@ -105,8 +132,8 @@ turn_time_plot <- summary_df %>%
       plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 13, margin = margin(b = 5)),
       axis.text = element_text(family = "Gill Sans", color = '#2D2327', size = 9)) +
   labs(alpha = "", color = " ", fill = " ", y = "Density", x = "Estimated Beta Coefficient (a.u.)") +
-  scale_color_manual(values = c("#DBE317", "#28AE7E")) +
-  scale_fill_manual(values = c("#DBE317", "#28AE7E")) +
+  scale_color_manual(values = c("#5CCDAD", "#3D4F94")) +
+  scale_fill_manual(values = c("#5CCDAD", "#3D4F94")) +
   scale_alpha_manual(values = c(.01, .3)) +
   scale_x_continuous(breaks = c(-0.05, 0, 0.05), limits = c(-.1, .1)) + 
   ylim(0, 80) + 
@@ -129,7 +156,7 @@ three_example_df <- example_df %>%
 
 example_correlation_plot <- three_example_df %>%
   ggplot(aes(x = log(turn_time), y = scale_correlation, fill = freq, color = freq)) +
-  geom_point(size = 2, shape = 21) +
+  geom_point(size = 2, shape = 21, alpha = .7) +
   geom_smooth(aes(linetype = freq), method = "lm", formula = 'y ~ x', se = FALSE, color = "#2D2327", size = .5) +
   labs(
     color = "",
@@ -147,8 +174,8 @@ example_correlation_plot <- three_example_df %>%
       legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
       strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10, face = 'bold'),
       plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 13)) + 
-  scale_color_manual(values = c("#DBE317", "#28AE7E")) +
-  scale_fill_manual(values = c("#EEF27D",  "#7AE1BD")) +
+  scale_color_manual(values = c("#5CCDAD", "#3D4F94")) +
+  scale_fill_manual(values = c("#88cfbb",  "#606fa8")) +
   facet_wrap(~case, scales = 'free', ncol = 1)
 
 

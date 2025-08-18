@@ -1,5 +1,5 @@
 ---
-title: "JM Model Fitting - Online Sample"
+title: "JM Base Model Fitting - iEEG Sample"
 output: html_document
 date: "2024-02-29"
 params:
@@ -86,13 +86,8 @@ cat(paste0("\n\n## ", current_subject, "\n"))
 ```{r load-data, results='asis', echo=FALSE, eval = T}
 
 ## Load Data ##
-hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
 game_data_distance <-  read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
 
-## Clean ieeg data ##
-game_data_distance <- game_data_distance %>%
-  filter(subject != "BJH026") %>% # no hc data
-  filter(trial_time <= 5.10) 
 
 ```
 
@@ -124,22 +119,6 @@ hc_sub_trials <- hc_theta_data %>%
 
 joint_dist_df <- joint_dist_df %>%
   filter(trial_numeric %in% hc_sub_trials)
-
-# theta modeling
-# sub_theta_df <- hc_theta_data %>%
-#   filter(subject == current_subject) %>%
-#   filter(!is.na(theta)) %>%
-#   mutate(trial_time = round(trial_time, 2)) %>%
-#   group_by(trial_time, trial_numeric) %>%
-#   mutate(mean_theta = mean(theta)) %>%
-#   select(-theta, -electrode) %>%
-#   distinct() %>%
-#   group_by(trial_numeric) %>%
-#   mutate(trial_time = trial_time - sample(seq(.5, .99, .1), 1)) %>%
-#   mutate(trial_time = round(trial_time, 2)) %>%
-#   ungroup()
-# 
-# joint_dist_df <- inner_join(sub_theta_df, joint_dist_df, by = c("subject", "trial_numeric", "trial_time"))
 
 ## Create Test/Train ##
 current_seed <- sample(1:100, 1)
@@ -290,10 +269,24 @@ metrics_df <- tibble("subjects" = rep(current_subject, length(seed_list)),
                       "brier" = brier_list,
                       "cor" = core_list)
 
-write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", 
-                           paste0(current_subject, "_fit_metrics_base_model_df.csv")))
-write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", 
-                            paste0(current_subject, "_model_params_base_model_df.csv")))
+if(permuted){
+  
+    write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", 
+                             paste0(current_subject, "_permuted_fit_metrics_base_model_df.csv")))
+    write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", 
+                              paste0(current_subject, "_model_params_base_model_df.csv")))
+
+
+
+} else {
+  
+    write_csv(metrics_df, path(here(), "data", "joint_models", "model_summaries", 
+                             paste0(current_subject, "permuted_fit_metrics_base_model_df.csv")))
+    write_csv(survival_df, path(here(), "data", "joint_models", "model_summaries", 
+                              paste0(current_subject, "_model_params_base_model_df.csv")))
+  
+  
+}
 
 ```
 

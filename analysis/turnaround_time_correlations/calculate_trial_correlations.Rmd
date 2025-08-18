@@ -53,7 +53,7 @@ c25 <- c(
 
 ```{r load-data}
 
-freq <- "hfa"
+freq <- "theta"
 
 # ieeg data #
 ofc_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_ofc_all_subs_logged_iti_onset.csv")))
@@ -61,15 +61,13 @@ amyg_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_amyg_all_
 hc_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_hc_all_subs_logged_iti_onset.csv")))
 cing_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_cing_all_subs_logged_iti_onset.csv")))
 dlpfc_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_dlpfc_all_subs_logged_iti_onset.csv")))
-insula_theta_data <- read_csv( path(here(), "munge", paste0(freq, "_ieeg_insula_all_subs_logged_iti_onset.csv")))
 
 # bind ieeg data #
 all_subs_theta_data <- bind_rows(ofc_theta_data %>% mutate(region = "ofc"),
                                  amyg_theta_data %>% mutate(region = "amyg"),
                                  hc_theta_data %>% mutate(region = "hc"),
                                  cing_theta_data %>% mutate(region = "cing"),
-                                 dlpfc_theta_data %>% mutate(region = "dlpfc"),
-                                 insula_theta_data %>% mutate(region = "insula")) 
+                                 dlpfc_theta_data %>% mutate(region = "dlpfc")) 
 
 # crop time 
 all_subs_theta_data <- all_subs_theta_data %>% 
@@ -115,20 +113,22 @@ onset_lme_df <- ieeg_behave_df %>%
     ungroup() %>%
     group_by(move_time) %>%
     ungroup() %>%
-    select(subject, elec_id, theta, region, trial_numeric, move_time) %>%
+    select(subject, elec_id, theta, region, trial_numeric, move_time, last_away, dots_eaten) %>%
     distinct() 
 
 # calculate turn times
 turn_time_df <- onset_lme_df %>%
-  select(subject, trial_numeric, move_time) %>%
+  select(subject, trial_numeric, move_time, last_away, dots_eaten) %>%
   distinct() %>%
   group_by(subject, trial_numeric) %>%
   mutate(turn_time = last(move_time)) %>%
-  select(subject, trial_numeric, turn_time) %>%
+  select(subject, trial_numeric, turn_time, last_away, dots_eaten) %>%
   distinct() %>%
   rename(trial = trial_numeric) %>%
   mutate(logged_times = log(turn_time))
 
+
+write_csv(turn_time_df, path(here(), "munge", "turnaround_correl_trial_turn_times.csv"))
 
 ```
 

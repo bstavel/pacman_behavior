@@ -53,24 +53,9 @@ c25 <- c(
 
 ```
 
+# Pre vs Post Turn Theta Drop
 
-## Testing for elevated theta power during approach compared to avoidance
-
-This script tests for elevated theta power during approach in the hippocampus, amygdala, OFC, ACC, Insula, MFG, & SFG in both conflict and no-conflict trials. The window of interest is from 1.5 seconds before turning until 1.5 seconds after turning. I average this window within trials, electrodes, and subjects and then compare the approach vs avoiding sections using the following equation:
-
-lmer(trial_theta ~ aac + (1 + aac|subject), data = aac_df)
-
-I tried to first use:
-
-lmer(trial_theta ~ aac + (1 + aac|subject/elec_id), data = aac_df)
-
-But this resulted in singular fits for the no conflict trials. Removing the random slope drastically changed the degrees of freedom and a model with slopes was significantly better than a model without slopes as assessed by an anova.
-
-Meanwhile, removing the nested random effect of electrode did not change the fixed effects estimate hardly at all, and there was no sig difference when I compared the models via anova. The effects in the conflict trials also hold if I include the nested effect of electrode.
-
-Therefore, I believe the best model to assess the affecr of approaching vs avoiding (`aac`) is the one without the nested random effect of electrode, but with a random intercept and slope for subject. I will use this model for all the analyses.
-
-
+In our previous analyses, we found that theta is elevated during approach compared to avoidance in the limbic regions, but not the MFG. This was found in conflict trials (with a ghost), but attack-free trials (ghost stayed in its "bob" pattern). Here we test whether theta still drops post turn, when turning to avoid is driven by the onset of a ghost attack.
 
 ```{r load-data}
 
@@ -81,7 +66,6 @@ cing_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_cing_all_subs_log
 ofc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_ofc_all_subs_logged_iti_onset.csv"))
 amyg_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_amyg_all_subs_logged_iti_onset.csv"))
 hc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_hc_all_subs_logged_iti_onset.csv"))
-insula_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_insula_all_subs_logged_iti_onset.csv"))
 dlpfc_theta_data <- read_csv( path(here(), "munge", "theta_ieeg_dlpfc_all_subs_logged_iti_onset.csv"))
 
 # separate dlpfc into sfg and mfg
@@ -135,13 +119,6 @@ amyg_data <- amyg_theta_data %>%
   rename(power = theta) %>%
   mutate(electrode = gsub("_.*", "", electrode))
 
-insula_data <- insula_theta_data %>% 
-  mutate(freq = "theta") %>%
-  mutate(region = "Insula") %>%
-  rename(power = theta) %>%
-  mutate(electrode = gsub("_.*", "", electrode))
-
-
 mfg_data <- mfg_theta_data %>%
   mutate(freq = "theta") %>%
   mutate(region = "MFG") %>%
@@ -149,7 +126,7 @@ mfg_data <- mfg_theta_data %>%
   mutate(electrode = gsub("_.*", "", electrode))
 
 # bind ieeg data #
-ieeg_theta_data <- bind_rows(cing_data, ofc_data, hc_data, amyg_data, insula_data, mfg_data)
+ieeg_theta_data <- bind_rows(cing_data, ofc_data, hc_data, amyg_data, mfg_data)
 
 # crop time 
 ieeg_theta_data <- ieeg_theta_data %>% 
@@ -213,7 +190,7 @@ attack_theta_turn_centered_df <- ieeg_attack_theta_df %>%
   group_by(elec_id, trial_numeric, subject, freq, region) %>%
   mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%
   mutate(event = replace(event, is.na(event), 0)) %>%
-  # filter time so that trials end when the person turnaround for the final time
+  # filter time so that time 0 is when the person turnaround for the final time
   mutate(turnaround_time = if_else(event == 1, trial_time, 0)) %>%
   mutate(turnaround_time = max(turnaround_time)) %>%
   filter(turnaround_time != 0) %>%
@@ -227,8 +204,7 @@ attack_theta_turn_centered_df <- ieeg_attack_theta_df %>%
 ```{r sig-test-df-prep-function}
 
 
-create_sig_test_df <- function(behave_df){
-
+create_attack_df <- function(behave_df){
 
   # filter between 1.5 before and after turn, and create approach, avoid condition, average across trial
   attack_df <- behave_df %>%
@@ -239,17 +215,24 @@ create_sig_test_df <- function(behave_df){
     mutate(trial_theta = mean(power)) %>%
     select(trial_theta, elec_id, trial_numeric, subject, attack) %>%
     distinct()  
-  
-  # run model with rnadom effects of subject and electrode  
-  model_tmp <- summary(lmer(trial_theta ~ attack + (1 + attack|subject), data = attack_df))
-  pval <- model_tmp$coefficients[2, 5]
-  
-  
-  # Create visualization df, by averaging, across electrode, and subject
-  acc_df <- attack_df %>%
-    mutate(pvalue = pval) 
     
-  return(acc_df)
+  return(attack_df)
+  
+}
+
+create_attack_died_df <- function(behave_df){
+
+  # filter between 1.5 before and after turn, and create approach, avoid condition, average across trial
+  attack_df <- behave_df %>%
+    mutate(time = round(time, 2)) %>%
+    filter(time <= 1.5 & time >= -1.5) %>%
+    mutate(attack = if_else(time <=0, "Pre-Turn", "Post-Turn")) %>%
+    group_by(elec_id, attack, trial_numeric, died) %>%
+    mutate(trial_theta = mean(power)) %>%
+    select(trial_theta, elec_id, trial_numeric, subject, attack, died) %>%
+    distinct()  
+    
+  return(attack_df)
   
 }
 
@@ -257,69 +240,34 @@ create_sig_test_df <- function(behave_df){
 ```
 
 
-```{r plotting-functions}
+```{r create-roi-attack-dfs}
 
-plot_pre_post_attack <- function(attack_test_df, roi) {
-  
-  
- attack_elec_test_df <- attack_test_df %>%
-    group_by(elec_id, attack) %>%
-    mutate(elec_theta = mean(trial_theta)) %>%
-    select(-trial_theta, -trial_numeric) %>%
-    distinct()
- 
- 
-attack_sub_test_df <-  attack_elec_test_df %>%
-    group_by(subject, attack) %>%
-    mutate(sub_theta = mean(elec_theta)) %>%
-    select(-elec_theta, -elec_id) %>%
-    distinct() %>%
-    mutate(attack = factor(attack, levels = c("Pre-Turn", "Post-Turn")))
+# create df for turn during attack
+hc_attack_plot_df <- create_attack_df(attack_theta_turn_centered_df %>% filter(region == "Hippocampus"))
+amyg_attack_plot_df <- create_attack_df(attack_theta_turn_centered_df %>% filter(region == "Amygdala"))
+ofc_attack_plot_df <- create_attack_df(attack_theta_turn_centered_df %>% filter(region == "OFC"))
+cing_attack_plot_df <- create_attack_df(attack_theta_turn_centered_df %>% filter(region == "Ant. Cingulate"))
+mfg_attack_plot_df <- create_attack_df(attack_theta_turn_centered_df %>% filter(region == "MFG"))
 
-pval_df <- attack_sub_test_df %>%
-    ungroup() %>%
-    select(pvalue) %>%
-    distinct() %>%
-    mutate(pvalue = if_else(pvalue < .05, "***", "n.s."))
-  
-  attack_plot <- attack_sub_test_df %>%
-    ggplot(.) +
-    geom_jitter(data = attack_elec_test_df, aes(x = attack, fill = attack, y = elec_theta), width = .3, size = .75, alpha = .5, shape = 21, color = "#2D2327") +
-    geom_boxplot(aes(x = attack, y = sub_theta, fill = attack), color = "#2D2327", outlier.size = .5) +
-    geom_jitter(aes(x = attack, fill = attack, y = sub_theta), color = "#2D2327", alpha = .9, width = .1, size = 1, shape = 17) +
-    geom_line(aes(x = attack, y = sub_theta, group = subject), size = .25, alpha = .9, width = .1, color = "#2D2327") +
-    theme(panel.background = element_rect(fill = "white")) +
-    scale_fill_manual(values = c("#2c75b3", "#c2383a")) +
-    scale_color_manual(values = c("#2c75b3", "#c2383a")) +
-    ggsignif::geom_signif(data = pval_df, manual = T, aes(y_position=c(1.8), xmin= c(1), xmax = c(2), annotations = pvalue),
-                family = "Gill Sans", color = "#2D2327", textsize = 3, vjust =-.5) +
-    theme(panel.background = element_rect(fill = "white"), 
-          legend.position = "none",
-          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8.5),
-          plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-          plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8.5, hjust = .5)) +
-    labs(y = "Average theta power (z - score)", x = "", fill = "", color = "") +
-    ggtitle(roi) +
-    ylim(-2, 2)
-  
-  return(attack_plot)
+# create df for turn during attack, by chase or strike
+hc_attack_death_plot_df <- create_attack_died_df(attack_theta_turn_centered_df %>% filter(region == "Hippocampus"))
+amyg_attack_death_plot_df <- create_attack_died_df(attack_theta_turn_centered_df %>% filter(region == "Amygdala"))
+ofc_attack_death_plot_df <- create_attack_died_df(attack_theta_turn_centered_df %>% filter(region == "OFC"))
+cing_attack_death_plot_df <- create_attack_died_df(attack_theta_turn_centered_df %>% filter(region == "Ant. Cingulate"))
+mfg_attack_death_plot_df <- create_attack_died_df(attack_theta_turn_centered_df %>% filter(region == "MFG"))
 
-}
 
 
 ```
 
+## Attack Models
 
-## Conflict Trials
-
-
-
-
-```{r brms-hc}
+```{r brms-attack}
 
 # Set the number of cores for parallel processing
-options(mc.cores = parallel::detectCores())
+options(mc.cores = parallel::detectCores(), 
+        brms.backend = "cmdstanr"  # Use cmdstanr backend for better performance
+)
 
 # set the priors #
 priors <- c(
@@ -329,7 +277,7 @@ priors <- c(
   prior(lkj(2), class = "cor")                         # Prior for random effects correlations
 )
 
-
+## Hippocampus
 # Fit the model
 hc_model <- brm(
   formula = trial_theta ~ attack + (1 + attack | subject/elec_id),
@@ -343,22 +291,357 @@ hc_model <- brm(
   seed = 1234
 )
 
-
 summary(hc_model)
-
 # save full model #
 save(hc_model, file = path(here(), "results", "attack_hc_theta_model_brms.RData"))
 
+## Amygdala
+# Fit the model
+amyg_model <- brm(
+  formula = trial_theta ~ attack + (1 + attack | subject/elec_id),
+  data = amyg_attack_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(amyg_model)
+# save full model #
+save(amyg_model, file = path(here(), "results", "attack_amyg_theta_model_brms.RData"))
+
+## OFC
+# Fit the model
+ofc_model <- brm(
+  formula = trial_theta ~ attack + (1 + attack | subject/elec_id),
+  data = ofc_attack_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(ofc_model)
+# save full model #
+save(ofc_model, file = path(here(), "results", "attack_ofc_theta_model_brms.RData"))
+
+## ACC
+# Fit the model
+cing_model <- brm(
+  formula = trial_theta ~ attack + (1 + attack | subject/elec_id),
+  data = cing_attack_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(cing_model)
+# save full model #
+save(cing_model, file = path(here(), "results", "attack_cing_theta_model_brms.RData"))
+
+
+## MFG
+# Fit the model
+mfg_model <- brm(
+  formula = trial_theta ~ attack + (1 + attack | subject/elec_id),
+  data = mfg_attack_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(mfg_model)
+# save full model #
+save(mfg_model, file = path(here(), "results", "attack_mfg_theta_model_brms.RData"))
+
+
 ```
+
+```{r brms-attack-died}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores(), 
+        brms.backend = "cmdstanr"  # Use cmdstanr backend for better performance
+)
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+## Hippocampus
+# Fit the model
+hc_died_model <- brm(
+  formula = trial_theta ~ attack*died + (1 + attack + died | subject/elec_id),
+  data = hc_attack_death_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(hc_died_model)
+# save full model #
+save(hc_died_model, file = path(here(), "results", "attack_died_hc_theta_model_brms.RData"))
+
+## Amygdala
+# Fit the model
+amyg_died_model <- brm(
+  formula = trial_theta ~ attack*died + (1 + attack*died  | subject/elec_id),
+  data = amyg_attack_death_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(amyg_died_model)
+# save full model #
+save(amyg_died_model, file = path(here(), "results", "attack_died_amyg_theta_model_brms.RData"))
+
+## OFC
+# Fit the model
+ofc_died_model <- brm(
+  formula = trial_theta ~ attack*died + (1 + attack*died  | subject/elec_id),
+  data = ofc_attack_death_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(ofc_died_model)
+# save full model #
+save(ofc_died_model, file = path(here(), "results", "attack_died_ofc_theta_model_brms.RData"))
+
+## ACC
+# Fit the model
+cing_died_model <- brm(
+  formula = trial_theta ~ attack*died + (1 + attack + died  | subject/elec_id),
+  data = cing_attack_death_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(cing_died_model)
+# save full model #
+save(cing_died_model, file = path(here(), "results", "attack_died_cing_theta_model_brms.RData"))
+
+
+## MFG
+# Fit the model
+mfg_died_model <- brm(
+  formula = trial_theta ~ attack*died + (1 + attack*died  | subject/elec_id),
+  data = mfg_attack_death_plot_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(mfg_died_model)
+# save full model #
+save(mfg_died_model, file = path(here(), "results", "attack_died_mfg_theta_model_brms.RData"))
+
+
+```
+
+```{r}
+
+amyg_attack_time <- attack_theta_turn_centered_df %>% 
+  filter(region == "Amygdala") %>%
+  filter(time >= 0) %>%
+  select(subject, elec_id, died, time, region, power) %>%
+  distinct()
+
+amyg_time_model <- brm(
+  formula = power ~ time*died + (1 + time*died  | subject/elec_id),
+  data = amyg_attack_time,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+
+save(amyg_time_model, file = path(here(), "results", "attack_time_amyg_theta_model_brms.RData"))
+
+```
+
+```{r}
+
+# Hippocampus (simple model is best)
+died_model <- loo(hc_died_model)
+attack_model <- loo(hc_model)
+loo_compare(attack_model, died_model)
+
+
+# Amygdala (no difference)
+died_model <- loo(amyg_died_model)
+attack_model <- loo(amyg_model)
+loo_compare(died_model, attack_model)
+
+# OFC ( simple model is wayyy better)
+died_model <- loo(ofc_died_model)
+attack_model <- loo(ofc_model)
+loo_compare(died_model, attack_model)
+
+# ACC (no difference)
+died_model <- loo(cing_died_model)
+attack_model <- loo(cing_model)
+loo_compare(died_model, attack_model)
+
+# MFG (no difference)
+died_model <- loo(mfg_died_model)
+attack_model <- loo(mfg_model)
+loo_compare(died_model, attack_model)
+
+
+
+```
+
+
+
+```{r}
+
+
+## MFG
+load(path(here(), "results", "attack_mfg_theta_model_brms.RData"))
+lower_ci <- summary(mfg_model)$fixed[2, 3]
+upper_ci <- summary(mfg_model)$fixed[2, 4]
+mfg_attack_plot_df <- mfg_attack_plot_df %>%
+  mutate(pvalue = if_else(lower_ci <= 0 & upper_ci >= 0,  "n.s.", "***"))
+
+## HC
+load(path(here(), "results", "attack_hc_theta_model_brms.RData"))
+lower_ci <- summary(hc_model)$fixed[2, 3]
+upper_ci <- summary(hc_model)$fixed[2, 4]
+hc_attack_plot_df <- hc_attack_plot_df %>%
+  mutate(pvalue = if_else(lower_ci <= 0 & upper_ci >= 0,  "n.s.", "***"))
+
+## Amygdala
+load(path(here(), "results", "attack_amyg_theta_model_brms.RData"))
+lower_ci <- summary(amyg_model)$fixed[2, 3]
+upper_ci <- summary(amyg_model)$fixed[2, 4]
+amyg_attack_plot_df <- amyg_attack_plot_df %>%
+  mutate(pvalue = if_else(lower_ci <= 0 & upper_ci >= 0,  "n.s.", "***"))
+
+## OFC
+load(path(here(), "results", "attack_ofc_theta_model_brms.RData"))
+lower_ci <- summary(ofc_model)$fixed[2, 3]
+upper_ci <- summary(ofc_model)$fixed[2, 4]
+ofc_attack_plot_df <- ofc_attack_plot_df %>%
+  mutate(pvalue = if_else(lower_ci <= 0 & upper_ci >= 0,  "n.s.", "***"))
+
+## CING
+load(path(here(), "results", "attack_cing_theta_model_brms.RData"))
+lower_ci <- summary(cing_model)$fixed[2, 3]
+upper_ci <- summary(cing_model)$fixed[2, 4]
+cing_attack_plot_df <- cing_attack_plot_df %>%
+  mutate(pvalue = if_else(lower_ci <= 0 & upper_ci >= 0,  "n.s.", "***"))
+
+
+```
+
+
+### Plot Attack Theta Power
+
+
+```{r plotting-functions}
+
+plot_pre_post_attack <- function(attack_test_df, roi) {
+  
+  
+ attack_elec_test_df <- attack_test_df %>%
+    group_by(elec_id, attack) %>%
+    mutate(elec_theta = mean(trial_theta)) %>%
+    select(-trial_theta, -trial_numeric) %>%
+    distinct()%>%
+    mutate(attack = factor(attack, levels = c("Pre-Turn", "Post-Turn"), labels =  c("Pre-\nTurn", "Post-\nTurn")))
+
+ 
+ 
+  attack_sub_test_df <-  attack_elec_test_df %>%
+      group_by(subject, attack) %>%
+      mutate(sub_theta = mean(elec_theta)) %>%
+      select(-elec_theta, -elec_id) %>%
+      distinct() 
+  
+  pval_df <- attack_sub_test_df %>%
+      ungroup() %>%
+      select(pvalue) %>%
+      distinct() 
+    
+    attack_plot <- attack_sub_test_df %>%
+      ggplot(.) +
+      geom_jitter(data = attack_elec_test_df, aes(x = attack, fill = attack, y = elec_theta), width = .3, size = .75, alpha = .5, shape = 21, color = "#2D2327") +
+      geom_boxplot(aes(x = attack, y = sub_theta, fill = attack), color = "#2D2327", outlier.size = .5) +
+      geom_jitter(aes(x = attack, fill = attack, y = sub_theta), color = "#2D2327", alpha = .9, width = .1, size = 1, shape = 17) +
+      geom_line(aes(x = attack, y = sub_theta, group = subject), size = .25, alpha = .9, width = .1, color = "#2D2327") +
+      theme(panel.background = element_rect(fill = "white")) +
+      scale_fill_manual(values = c("#2c75b3", "#c2383a")) +
+      scale_color_manual(values = c("#2c75b3", "#c2383a")) +
+      ggsignif::geom_signif(data = pval_df, manual = T, aes(y_position=c(1.8), xmin= c(1), xmax = c(2), annotations = pvalue),
+                  family = "Gill Sans", color = "#2D2327", textsize = 3, vjust =-.5) +
+      theme(panel.background = element_rect(fill = "white"), 
+            legend.position = "none",
+            axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 8.5),
+            axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8.5),
+            plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
+            plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8.5, hjust = .5)) +
+      labs(y = "Average theta power (z - score)", x = "", fill = "", color = "") +
+      ggtitle(roi) +
+      ylim(-2, 2)
+  
+  return(attack_plot)
+
+}
+
+
+```
+
+
 
 ## Amygdala
 
-```{r plot-amyg, fig.width = 8, fig.height = 7, warning = F}
-
-
-# create df for conflict, no conflict trials
-amyg_attack_plot_df <- create_sig_test_df(attack_theta_turn_centered_df %>% filter(region == "Amygdala"))
-
+```{r plot-amyg, fig.width = 2, fig.height = 2.7, warning = F}
 
 # create plot
 amyg_plot <- plot_pre_post_attack(amyg_attack_plot_df, "Amygdala")
@@ -367,60 +650,45 @@ amyg_plot <- plot_pre_post_attack(amyg_attack_plot_df, "Amygdala")
 amyg_plot
 
 # save plot
-ggsave(path(here(), "figures", "attack", "figure6_amyg_attack_theta_plot.png"), plot = amyg_plot, width = 5.5, height = 3)
+ggsave(path(here(), "figures", "attack", "figure6_amyg_attack_theta_plot.png"), plot = amyg_plot, width = 2, height = 2.7)
 
 ```
 
 ## Hippocampus
 
-
-```{r plot-both-hc, fig.width = 8, fig.height = 7, warning = F}
-
-
-# create df for conflict, no conflict trials
-hc_attack_plot_df <- create_sig_test_df(attack_theta_turn_centered_df %>% filter(region == "Hippocampus"))
+```{r plot-both-hc, fig.width = 2, fig.height = 2.7, warning = F}
 
 
 # create plot
-hc_plot <- plot_pre_post_attack(hc_attack_plot_df, "Hippocampus - Attack Trials")
+hc_plot <- plot_pre_post_attack(hc_attack_plot_df, "Hippocampus\nAttack Trials")
 
 # print plot
 hc_plot
 
 # save plot
-ggsave(path(here(), "figures", "attack", "figure6_hc_attack_theta_plot.png"), plot = hc_plot, width = 2.2, height = 2.7)
+ggsave(path(here(), "figures", "attack", "figure6_hc_attack_theta_plot.png"), plot = hc_plot, width = 1.5, height = 2.7)
 
 ```
 
 ## OFC
 
-```{r plot-ofc, fig.width = 8, fig.height = 7, warning = F}
-
-
-# create df for conflict, no conflict trials
-ofc_attack_plot_df <- create_sig_test_df(attack_theta_turn_centered_df %>% filter(region == "OFC"))
-
+```{r plot-ofc, fig.width = 2, fig.height = 2.7, warning = F}
 
 # create plot
-ofc_plot <- plot_pre_post_attack(ofc_attack_plot_df, "OFC - Attack Trials")
+ofc_plot <- plot_pre_post_attack(ofc_attack_plot_df, "OFC\nAttack Trials")
 
 # print plot
 ofc_plot
 
 # save plot
-ggsave(path(here(), "figures", "attack", "figure6_ofc_attack_theta_plot.png"), plot = ofc_plot, width = 2.2, height = 2.7)
+ggsave(path(here(), "figures", "attack", "figure6_ofc_attack_theta_plot.png"), plot = ofc_plot, width = 1.5, height = 2.7)
 
 ```
 
 
 ## Anterior Cingulate
 
-```{r plot-cing, fig.width = 8, fig.height = 7, warning = F}
-
-
-# create df for conflict, no conflict trials
-cing_attack_plot_df <- create_sig_test_df(attack_theta_turn_centered_df %>% filter(region == "Ant. Cingulate"))
-
+```{r plot-cing, fig.width = 2, fig.height = 2.7, warning = F}
 
 # create plot
 cing_plot <- plot_pre_post_attack(cing_attack_plot_df, "Ant. Cingulate")
@@ -429,39 +697,14 @@ cing_plot <- plot_pre_post_attack(cing_attack_plot_df, "Ant. Cingulate")
 cing_plot
 
 # save plot
-ggsave(path(here(), "figures", "attack", "figure6_cing_attack_theta_plot.png"), plot = cing_plot, width = 5.5, height = 3)
+ggsave(path(here(), "figures", "attack", "figure6_cing_attack_theta_plot.png"), plot = cing_plot, width = 2, height = 2.7)
 
 ```
 
-
-## Insula
-
-```{r plot-insula, fig.width = 8, fig.height = 7, warning = F}
-
-
-# create df for conflict, no conflict trials
-insula_attack_plot_df <- create_sig_test_df(attack_theta_turn_centered_df %>% filter(region == "Insula"))
-
-
-# create plot
-insula_plot <- plot_pre_post_attack(insula_attack_plot_df, "Insula")
-
-# print plot
-insula_plot
-
-# save plot
-ggsave(path(here(), "figures", "attack", "figure6_insula_attack_theta_plot.png"), plot = insula_plot, width = 5.5, height = 4.5)
-
-```
 
 ## MFG
 
-```{r plot-mfg, fig.width = 8, fig.height = 7, warning = F}
-
-
-# create df for conflict, no conflict trials
-mfg_attack_plot_df <- create_sig_test_df(attack_theta_turn_centered_df %>% filter(region == "MFG"))
-
+```{r plot-mfg, fig.width = 2, fig.height = 2.7, warning = F}
 
 # create plot
 mfg_plot <- plot_pre_post_attack(mfg_attack_plot_df, "MFG")
@@ -470,7 +713,7 @@ mfg_plot <- plot_pre_post_attack(mfg_attack_plot_df, "MFG")
 mfg_plot
 
 # save plot
-ggsave(path(here(), "figures", "attack", "figure6_mfg_attack_theta_plot.png"), plot = mfg_plot, width = 5.5, height = 3)
+ggsave(path(here(), "figures", "attack", "figure6_mfg_attack_theta_plot.png"), plot = mfg_plot, width = 2, height = 2.7)
 
 ```
 

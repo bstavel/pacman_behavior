@@ -80,7 +80,7 @@ c25 <- c(
 # nCores <- 8
 # registerDoParallel(nCores)
 
-roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "ACC"=  "#3D99BA", "Insula" =  "#876194", "MFG" = "#FB6087")
+roi_colors <-  c("Amygdala" = "#DE4A4D", "Hippocampus" = "#FFA602", "OFC" =  "#88D1A3", "ACC"=  "#3D99BA",  "MFG" = "#876194")
 
 ```
 

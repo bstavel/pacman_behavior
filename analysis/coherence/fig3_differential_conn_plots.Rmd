@@ -187,6 +187,22 @@ caclulate_results <- function(cur_model, cur_regions){
     ci_low <- quantile(difference_samples, probs = 0.025)
     ci_up <- quantile(difference_samples, probs = 0.975)
     
+    # compute ESS for contrast
+    ess <- ess_bulk(difference_samples)
+    
+    # Compute P+
+    p_plus   <- mean(difference_samples > 0)
+    
+    # bayes factors
+    sigma_b <- 2
+    sd_contrast <- sigma_b * sqrt(sum(Cvec^2))
+    BF <- bayesfactor_parameters(
+      posterior = difference_samples,
+      prior     = distribution_normal(n = 20000, mean = 0, sd = sd_contrast),
+      null      = 0
+    )
+    bf10 <- exp(BF$log_BF)
+    
     # Compute density at credible interval bounds
     density_lower <- approx(density_estimate$x, density_estimate$y, xout = ci_low)$y
     density_upper <- approx(density_estimate$x, density_estimate$y, xout = ci_up)$y
@@ -196,11 +212,14 @@ caclulate_results <- function(cur_model, cur_regions){
       Region1 = region1,
       Region2 = region2,
       sample_diff = difference_samples,
-      Mean = mean_diff,
-      Intercept = intercept,
+      Mean = exp(mean_diff),
+      Intercept = exp(intercept),
       max_density = max_dens,
-      ci_lower = ci_low,
-      ci_upper = ci_up,
+      ci_lower = exp(ci_low),
+      ci_upper = exp(ci_up),
+      P_plus = p_plus,
+      BF10 = bf10,
+      ESS = ess,
       lower_density = density_lower,
       upper_density = density_upper,
       stringsAsFactors = FALSE
@@ -438,8 +457,8 @@ tug_plot_prep <- function(df, region_sets) {
   df_prep <- df %>%
   select(-sample_diff) %>%
   distinct() %>%
-  mutate(sig = if_else(ci_lower <= 0 & 0 <= ci_upper, "No difference", 
-                           if_else(Mean > 0, "Larger", "Smaller"))) %>%
+  mutate(limbic = if_else(Region2 == "MFG" & Mean < 0, "MFG", "Limbic")) %>%
+  mutate(sig = if_else(ci_lower <= 0 & 0 <= ci_upper, "No difference", limbic)) %>%
   mutate(Region2 = if_else(Region2 == "Ant.Cingulate", "ACC", Region2),
          Region1 = if_else(Region1 == "Ant.Cingulate", "ACC", Region1)) %>%
   mutate(Region2 = if_else(Region2 == "Amygdala", "Amyg.", Region2),
@@ -478,16 +497,16 @@ tug_plot <- function(plot_data, plot_title){
     coord_flip() +
     theme_minimal() +
     theme(panel.grid.minor = element_blank(),
-          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7.5),
-          legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
-          plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 9, hjust = 0.5, margin = margin(b = 5)),
+          axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+          axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+          legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+          legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+          plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 11, hjust = 0.5, margin = margin(b = 5)),
           plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7, margin = margin(b = 0)),
           legend.position = "top") +
     labs(
       x = "",
-      y = "Preferred Connectivity (relative ratio, left:right)",
+      y = "Preferred Connectivity (relative ratio)",
       title = paste0(plot_title, "\n"),
       subtitle = " ",
       color = "",
@@ -504,9 +523,9 @@ tug_plot <- function(plot_data, plot_title){
     scale_y_reverse() +
     ylim(1.8, 0.2) +
     scale_color_manual(
-      values = c("Larger" = "#DBE317", "No Difference" = "darkgrey", "Smaller" = "#28AE7E"),
-      breaks = c("Larger", "No Difference", "Smaller"),
-      limits = c("Larger", "No Difference", "Smaller"),
+      values = c("Limbic" = "#FB6087", "No Difference" = "darkgrey", "MFG" = "#876194"),
+      breaks = c("Limbic", "No Difference", "MFG"),
+      limits = c("Limbic", "No Difference", "MFG"),
       drop = FALSE, 
       guide = F
     )
@@ -600,7 +619,7 @@ example_plot <- example_elec_data %>%
         legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 9, hjust = 0.5, margin = margin(b= 5)),
   ) +
-  scale_fill_manual(values = c( "#DBE317", "#28AE7E"), guide = F) +
+  scale_fill_manual(values = c( "#FB6087", "#876194"), guide = F) +
   labs(
     x = "",
     y = "Mean coherence with Amyg. (log)",

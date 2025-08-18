@@ -201,7 +201,6 @@ turn_df <- all_subs_dist %>%
   # exclude time before they started moving, may be good to look at not doing this as well
   # filiter out ITI & trials with 0 dots
   filter(reward_groups != 99 & dots_eaten > 0) %>%
-  # shift the time so that time 0 is the start of movement onset
   group_by(trial_numeric, subject) %>%
   # filter time so that trials end when the person turnaround for the final time
   mutate(event = if_else(last_away == away_choice & away_choice != 0, 1, 0)) %>%

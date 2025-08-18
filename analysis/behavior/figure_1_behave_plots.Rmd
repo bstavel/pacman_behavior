@@ -337,11 +337,41 @@ turn_reward_df <- game_data_distance %>%
   mutate(avg_last_away = scale(avg_last_away)) %>%
   mutate(ieeg = if_else(case == "ieeg", "iEEG", "Online"))
 
-summary(lmer(last_away ~ large_reward + (1|subject), data = turn_reward_df))
-summary(lmer(avg_last_away ~ large_reward + (1|subject), 
-             data = turn_reward_df %>% select(avg_last_away, subject, large_reward) %>% distinct()))
+```
+
+```{r}
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores(), brms.backend = "cmdstanr")
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+
+# Fit the model
+behave_model <- brm(
+  formula = last_away ~ large_reward + (1 + large_reward | subject),
+  data = turn_reward_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+summary(behave_model)
+
+save(behave_model, file = path(here(), "results", "behave_turn_distance_reward_model.RData"))
 
 ```
+
 
 
 ```{r plot-reward-turning-dist, fig.height = 7, fig.width = 9}

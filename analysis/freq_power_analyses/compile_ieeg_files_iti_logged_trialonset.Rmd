@@ -115,8 +115,8 @@ dlpfc_list <- c('BJH046', 'BJH050', 'BJH051',
 ll_list <- c('LL10', 'LL12', 'LL13', 'LL14', 'LL17', 'LL19')
 
 freq_list <- c("delta", "theta", "alpha", "beta", "gamma", "hfa")
-freq_list <- "hfa"
-file_tag <- "_onset_locked_logged_itibase_highres.csv"
+freq_list <- "theta"
+file_tag <- "_onset_locked_logged_itibase.csv"
 
 
 
@@ -169,7 +169,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_hc_all_subs_logged_iti_onset_highres.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_hc_all_subs_logged_iti_onset.csv")))
 
 }
 
@@ -221,7 +221,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_amyg_all_subs_logged_iti_onset_highres.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_amyg_all_subs_logged_iti_onset.csv")))
 
 }
 
@@ -273,7 +273,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_ofc_all_subs_logged_iti_onset_highres.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_ofc_all_subs_logged_iti_onset.csv")))
 
 }
 
@@ -325,7 +325,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_cing_all_subs_logged_iti_onset_highres.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_cing_all_subs_logged_iti_onset.csv")))
 
 }
 
@@ -378,7 +378,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_dlpfc_all_subs_logged_iti_onset_highres.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_dlpfc_all_subs_logged_iti_onset.csv")))
 
 }
 
@@ -430,7 +430,7 @@ for(frq in freq_list){
     }
     
     # save #
-    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_insula_all_subs_logged_iti_onset_highres.csv")))
+    write_csv(onset_df, path(here(), "munge", paste0(frq, "_ieeg_insula_all_subs_logged_iti_onset.csv")))
 
 }
 

@@ -61,6 +61,13 @@ c25 <- c(
 # load correlations #
 correlation_df <- read_csv(path(here(), "results", "theta_correlations_newsubs.csv"))
 
+# read additional info
+turn_time_df <- read_csv(path(here(), "munge", "turnaround_correl_trial_turn_times.csv"))
+
+
+# join #
+correlation_df <- left_join(correlation_df, turn_time_df)
+
 ```
 
 
@@ -195,6 +202,86 @@ correlation_sig_df %>%
   theme(panel.background = element_rect(fill = "white"))
 
 table(correlation_sig_df$region_pair)
+
+```
+
+### Reward + Distance
+
+```{r}
+
+
+# Set the number of cores for parallel processing
+options(mc.cores = parallel::detectCores(), 
+        brms.backend = "cmdstanr")
+
+# set the priors #
+priors <- c(
+  prior(normal(0, 5), class = "Intercept"),            # Prior for the intercept
+  prior(normal(0, 2), class = "b"),                    # Prior for fixed effects
+  prior(exponential(1), class = "sd"),                 # Prior for random effects standard deviations
+  prior(lkj(2), class = "cor")                         # Prior for random effects correlations
+)
+
+# correlation_sig_df <- correlation_sig_df %>%
+#   filter(!is.na(dots_eaten)) %>%
+#   mutate(scaled_dots = scale(dots_eaten)[,1])
+
+correlation_sig_df <- correlation_sig_df %>%
+  filter(!is.na(last_away)) %>%
+  mutate(last_away = scale(last_away)[,1])
+
+# Fit the model
+model <- brm(
+  formula = scale_correlation ~ last_away * region_pair + (1 + last_away | subject/roi_pair1),
+  data = correlation_sig_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+
+# save full model #
+save(model, file = path(here(), "results", "full_all_roi_distance_model_brms_newsubs_noinsula.RData"))
+
+region_pairs <- unique(correlation_sig_df$region_pair)
+
+  # Function to extract sample for each region pair
+  get_samples_for_region <- function(region) {
+    if (region == "amyg_cing") {
+      slope <- as_draws_df(model)$b_last_away
+    } else {
+      interaction_term <- paste0("b_last_away:region_pair", region)
+      slope <- as_draws_df(model)$b_last_away + as_draws_df(model)[[interaction_term]]
+    }
+  }
+  
+  # Function to extract slopes for each region pair
+  get_slope_for_region <- function(region) {
+    if (region == "amyg_cing") {
+      slope <- as_draws_df(model)$b_last_away
+    } else {
+      interaction_term <- paste0("b_last_away:region_pair", region)
+      slope <- as_draws_df(model)$b_last_away + as_draws_df(model)[[interaction_term]]
+    }
+    summarize_posterior(slope)
+  }
+  
+  # get all samples #
+  full_sample <-  lapply(region_pairs, get_samples_for_region)
+  names(full_sample) <- region_pairs
+  full_sample_df <- as_tibble(full_sample)
+  
+  # Summarize slopes for all region pairs
+  slopes_summary <- lapply(region_pairs, get_slope_for_region)
+  names(slopes_summary) <- region_pairs
+  
+  # Combine summaries into a data frame
+  slopes_summary_df <- bind_rows(slopes_summary, .id = "Region_Pair")
+
+```
 
 ```
 

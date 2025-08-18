@@ -394,37 +394,60 @@ masq_data %>%
   facet_wrap(~subscale, scales = "free") +
   scale_fill_futurama()
 
+```
 
 
+```{r, fig.width=8, fig.height = 3.5, warning = F}
 
-tmp <- masq_data %>% 
-  filter(case == "clinical") %>% 
-  group_by(subscale) %>% 
-  summarise(mean = mean(score, na.rm = TRUE), 
-            sd = sd(score, na.rm = TRUE))
+mean_clinical_data <- masq_data %>% 
+   filter(case == "clinical") %>% 
+   mutate(subscale = factor(if_else(subscale == "mini_masq_gd", "General Distress", 
+                            if_else(subscale == "mini_masq_aa", "Anxious Arousal", "Anhedonia")))) %>%
+   group_by(subscale) %>% 
+   summarise(mean = ceiling(mean(score, na.rm = TRUE)), 
+             sd = ceiling(sd(score, na.rm = TRUE)))
 
-
-
-masq_data %>%
+masq_density_plot <- masq_data %>%
   filter(case != "pilot") %>%
+  mutate(subscale = factor(if_else(subscale == "mini_masq_gd", "General Distress", 
+                          if_else(subscale == "mini_masq_aa", "Anxious Arousal", "Anhedonia")))) %>%
   mutate(case = if_else(case == "nonclinical", "Healthy", if_else(case == "clinical", "At least one mood disorder", "iEEG"))) %>%
   ggplot(., aes(x = score, fill = case)) +
-  geom_histogram(position = "dodge", binwidth = 5) +
-  geom_vline(data = tmp, aes(xintercept = mean), color = "black") +
+  geom_density(alpha = .8, color = "black") +
+  geom_vline(data = mean_clinical_data, aes(xintercept = mean), color = "black") +
   theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
   facet_wrap(~subscale) +
-  scale_fill_futurama()
+  scale_fill_futurama()+
+  ggtitle("MASQ")
 
+ggsave(path(here(), "figures", "behavior", "masq_desnity_plot.png"), masq_density_plot, width = 8, height = 3.5)
 
-masq_data %>%
+masq_histogram_plot <- masq_data %>%
   filter(case != "pilot") %>%
+  filter(complete.cases(.)) %>%
+  mutate(subscale = factor(if_else(subscale == "mini_masq_gd", "General Distress", 
+                            if_else(subscale == "mini_masq_aa", "Anxious Arousal", "Anhedonia")))) %>%
   mutate(case = if_else(case == "nonclinical", "Healthy", if_else(case == "clinical", "At least one mood disorder", "iEEG"))) %>%
   ggplot(., aes(x = score, fill = case)) +
-  geom_density(alpha = .7, color = "black") +
-  geom_vline(data = tmp, aes(xintercept = mean), color = "black") +
-  theme(panel.background = element_rect(fill = "white"), legend.position = "top") +
+  geom_vline(data = mean_clinical_data, aes(xintercept = mean), color = "black") +
+  geom_histogram(position = "dodge", binwidth = 3, color = "black", alpha = .8) +
+  theme(panel.background = element_rect(fill = "white"), 
+        legend.position = "top",
+        axis.text = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+        axis.title = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 10),
+        legend.title = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+        legend.text  = element_text(family = "Gill Sans", color = "#2D2327", size = 9),
+        plot.title = element_text(family = "Gill Sans", color = "#2D2327", face = 'bold', size = 10)) +
   facet_wrap(~subscale) +
-  scale_fill_futurama()
+  labs(y = "Number of participants", x = "Clinical Score", fill = "Participant Group") +
+  scale_fill_futurama() +
+  scale_y_continuous(breaks = c(0, 5, 10, 15, 20, 25, 30)) +
+  ggtitle("MASQ distributions by subscale and participant group")
+masq_histogram_plot
+
+ggsave(path(here(), "figures", "behavior", "masq_histogram_plot.png"), masq_histogram_plot, width = 8, height = 3.5)
+
 
 ```
 

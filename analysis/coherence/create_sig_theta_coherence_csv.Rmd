@@ -316,7 +316,7 @@ conn_summary_plot <- conn_summary_df %>%
   scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1), expand = c(0,0)) +
   scale_shape_manual(values = c("Within Patient\nAverages" = 25)) +
   guides(fill = guide_legend(nrow = 3, order = 1)) +
-  scale_fill_manual(values = c("#8AD9B1", "#3FB6AD", "#423D7B")) +
+  scale_fill_manual(values = c("#F89078", "#EA4E87", "#A2319F")) +
   labs(y = "Average perecent of coherent electrodes", x = "Connectivity metric", fill = "", shape = "") +
   ggtitle("Theta coherence between all regions")
 

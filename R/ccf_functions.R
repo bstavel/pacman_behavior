@@ -191,23 +191,39 @@ run_and_save_perms <- function(df, sig_pairs_df, all_time_df = all_subs_theta_da
     null_ccf_results <- read_csv(path(here(), "results", "ccf", file_name))
   } 
   
-  for(perm in perms){
+  # parallel plan
+  old_plan <- future::plan(multisession, workers = 5)
+  on.exit(future::plan(old_plan), add = TRUE)
+  set.seed(123)  # reproducible seeds across workers
+  
+  batch_size <- 5L
+  
+  for (i in seq(1L, length(perms), by = batch_size)) {
+    batch <- perms[i:min(i + batch_size - 1L, length(perms))]
     
-    print(perm)
-    df_final_null <- create_permuted_data(df, all_time_df)
+    message("Running perms: ", paste(batch, collapse = ", "))
     
-    null_ccf_tmp <- calculate_overall_ccf(sig_pairs_df, df_final_null)
+    # run this batch in parallel
+    batch_results <- future_lapply(
+      batch,
+      function(perm) {
+        # light progress from workers (emits after completion)
+        message("  perm ", perm)
+        
+        df_final_null <- create_permuted_data(df, all_time_df)
+        null_ccf_tmp  <- calculate_overall_ccf(sig_pairs_df, df_final_null)
+        null_ccf_tmp$perm <- perm
+        null_ccf_tmp
+      },
+      future.seed = TRUE
+    ) %>% bind_rows()
     
-    null_ccf_tmp$perm <- perm
+    # append and (optionally) save
+    null_ccf_results <- bind_rows(null_ccf_results, batch_results)
     
-    null_ccf_results <- rbind(null_ccf_results, null_ccf_tmp)
-    
-    if(perm %% 5 == 0){
-      
+    if (max(batch) %% 5L == 0L) {
       write_csv(null_ccf_results, path(here(), "results", "ccf", file_name))
     }
-    
-    
   }
   
   return(null_ccf_results)

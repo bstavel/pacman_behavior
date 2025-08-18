@@ -122,34 +122,6 @@ ccf_amyg_acc_results_sig %>%
 
 ```
 
-
-```{r}
-priors <- c(
-  prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
-  prior(student_t(3, 0, 10), class = "sd")             # Prior for random effects standard deviations
-)
-
-
-# Fit the model
-sub_amyg_cing_model <- brm(
-  formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_amyg_acc_results_sig,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-summary(sub_amyg_cing_model)
-# Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_amyg_cing_model)
-prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-```
-
 ## HC ~ ACC
 
 ```{r load-data}
@@ -197,29 +169,6 @@ ccf_hc_cing_results_sig %>%
 
 ```
 
-
-```{r}
-
-# Fit the model
-sub_hc_cing_model <- brm(
-  formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_hc_cing_results_sig,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  cores = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-summary(sub_hc_cing_model)
-# Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_hc_cing_model)
-prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-```
 
 ## HC ~ Amyg
 
@@ -269,28 +218,6 @@ ccf_hc_amyg_results_sig %>%
 ```
 
 
-```{r}
-
-# Fit the model
-sub_hc_amyg_model <- brm(
-  formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_hc_amyg_results_sig,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-summary(sub_hc_amyg_model)
-# Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_hc_amyg_model)
-prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-```
-
 ## MFG ~ Amyg
 
 ```{r load-data}
@@ -337,29 +264,6 @@ ccf_mfg_amyg_results_sig %>%
 
 ```
 
-
-```{r}
-
-# Fit the model
-sub_mfg_amyg_model <- brm(
-  formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_mfg_amyg_results_sig,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  cores = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-summary(sub_mfg_amyg_model)
-# Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_mfg_amyg_model)
-prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-```
 
 ## OFC ~ Amyg
 
@@ -409,27 +313,6 @@ ccf_ofc_amyg_results_sig %>%
 ```
 
 
-```{r}
-
-# Fit the model
-sub_ofc_amyg_model <- brm(
-  formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_ofc_amyg_results_sig,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-summary(sub_ofc_amyg_model)
-# Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_ofc_amyg_model)
-prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-```
 
 
 ## MFG ~ Cing
@@ -479,28 +362,6 @@ ccf_mfg_cing_results_sig %>%
 ```
 
 
-```{r}
-
-# Fit the model
-sub_mfg_cing_model <- brm(
-  formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_mfg_cing_results_sig,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  cores = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-summary(sub_mfg_cing_model)
-# Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_mfg_cing_model)
-prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-```
 
 
 ## MFG ~ HC
@@ -550,33 +411,9 @@ ccf_mfg_hc_results_sig %>%
 ```
 
 
-```{r}
-
-# Fit the model
-sub_mfg_hc_model <- brm(
-  formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_mfg_hc_results_sig,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  cores = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-summary(sub_mfg_hc_model)
-# Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_mfg_hc_model)
-prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-```
-
-
 ## OFC ~ CING
 
-```{r load-data}
+```{r load-data, eval = F}
 
 ## read true ccf data
 ccf_ofc_cing_results <- read_csv(here("results", "ccf", "ccf_ofc_acc_results.csv"))
@@ -587,20 +424,20 @@ null_ccf_ofc_cing_results <- read_csv(here("results", "ccf", "null_ccf_ofc_acc_r
 ```
 
 
-```{r calculate-p-values}
+```{r calculate-p-values, eval = F}
 
 ## calculate p-values
 ccf_ofc_cing_results <- get_p_values(ccf_ofc_cing_results, null_ccf_ofc_cing_results)
 
 ```
 
-```{r tables}
+```{r tables, eval =F}
 
 table(ccf_ofc_cing_results$subject, ccf_ofc_cing_results$prop_greater < 0.05)
 
 ```
 
-```{r, fig.width = 12, fig.height = 8}
+```{r, fig.width = 12, fig.height = 8, eval =F}
 
 ccf_ofc_cing_results <- ccf_ofc_cing_results %>%
   mutate(sig = prop_greater < 0.05)
@@ -621,28 +458,6 @@ ccf_ofc_cing_results_sig %>%
 ```
 
 
-```{r}
-
-# Fit the model
-sub_ofc_cing_model <- brm(
-  formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_ofc_cing_results_sig,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  cores = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-summary(sub_ofc_cing_model)
-# Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_ofc_cing_model)
-prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-```
 
 ## OFC ~ MFG
 
@@ -691,33 +506,10 @@ ccf_ofc_mfg_results_sig %>%
 ```
 
 
-```{r}
-
-# Fit the model
-sub_ofc_mfg_model <- brm(
-  formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_ofc_mfg_results_sig,
-  prior = priors,
-  family = gaussian(),
-  iter = 4000,
-  warmup = 1000,
-  chains = 4,
-  cores = 4,
-  control = list(adapt_delta = 0.99),
-  seed = 1234
-)
-summary(sub_ofc_mfg_model)
-# Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_ofc_mfg_model)
-prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-```
-
 
 ## OFC ~ HC
 
-```{r load-data}
+```{r load-data, eval = F}
 
 ## read true ccf data
 ccf_ofc_hc_results <- read_csv(here("results", "ccf", "ccf_ofc_hc_results.csv"))
@@ -728,20 +520,20 @@ null_ccf_ofc_hc_results <- read_csv(here("results", "ccf", "null_ccf_ofc_hc_resu
 ```
 
 
-```{r calculate-p-values}
+```{r calculate-p-values, eval = F}
 
 ## calculate p-values
 ccf_ofc_hc_results <- get_p_values(ccf_ofc_hc_results, null_ccf_ofc_hc_results)
 
 ```
 
-```{r tables}
+```{r tables, eval = F}
 
 table(ccf_ofc_hc_results$subject, ccf_ofc_hc_results$prop_greater < 0.05)
 
 ```
 
-```{r, fig.width = 12, fig.height = 8}
+```{r, fig.width = 12, fig.height = 8, eval = F}
 
 ccf_ofc_hc_results <- ccf_ofc_hc_results %>%
   mutate(sig = prop_greater < 0.05)
@@ -761,13 +553,37 @@ ccf_ofc_hc_results_sig %>%
 
 ```
 
+## Models
+
 
 ```{r}
 
+
+priors <- c(
+  prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
+  prior(student_t(3, 0, 10), class = "sd")             # Prior for random effects standard deviations
+)
+
+
 # Fit the model
-sub_ofc_hc_model <- brm(
+sub_amyg_cing_model <- brm(
   formula = best_time ~ 1 + (1|subject/elec1),
-  data = ccf_ofc_hc_results_sig,
+  data = ccf_amyg_acc_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+save(sub_amyg_cing_model, file = path(here(), "results", "ccf", "ccf_approach_amyg_cing.RData"))
+
+
+# Fit the model
+sub_hc_cing_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_hc_cing_results_sig,
   prior = priors,
   family = gaussian(),
   iter = 4000,
@@ -777,10 +593,343 @@ sub_ofc_hc_model <- brm(
   control = list(adapt_delta = 0.99),
   seed = 1234
 )
-summary(sub_ofc_hc_model)
+save(sub_hc_cing_model, file = path(here(), "results", "ccf", "ccf_approach_hc_cing.RData"))
+
+# Fit the model
+sub_hc_amyg_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_hc_amyg_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+save(sub_hc_amyg_model, file = path(here(), "results", "ccf", "ccf_approach_hc_amyg.RData"))
+
+# Fit the model
+sub_mfg_amyg_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_mfg_amyg_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+save(sub_mfg_amyg_model, file = path(here(), "results", "ccf", "ccf_approach_mfg_amyg.RData"))
+
+# Fit the model
+sub_ofc_amyg_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_ofc_amyg_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+save(sub_ofc_amyg_model, file = path(here(), "results", "ccf", "ccf_approach_ofc_amyg.RData"))
+
+
+# Fit the model
+sub_mfg_cing_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_mfg_cing_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+save(sub_mfg_cing_model, file = path(here(), "results", "ccf", "ccf_approach_mfg_cing.RData"))
+
+
+# Fit the model
+sub_mfg_hc_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_mfg_hc_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+save(sub_mfg_hc_model, file = path(here(), "results", "ccf", "ccf_approach_mfg_hc.RData"))
+
+
+# Fit the model
+sub_ofc_mfg_model <- brm(
+  formula = best_time ~ 1 + (1|subject/elec1),
+  data = ccf_ofc_mfg_results_sig,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+save(sub_ofc_mfg_model, file = path(here(), "results", "ccf", "ccf_approach_ofc_mfg.RData"))
+
+# # Fit the model
+# sub_ofc_cing_model <- brm(
+#   formula = best_time ~ 1 + (1|subject/elec1),
+#   data = ccf_ofc_cing_results_sig,
+#   prior = priors,
+#   family = gaussian(),
+#   iter = 4000,
+#   warmup = 1000,
+#   chains = 4,
+#   cores = 4,
+#   control = list(adapt_delta = 0.99),
+#   seed = 1234
+# )
+# save(sub_ofc_cing_model, file = path(here(), "results", "ccf", "ccf_approach_ofc_cing.RData"))
+# 
+# 
+# # Fit the model
+# sub_ofc_hc_model <- brm(
+#   formula = best_time ~ 1 + (1|subject/elec1),
+#   data = ccf_ofc_hc_results_sig,
+#   prior = priors,
+#   family = gaussian(),
+#   iter = 4000,
+#   warmup = 1000,
+#   chains = 4,
+#   cores = 4,
+#   control = list(adapt_delta = 0.99),
+#   seed = 1234
+# )
+# save(sub_ofc_hc_model, file = path(here(), "results", "ccf", "ccf_approach_ofc_hc.RData"))
+
+
+```
+
+
+```{r model-ouput}
+
+ccf_prob_ps <- NULL
+ccf_ess <- NULL
+
+# Amyg Cing
+load(path(here(), "results", "ccf", "ccf_approach_amyg_cing.RData"))
+summary(sub_amyg_cing_model)
 # Probability that the overall mean is > 0
-posterior_samples <- posterior_samples(sub_ofc_hc_model)
+posterior_samples <- posterior_samples(sub_amyg_cing_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ccf_prob_ps['Amyg_Cing'] <-prob_mu_gt_0
+ccf_ess['Amyg_Cing'] <- round(summary(sub_amyg_cing_model)$fixed[1, 6], 1)
+
+# HC Cing
+load(path(here(), "results", "ccf", "ccf_approach_hc_cing.RData"))
+summary(sub_hc_cing_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_hc_cing_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ccf_prob_ps['HC_Cing'] <- prob_mu_gt_0
+ccf_ess['HC_Cing'] <- round(summary(sub_hc_cing_model)$fixed[1, 6], 1)
+
+# HC Amyg
+load(path(here(), "results", "ccf", "ccf_approach_hc_amyg.RData"))
+summary(sub_hc_amyg_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_hc_amyg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ccf_prob_ps['HC_Amyg'] <- prob_mu_gt_0
+ccf_ess['HC_Amyg'] <- round(summary(sub_hc_amyg_model)$fixed[1, 6], 1)
+
+# MFG Amyg
+load(path(here(), "results", "ccf", "ccf_approach_mfg_amyg.RData"))
+summary(sub_mfg_amyg_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_mfg_amyg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ccf_prob_ps['MFG_Amyg'] <- prob_mu_gt_0
+ccf_ess['MFG_Amyg'] <- round(summary(sub_mfg_amyg_model)$fixed[1, 6], 1)
+
+# OFC Amyg
+load(path(here(), "results", "ccf", "ccf_approach_ofc_amyg.RData"))
+summary(sub_ofc_amyg_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_ofc_amyg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ccf_prob_ps['OFC_Amyg'] <- prob_mu_gt_0
+ccf_ess['OFC_Amyg'] <- round(summary(sub_ofc_amyg_model)$fixed[1, 6], 1)
+
+# MFG Cing
+load(path(here(), "results", "ccf", "ccf_approach_mfg_cing.RData"))
+summary(sub_mfg_cing_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_mfg_cing_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ccf_prob_ps['MFG_Cing'] <- prob_mu_gt_0
+ccf_ess['MFG_Cing'] <- round(summary(sub_mfg_cing_model)$fixed[1, 6], 1)
+
+# MFG HC
+load(path(here(), "results", "ccf", "ccf_approach_mfg_hc.RData"))
+summary(sub_mfg_hc_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_mfg_hc_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ccf_prob_ps['MFG_HC'] <- prob_mu_gt_0
+ccf_ess['MFG_HC'] <- round(summary(sub_mfg_hc_model)$fixed[1, 6], 1)
+
+# OFC MFG
+load(path(here(), "results", "ccf", "ccf_approach_ofc_mfg.RData"))
+summary(sub_ofc_mfg_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(sub_ofc_mfg_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ccf_prob_ps['OFC_MFG'] <- prob_mu_gt_0
+ccf_ess['OFC_MFG'] <- round(summary(sub_ofc_mfg_model)$fixed[1, 6], 1)
+
+# # OFC Cing
+# load(path(here(), "results", "ccf", "ccf_approach_ofc_cing.RData"))
+# summary(sub_ofc_cing_model)
+# # Probability that the overall mean is > 0
+# posterior_samples <- posterior_samples(sub_ofc_cing_model)
+# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+# ccf_prob_ps['OFC_Cing'] <- prob_mu_gt_0
+# 
+# # OFC HC
+# load(path(here(), "results", "ccf", "ccf_approach_ofc_hc.RData"))
+# summary(sub_ofc_hc_model)
+# # Probability that the overall mean is > 0
+# posterior_samples <- posterior_samples(sub_ofc_hc_model)
+# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+# ccf_prob_ps['OFC_HC'] <- prob_mu_gt_0
+
+
+```
+```{r ess-probp}
+
+# bind ccf_prob and ccf_ess
+ccf_results_ess_df <- tibble("Region Names" = names(ccf_prob_ps),
+         "Prob. Positive" = ccf_prob_ps,
+         "ESS" = ccf_ess) 
+
+
+```
+
+
+```{r results-table}
+
+create_row_in_cff_table <- function(df, dif_sig) {
+  
+  # total_elecs
+  total_elecs <- nrow(df)
+  
+  # total_elecs_sig
+  total_elecs_sig <- nrow(dif_sig)
+  
+  # number of elecs where first region leads
+  second_region_leads <- sum(dif_sig$best_time > 0)
+  
+  # percent of sig electrodes where first region leads
+  percent_second_region_leads <- second_region_leads / total_elecs_sig
+  
+  # row to return
+  row <- tibble(
+    "Total Elecs" = total_elecs,
+    "Total Elecs Sig" = total_elecs_sig,
+    "Second Region Leads" = second_region_leads,
+    "Percent Second Region Leads" = percent_second_region_leads
+  )
+  
+  return(row)
+  
+}
+
+## Need To Switch Direction
+amyg_acc_df <- tibble(
+  "Region Pair" = "Cing_Amyg",
+  "Prob Pos." = 1 - ccf_prob_ps["Amyg_Cing"],
+  create_row_in_cff_table(ccf_amyg_acc_results, ccf_amyg_acc_results_sig)) %>%
+  mutate(
+    "Second Region Leads" = `Total Elecs Sig` - `Second Region Leads`,
+    "Percent Second Region Leads" = 1 - `Percent Second Region Leads`)
+  
+
+hc_cing_df <- tibble(
+  "Region Pair" = "HC_Cing",
+  "Prob Pos." = ccf_prob_ps["HC_Cing"],
+  create_row_in_cff_table(ccf_hc_cing_results, ccf_hc_cing_results_sig))
+
+hc_amyg_df <- tibble(
+  "Region Pair" = "HC_Amyg",
+  "Prob Pos." = ccf_prob_ps["HC_Amyg"],
+  create_row_in_cff_table(ccf_hc_amyg_results, ccf_hc_amyg_results_sig))
+
+mfg_amyg_df <- tibble(
+  "Region Pair" = "MFG_Amyg",
+  "Prob Pos." = ccf_prob_ps["MFG_Amyg"],
+  create_row_in_cff_table(ccf_mfg_amyg_results, ccf_mfg_amyg_results_sig))
+
+ofc_amyg_df <- tibble(
+  "Region Pair" = "OFC_Amyg",
+  "Prob Pos." = ccf_prob_ps["OFC_Amyg"],
+  create_row_in_cff_table(ccf_ofc_amyg_results, ccf_ofc_amyg_results_sig))
+
+## Need To Switch Direction
+mfg_cing_df <- tibble(
+  "Prob Pos." = 1- ccf_prob_ps["MFG_Cing"],
+  create_row_in_cff_table(ccf_mfg_cing_results, ccf_mfg_cing_results_sig)) %>%
+  mutate(
+    "Region Pair" = "Cing_MFG",
+    "Second Region Leads" = `Total Elecs Sig` - `Second Region Leads`,
+    "Percent Second Region Leads" = 1 - `Percent Second Region Leads`)
+
+mfg_hc_df <- tibble(
+  "Region Pair" = "MFG_HC",
+  "Prob Pos." = ccf_prob_ps["MFG_HC"],
+  create_row_in_cff_table(ccf_mfg_hc_results, ccf_mfg_hc_results_sig))
+
+ofc_mfg_df <- tibble(
+  "Region Pair" = "OFC_MFG",
+  "Prob Pos." = ccf_prob_ps["OFC_MFG"],
+  create_row_in_cff_table(ccf_ofc_mfg_results, ccf_ofc_mfg_results_sig))
+
+
+ccf_prob_ps_df <- bind_rows(
+  amyg_acc_df,
+  hc_cing_df,
+  hc_amyg_df,
+  mfg_amyg_df,
+  ofc_amyg_df,
+  mfg_cing_df,
+  mfg_hc_df,
+  ofc_mfg_df
+) 
+
+ccf_prob_ps_df %>%
+  arrange(desc(`Prob Pos.`)) %>%
+  mutate(`Prob Pos.` = round(`Prob Pos.`, 2)) %>%
+  mutate(`Percent Second Region Leads` = round(`Percent Second Region Leads`, 2)) %>%
+  gt()
 
 ```

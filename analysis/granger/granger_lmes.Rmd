@@ -53,6 +53,9 @@ c25 <- c(
 ```
 
 
+## Rerun using average Granger across multiple granger thresholds
+
+
 ```{r load-data}
 
 granger_df <- read_csv(path(here(), "results", "granger", "all_subs_all_roi_true_granger_dir.csv"))
@@ -69,88 +72,84 @@ granger_df <- granger_df %>%
   mutate(sig_count = sum(sig)) %>%
   ungroup()
 
-granger_sig_df <- granger_df %>%
+granger_100_sig_df <- granger_df %>%
+  filter(sig_count >= 10)
+
+granger_100a_sig_df <- granger_df %>%
+  filter(times <= 0) %>%
+  group_by(subject, pair) %>%
+  mutate(sig_count = sum(sig)) %>%
+  filter(sig_count >= 10) %>%
+  ungroup()
+
+granger_500_sig_df <- granger_df %>%
   filter(sig_count >= 50)
 
-granger_avg_sig_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
-  group_by(case, subject, pair_id) %>%
-  mutate(avg_granger = mean(granger)) %>%
-  select(-times, -granger, -pval, -pval_fdr, -`Unnamed: 0`) %>%
-  distinct()
+granger_1000_sig_df <- granger_df %>%
+  filter(sig_count >= 100)
 
 
 ```
 
 
-```{r, fig.width = 12, fig.height = 8}
-
-granger_avg_sig_df %>%
-  ggplot(., aes(x = case, y = avg_granger, fill = case)) +
-  geom_boxplot() +
-  facet_wrap(~region, scales = "free") 
-
-
-```
+## Original, 500ms
 
 ```{r}
 
-amyg_ofc_app_df <- granger_sig_df %>%
+granger_avg_sig_df <- granger_500_sig_df %>%
   mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+  group_by(case, subject, pair_id) %>%
+  mutate(avg_granger = mean(granger)) %>%
+  select(-times, -granger, -pval, -pval_fdr, -`Unnamed: 0`, -sig) %>%
+  distinct()
+
+
+amyg_ofc_app_df <- granger_avg_sig_df %>%
   filter(region == "amyg_ofc") %>%
   filter(case == "Approach") %>%
   ungroup() 
 
-amyg_mfg_app_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+amyg_mfg_app_df <- granger_avg_sig_df %>%
   filter(region == "amyg_mfg") %>%
   filter(case == "Approach") %>%
   ungroup() 
 
-amyg_cing_app_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+amyg_cing_app_df <- granger_avg_sig_df %>%
   filter(region == "amyg_cing") %>%
   filter(case == "Approach") %>%
   ungroup() 
 
-hc_ofc_app_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+hc_ofc_app_df <- granger_avg_sig_df %>%
   filter(region == "hc_ofc") %>%
   filter(case == "Approach") %>%
   ungroup() 
 
-hc_cing_app_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+hc_cing_app_df <- granger_avg_sig_df %>%
   filter(region == "hc_cing") %>%
   filter(case == "Approach") %>%
   ungroup() 
 
-hc_amyg_app_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+hc_amyg_app_df <- granger_avg_sig_df %>%
   filter(region == "hc_amyg") %>%
   filter(case == "Approach") %>%
   ungroup() 
 
-hc_mfg_app_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+hc_mfg_app_df <- granger_avg_sig_df %>%
   filter(region == "hc_mfg") %>%
   filter(case == "Approach") %>%
   ungroup() 
 
-ofc_cing_app_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+ofc_cing_app_df <- granger_avg_sig_df %>%
   filter(region == "ofc_cing") %>%
   filter(case == "Approach") %>%
   ungroup() 
 
-ofc_mfg_app_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+ofc_mfg_app_df <- granger_avg_sig_df %>%
   filter(region == "ofc_mfg") %>%
   filter(case == "Approach") %>%
   ungroup() 
 
-mfg_cing_app_df <- granger_sig_df %>%
-  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+mfg_cing_app_df <- granger_avg_sig_df %>%
   filter(region == "mfg_cing") %>%
   filter(case == "Approach") %>%
   ungroup() 
@@ -159,209 +158,208 @@ mfg_cing_app_df <- granger_sig_df %>%
 
 ```
 
-
-
-
 ```{r}
+
+options(mc.cores = parallel::detectCores(), brms.backend = "cmdstanr")
 priors <- c(
   prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
     prior(exponential(1), class = "sd")                 # Prior for random effects standard deviations 
 )
 
-# ## Amyg Cing
-# # Fit the model
-# amyg_cing_app_model <- brm(
-#   formula = granger ~ 1 + (1|subject/pair_id),
-#   data = amyg_cing_app_df,
-#   prior = priors,
-#   family = gaussian(),
-#   iter = 4000,
-#   warmup = 1000,
-#   chains = 4,
-#   cores = 4,
-#   control = list(adapt_delta = 0.99),
-#   seed = 1234
-# )
-# summary(amyg_cing_app_model)
-# # Probability that the overall mean is > 0
-# posterior_samples <- posterior_samples(amyg_cing_app_model)
-# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-# #save model
-# save(amyg_cing_app_model, file = path(here(), "results", "granger_approach_amyg_cing.RData"))
-#
-# 
-# 
-# ## AMYG OFC
-# # Fit the model
-# amyg_ofc_app_model <- brm(
-#   formula = granger ~ 1 + (1|subject/pair_id),
-#   data = amyg_ofc_app_df,
-#   prior = priors,
-#   family = gaussian(),
-#   iter = 4000,
-#   warmup = 1000,
-#   chains = 4,
-#   cores = 4,
-#   control = list(adapt_delta = 0.99),
-#   seed = 1234
-# )
-# summary(amyg_ofc_app_model)
-# # Probability that the overall mean is > 0
-# posterior_samples <- posterior_samples(amyg_ofc_app_model)
-# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-# #save model
-# save(amyg_ofc_app_model, file = path(here(), "results", "granger_approach_amyg_ofc.RData"))
-# 
-## AMYG MFG
-# # Fit the model
-# amyg_mfg_app_model <- brm(
-#   formula = granger ~ 1 + (1|subject/pair_id),
-#   data = amyg_mfg_app_df,
-#   prior = priors,
-#   family = gaussian(),
-#   iter = 10000,  # More samples to improve ESS
-#   warmup = 5000,  # More warmup for better adaptation
-#   chains = 4,
-#   cores = 4,
-#   control = list(adapt_delta = 0.999, max_treedepth = 15),  # More precise tuning
-#   seed = 1234
-# )
-# summary(amyg_mfg_app_model)
-# # Probability that the overall mean is > 0
-# posterior_samples <- posterior_samples(amyg_mfg_app_model)
-# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-# #save model
-# save(amyg_mfg_app_model, file = path(here(), "results", "granger_approach_amyg_mfg.RData"))
-# 
-# ## HC OFC
-# # Fit the model
-# hc_ofc_app_model <- brm(
-#   formula = granger ~ 1 + (1|subject/pair_id),
-#   data = hc_ofc_app_df,
-#   prior = priors,
-#   family = gaussian(),
-#   iter = 4000,
-#   warmup = 1000,
-#   chains = 4,
-#   cores = 4,
-#   control = list(adapt_delta = 0.99),
-#   seed = 1234
-# )
-# summary(hc_ofc_app_model)
-# # Probability that the overall mean is > 0
-# posterior_samples <- posterior_samples(hc_ofc_app_model)
-# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-# #save model
-# save(hc_ofc_app_model, file = path(here(), "results", "granger_approach_hc_ofc.RData"))
-# 
-# ## HC CING
-# # Fit the model
-# hc_cing_app_model <- brm(
-#   formula = granger ~ 1 + (1|subject/pair_id),
-#   data = hc_cing_app_df,
-#   prior = priors,
-#   family = gaussian(),
-#   iter = 4000,
-#   warmup = 1000,
-#   chains = 4,
-#   cores = 4,
-#   control = list(adapt_delta = 0.99),
-#   seed = 1234
-# )
-# summary(hc_cing_app_model)
-# # Probability that the overall mean is > 0
-# posterior_samples <- posterior_samples(hc_cing_app_model)
-# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-# #save model
-# save(hc_cing_app_model, file = path(here(), "results", "granger_approach_hc_cing.RData"))
-# 
-# ## HC AMYG
-# # Fit the model
-# hc_amyg_app_model <- brm(
-#   formula = granger ~ 1 + (1|subject/pair_id),
-#   data = hc_amyg_app_df,
-#   prior = priors,
-#   family = gaussian(),
-#   iter = 4000,
-#   warmup = 1000,
-#   chains = 4,
-#   cores = 4,
-#   control = list(adapt_delta = 0.99),
-#   seed = 1234
-# )
-# summary(hc_amyg_app_model)
-# # Probability that the overall mean is > 0
-# posterior_samples <- posterior_samples(hc_amyg_app_model)
-# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-# #save model
-# save(hc_amyg_app_model, file = path(here(), "results", "granger_approach_hc_amyg.RData"))
-# 
+## Amyg Cing
+# Fit the model
+amyg_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_cing_app_model, file = path(here(), "results", "granger", "granger_approach_amyg_cing.RData"))
 
 
-# ## OFC MFG
-# # Fit the model
-# ofc_mfg_app_model <- brm(
-#   formula = granger ~ 1 + (1|subject/pair_id),
-#   data = ofc_mfg_app_df,
-#   prior = priors,
-#   family = gaussian(),
-#   iter = 15000,  # More samples to improve ESS
-#   warmup = 7500,  # More warmup for better adaptation
-#   chains = 4,
-#   cores = 4,
-#   control = list(adapt_delta = 0.999, max_treedepth = 15),  # More precise tuning
-#   seed = 1234
-# )
-# summary(ofc_mfg_app_model)
-# # Probability that the overall mean is > 0
-# posterior_samples <- posterior_samples(ofc_mfg_app_model)
-# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-# #save model
-# save(ofc_mfg_app_model, file = path(here(), "results", "granger_approach_ofc_mfg.RData"))
 
-# ## HC MFG
-# # Fit the model
-# hc_mfg_app_model <- brm(
-#   formula = granger ~ 1 + (1|subject/pair_id),
-#   data = hc_mfg_app_df,
-#   prior = priors,
-#   family = gaussian(),
-#   iter = 4000,
-#   warmup = 1000,
-#   chains = 4,
-#   cores = 4,
-#   control = list(adapt_delta = 0.99),
-#   seed = 1234
-# )
-# summary(hc_mfg_app_model)
-# # Probability that the overall mean is > 0
-# posterior_samples <- posterior_samples(hc_mfg_app_model)
-# prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
-# cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-# #save model
-# save(hc_mfg_app_model, file = path(here(), "results", "granger_approach_hc_mfg.RData"))
-# 
+## AMYG OFC
+# Fit the model
+amyg_ofc_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_ofc_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_ofc_app_model, file = path(here(), "results", "granger", "granger_approach_amyg_ofc.RData"))
+
+# AMYG MFG
+# Fit the model
+amyg_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(amyg_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_mfg_app_model, file = path(here(), "results", "granger", "granger_approach_amyg_mfg.RData"))
+
+## HC OFC
+# Fit the model
+hc_ofc_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_ofc_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_ofc_app_model, file = path(here(), "results", "granger", "granger_approach_hc_ofc.RData"))
+
+## HC CING
+# Fit the model
+hc_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_cing_app_model, file = path(here(), "results", "granger", "granger_approach_hc_cing.RData"))
+
+## HC AMYG
+# Fit the model
+hc_amyg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_amyg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_amyg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_amyg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_amyg_app_model, file = path(here(), "results", "granger", "granger_approach_hc_amyg.RData"))
+
+
+
+## OFC MFG
+# Fit the model
+ofc_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = ofc_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(ofc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(ofc_mfg_app_model, file = path(here(), "results", "granger_approach_ofc_mfg.RData"))
+
+## HC MFG
+# Fit the model
+hc_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_mfg_app_model, file = path(here(), "results", "granger", "granger_approach_hc_mfg.RData"))
+
 
 
 ## OFC CING
 # Fit the model
 ofc_cing_app_model <- brm(
-  formula = granger ~ 1 + (1|subject/pair_id),
+  formula = avg_granger ~ 1 + (1|subject),
   data = ofc_cing_app_df,
   prior = priors,
   family = gaussian(),
-  iter = 10000,  # More samples to improve ESS
-  warmup = 5000,  # More warmup for better adaptation
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
   chains = 4,
   cores = 4,
-  control = list(adapt_delta = 0.999, max_treedepth = 15),  # More precise tuning
+  control = list(adapt_delta = 0.99),  # More precise tuning
   seed = 1234
 )
 summary(ofc_cing_app_model)
@@ -370,20 +368,20 @@ posterior_samples <- posterior_samples(ofc_cing_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
 #save model
-save(ofc_cing_app_model, file = path(here(), "results", "granger_approach_ofc_cing.RData"))
+save(ofc_cing_app_model, file = path(here(), "results", "granger", "granger_approach_ofc_cing.RData"))
 
 ## MFG CING
 # Fit the model
 mfg_cing_app_model <- brm(
-  formula = granger ~ 1 + (1|subject/pair_id),
+  formula = avg_granger ~ 1 + (1|subject),
   data = mfg_cing_app_df,
   prior = priors,
   family = gaussian(),
-  iter = 30000,  # More samples to improve ESS
-  warmup = 15000,  # More warmup for better adaptation
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
   chains = 4,
   cores = 4,
-  control = list(adapt_delta = 0.999, max_treedepth = 15),  # More precise tuning
+  control = list(adapt_delta = 0.99),  # More precise tuning
   seed = 1234
 )
 summary(mfg_cing_app_model)
@@ -395,71 +393,9 @@ cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
 save(mfg_cing_app_model, file = path(here(), "results", "granger_approach_mfg_cing.RData"))
 ```
 
-
-```{r, fig.width = 10, fig.height = 8}
-
-
-mfg_cing_app_avg_df <- mfg_cing_app_df %>%
-  mutate(times = round(times, 2)) %>%
-  group_by(subject, pair, times, region) %>%
-  mutate(granger = mean(granger)) %>%
-  group_by(times, subject, region) %>%
-  # calculate mean and sem
-  summarise(granger_avg = mean(granger)
-            sem_upper = mean(granger) + sd(granger)/sqrt(n()), 
-            sem_lower = mean(granger) - sd(granger)/sqrt(n()))
-
-
-mfg_cing_app_avg_df %>%
-  ggplot(., aes(x = times, y = granger_avg)) + 
-  geom_hline(yintercept = 0, color = "black") +
-  geom_line() +
-  geom_ribbon(aes(ymin = sem_lower, ymax = sem_upper), alpha = 0.3) +
-  theme(panel.background = element_rect(fill = "white")) +
-  facet_wrap(~subject)
-
-```
-```{r, fig.width = 8, fig.height = 6}
-
-df_list <- lst(hc_mfg_app_df, hc_ofc_app_df,  hc_cing_app_df, hc_amyg_app_df,
-                amyg_ofc_app_df, amyg_mfg_app_df, amyg_cing_app_df, 
-                ofc_cing_app_df, ofc_mfg_app_df, mfg_cing_app_df)
-
-for( idx in 1:length(df_list)) {
-
-  avg_df <- df_list[[idx]] %>%
-    mutate(times = round(times, 2)) %>%
-    group_by(subject, pair, times, region) %>%
-    mutate(granger = mean(granger)) %>%
-    group_by(times, subject, region) %>%
-    # calculate mean and sem
-    summarise(granger_avg = mean(granger)) %>%
-    group_by(times,  region) %>%
-    summarise(granger_all_avg = mean(granger_avg),
-              sem_upper = mean(granger_avg) + sd(granger_avg)/sqrt(n()), 
-              sem_lower = mean(granger_avg) - sd(granger_avg)/sqrt(n()))
-  
-  
-  p <- avg_df %>%
-    ggplot(., aes(x = times, y = granger_all_avg)) + 
-    geom_hline(yintercept = 0, color = "black") +
-    geom_line() +
-    geom_ribbon(aes(ymin = sem_lower, ymax = sem_upper), alpha = 0.3) +
-    theme(panel.background = element_rect(fill = "white")) +
-    ggtitle(unique(avg_df$region))
-  
-  plot(p)
-
-}
-
-df[[1]]
-
-```
-
-
-
-
 ```{r open-print-all-models}
+
+orig_500 <- NULL
 
 ## Amyg ~ Cing
 # load
@@ -470,6 +406,7 @@ summary(amyg_cing_app_model)
 posterior_samples <- posterior_samples(amyg_cing_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+orig_500['Amyg_Cing'] <- prob_mu_gt_0
 
 ## HC ~ Cing
 # load
@@ -480,6 +417,7 @@ summary(hc_cing_app_model)
 posterior_samples <- posterior_samples(hc_cing_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+orig_500['HC_Cing'] <- prob_mu_gt_0
 
 ## HC ~ Amyg
 # load
@@ -490,6 +428,7 @@ summary(hc_amyg_app_model)
 posterior_samples <- posterior_samples(hc_amyg_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+orig_500['HC_Amyg'] <- prob_mu_gt_0
 
 ## MFG ~ Amyg
 # load
@@ -500,6 +439,7 @@ summary(amyg_mfg_app_model)
 posterior_samples <- posterior_samples(amyg_mfg_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+orig_500['Amyg_MFG'] <- prob_mu_gt_0
 
 ## OFC ~ Amyg
 # load
@@ -510,7 +450,7 @@ summary(amyg_ofc_app_model)
 posterior_samples <- posterior_samples(amyg_ofc_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
+orig_500['Amyg_OFC'] <- prob_mu_gt_0
 
 ## MFG ~ Cing
 # load
@@ -521,6 +461,7 @@ summary(mfg_cing_app_model)
 posterior_samples <- posterior_samples(mfg_cing_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+orig_500['MFG_Cing'] <- prob_mu_gt_0
 
 ## MFG ~ HC
 # load
@@ -531,6 +472,7 @@ summary(hc_mfg_app_model)
 posterior_samples <- posterior_samples(hc_mfg_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+orig_500['HC_MFG'] <- prob_mu_gt_0
 
 
 ## OFC ~ Cing
@@ -542,6 +484,7 @@ summary(ofc_cing_app_model)
 posterior_samples <- posterior_samples(ofc_cing_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+orig_500['OFC_Cing'] <- prob_mu_gt_0
 
 ## OFC ~ MFG
 # load
@@ -552,6 +495,7 @@ summary(ofc_mfg_app_model)
 posterior_samples <- posterior_samples(ofc_mfg_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+orig_500['OFC_MFG'] <- prob_mu_gt_0
 
 
 ## OFC ~ HC
@@ -563,12 +507,1306 @@ summary(hc_ofc_app_model)
 posterior_samples <- posterior_samples(hc_ofc_app_model)
 prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
 cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
-
-
+orig_500['HC_OFC'] <- prob_mu_gt_0
 
 
 
 ```
 
 
+## 100ms
 
+```{r}
+
+granger_avg_sig_df <- granger_100_sig_df %>%
+  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+  group_by(case, subject, pair_id) %>%
+  mutate(avg_granger = mean(granger)) %>%
+  select(-times, -granger, -pval, -pval_fdr, -`Unnamed: 0`, -sig) %>%
+  distinct()
+
+
+amyg_ofc_app_df <- granger_avg_sig_df %>%
+  filter(region == "amyg_ofc") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+amyg_mfg_app_df <- granger_avg_sig_df %>%
+  filter(region == "amyg_mfg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+amyg_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "amyg_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_ofc_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_ofc") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_amyg_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_amyg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_mfg_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_mfg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+ofc_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "ofc_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+ofc_mfg_app_df <- granger_avg_sig_df %>%
+  filter(region == "ofc_mfg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+mfg_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "mfg_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+  
+
+
+```
+
+```{r}
+
+options(mc.cores = parallel::detectCores(), brms.backend = "cmdstanr")
+priors <- c(
+  prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
+    prior(exponential(1), class = "sd")                 # Prior for random effects standard deviations 
+)
+
+## Amyg Cing
+# Fit the model
+amyg_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_cing_app_model, file = path(here(), "results", "granger", "granger_100ms_approach_amyg_cing.RData"))
+
+
+
+## AMYG OFC
+# Fit the model
+amyg_ofc_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_ofc_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_ofc_app_model, file = path(here(), "results", "granger", "granger_100ms_approach_amyg_ofc.RData"))
+
+# AMYG MFG
+# Fit the model
+amyg_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(amyg_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_mfg_app_model, file = path(here(), "results", "granger", "granger_100ms_approach_amyg_mfg.RData"))
+
+## HC OFC
+# Fit the model
+hc_ofc_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_ofc_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_ofc_app_model, file = path(here(), "results", "granger", "granger_100ms_approach_hc_ofc.RData"))
+
+## HC CING
+# Fit the model
+hc_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_cing_app_model, file = path(here(), "results", "granger", "granger_100ms_approach_hc_cing.RData"))
+
+## HC AMYG
+# Fit the model
+hc_amyg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_amyg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_amyg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_amyg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_amyg_app_model, file = path(here(), "results", "granger", "granger_100ms_approach_hc_amyg.RData"))
+
+
+
+## OFC MFG
+# Fit the model
+ofc_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = ofc_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(ofc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(ofc_mfg_app_model, file = path(here(), "results", "granger_100ms_approach_ofc_mfg.RData"))
+
+## HC MFG
+# Fit the model
+hc_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_mfg_app_model, file = path(here(), "results", "granger", "granger_100ms_approach_hc_mfg.RData"))
+
+
+
+## OFC CING
+# Fit the model
+ofc_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = ofc_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(ofc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(ofc_cing_app_model, file = path(here(), "results", "granger", "granger_100ms_approach_ofc_cing.RData"))
+
+## MFG CING
+# Fit the model
+mfg_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = mfg_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(mfg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(mfg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(mfg_cing_app_model, file = path(here(), "results", "granger_100ms_approach_mfg_cing.RData"))
+```
+
+```{r open-print-all-models}
+
+ms_100 <- NULL
+
+## Amyg ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_amyg_cing.RData"))
+# summary
+summary(amyg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['Amyg_Cing'] <- prob_mu_gt_0
+
+## HC ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_hc_cing.RData"))
+# summary
+summary(hc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['HC_Cing'] <- prob_mu_gt_0
+
+## HC ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_hc_amyg.RData"))
+# summary
+summary(hc_amyg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_amyg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['HC_Amyg'] <- prob_mu_gt_0
+
+## MFG ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_amyg_mfg.RData"))
+# summary
+summary(amyg_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['Amyg_MFG'] <- prob_mu_gt_0
+
+## OFC ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_amyg_ofc.RData"))
+# summary
+summary(amyg_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['Amyg_OFC'] <- prob_mu_gt_0
+
+## MFG ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_mfg_cing.RData"))
+# summary
+summary(mfg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(mfg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['MFG_Cing'] <- prob_mu_gt_0
+
+## MFG ~ HC
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_hc_mfg.RData"))
+# summary
+summary(hc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['HC_MFG'] <- prob_mu_gt_0
+
+
+## OFC ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_ofc_cing.RData"))
+# summary
+summary(ofc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['OFC_Cing'] <- prob_mu_gt_0
+
+## OFC ~ MFG
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_ofc_mfg.RData"))
+# summary
+summary(ofc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['OFC_MFG'] <- prob_mu_gt_0
+
+
+## OFC ~ HC
+# load
+load(path(here(), "results", "granger", "granger_100ms_approach_hc_ofc.RData"))
+# summary
+summary(hc_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100['HC_OFC'] <- prob_mu_gt_0
+
+
+
+```
+
+## 100ms, Approach Only
+
+```{r}
+
+granger_avg_sig_df <- granger_100a_sig_df %>%
+  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+  group_by(case, subject, pair_id) %>%
+  mutate(avg_granger = mean(granger)) %>%
+  select(-times, -granger, -pval, -pval_fdr, -`Unnamed: 0`, -sig) %>%
+  distinct()
+
+amyg_ofc_app_df <- granger_avg_sig_df %>%
+  filter(region == "amyg_ofc") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+amyg_mfg_app_df <- granger_avg_sig_df %>%
+  filter(region == "amyg_mfg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+amyg_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "amyg_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_ofc_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_ofc") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_amyg_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_amyg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_mfg_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_mfg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+ofc_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "ofc_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+ofc_mfg_app_df <- granger_avg_sig_df %>%
+  filter(region == "ofc_mfg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+mfg_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "mfg_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+  
+
+
+```
+
+```{r}
+
+options(mc.cores = parallel::detectCores(), brms.backend = "cmdstanr")
+priors <- c(
+  prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
+    prior(exponential(1), class = "sd")                 # Prior for random effects standard deviations 
+)
+
+## Amyg Cing
+# Fit the model
+amyg_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_cing_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_amyg_cing.RData"))
+
+
+
+## AMYG OFC
+# Fit the model
+amyg_ofc_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_ofc_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_ofc_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_amyg_ofc.RData"))
+
+# AMYG MFG
+# Fit the model
+amyg_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(amyg_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_mfg_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_amyg_mfg.RData"))
+
+## HC OFC
+# Fit the model
+hc_ofc_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_ofc_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_ofc_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_hc_ofc.RData"))
+
+## HC CING
+# Fit the model
+hc_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_cing_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_hc_cing.RData"))
+
+## HC AMYG
+# Fit the model
+hc_amyg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_amyg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_amyg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_amyg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_amyg_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_hc_amyg.RData"))
+
+
+
+## OFC MFG
+# Fit the model
+ofc_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = ofc_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(ofc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(ofc_mfg_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_ofc_mfg.RData"))
+
+## HC MFG
+# Fit the model
+hc_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_mfg_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_hc_mfg.RData"))
+
+
+
+## OFC CING
+# Fit the model
+ofc_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = ofc_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(ofc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(ofc_cing_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_ofc_cing.RData"))
+
+## MFG CING
+# Fit the model
+mfg_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = mfg_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(mfg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(mfg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(mfg_cing_app_model, file = path(here(), "results", "granger", "granger_100ams_approach_mfg_cing.RData"))
+```
+
+```{r open-print-all-models}
+
+ms_100a <- NULL
+
+## Amyg ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_amyg_cing.RData"))
+# summary
+summary(amyg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['Amyg_Cing'] <- prob_mu_gt_0
+
+## HC ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_hc_cing.RData"))
+# summary
+summary(hc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['HC_Cing'] <- prob_mu_gt_0
+
+## HC ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_hc_amyg.RData"))
+# summary
+summary(hc_amyg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_amyg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['HC_Amyg'] <- prob_mu_gt_0
+
+## MFG ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_amyg_mfg.RData"))
+# summary
+summary(amyg_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['Amyg_MFG'] <- prob_mu_gt_0
+
+## OFC ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_amyg_ofc.RData"))
+# summary
+summary(amyg_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['Amyg_OFC'] <- prob_mu_gt_0
+
+## MFG ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_mfg_cing.RData"))
+# summary
+summary(mfg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(mfg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['MFG_Cing'] <- prob_mu_gt_0
+
+## MFG ~ HC
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_hc_mfg.RData"))
+# summary
+summary(hc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['HC_MFG'] <- prob_mu_gt_0
+
+
+## OFC ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_ofc_cing.RData"))
+# summary
+summary(ofc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['OFC_Cing'] <- prob_mu_gt_0
+
+## OFC ~ MFG
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_ofc_mfg.RData"))
+# summary
+summary(ofc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['OFC_MFG'] <- prob_mu_gt_0
+
+
+## OFC ~ HC
+# load
+load(path(here(), "results", "granger", "granger_100ams_approach_hc_ofc.RData"))
+# summary
+summary(hc_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_100a['HC_OFC'] <- prob_mu_gt_0
+
+
+
+```
+
+## 1000ms 
+
+```{r}
+
+granger_avg_sig_df <- granger_1000_sig_df %>%
+  mutate(case = if_else(times <= 0, "Approach", "Avoid")) %>%
+  group_by(case, subject, pair_id) %>%
+  mutate(avg_granger = mean(granger)) %>%
+  select(-times, -granger, -pval, -pval_fdr, -`Unnamed: 0`, -sig) %>%
+  distinct()
+
+
+amyg_ofc_app_df <- granger_avg_sig_df %>%
+  filter(region == "amyg_ofc") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+amyg_mfg_app_df <- granger_avg_sig_df %>%
+  filter(region == "amyg_mfg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+amyg_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "amyg_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_ofc_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_ofc") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_amyg_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_amyg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+hc_mfg_app_df <- granger_avg_sig_df %>%
+  filter(region == "hc_mfg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+ofc_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "ofc_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+ofc_mfg_app_df <- granger_avg_sig_df %>%
+  filter(region == "ofc_mfg") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+
+mfg_cing_app_df <- granger_avg_sig_df %>%
+  filter(region == "mfg_cing") %>%
+  filter(case == "Approach") %>%
+  ungroup() 
+  
+
+
+```
+
+```{r}
+
+options(mc.cores = parallel::detectCores(), brms.backend = "cmdstanr")
+priors <- c(
+  prior(normal(0, 2), class = "Intercept"),            # Prior for the intercept                 # Prior for fixed effects
+    prior(exponential(1), class = "sd")                 # Prior for random effects standard deviations 
+)
+
+## Amyg Cing
+# Fit the model
+amyg_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_cing_app_model, file = path(here(), "results", "granger", "granger_1000ms_approach_amyg_cing.RData"))
+
+
+
+## AMYG OFC
+# Fit the model
+amyg_ofc_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_ofc_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(amyg_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_ofc_app_model, file = path(here(), "results", "granger", "granger_1000ms_approach_amyg_ofc.RData"))
+
+# AMYG MFG
+# Fit the model
+amyg_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = amyg_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(amyg_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(amyg_mfg_app_model, file = path(here(), "results", "granger", "granger_1000ms_approach_amyg_mfg.RData"))
+
+## HC OFC
+# Fit the model
+hc_ofc_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_ofc_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_ofc_app_model, file = path(here(), "results", "granger", "granger_1000ms_approach_hc_ofc.RData"))
+
+## HC CING
+# Fit the model
+hc_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_cing_app_model, file = path(here(), "results", "granger", "granger_1000ms_approach_hc_cing.RData"))
+
+## HC AMYG
+# Fit the model
+hc_amyg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_amyg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_amyg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_amyg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_amyg_app_model, file = path(here(), "results", "granger", "granger_1000ms_approach_hc_amyg.RData"))
+
+
+
+## OFC MFG
+# Fit the model
+ofc_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = ofc_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(ofc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(ofc_mfg_app_model, file = path(here(), "results", "granger_1000ms_approach_ofc_mfg.RData"))
+
+## HC MFG
+# Fit the model
+hc_mfg_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = hc_mfg_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  seed = 1234
+)
+summary(hc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(hc_mfg_app_model, file = path(here(), "results", "granger", "granger_1000ms_approach_hc_mfg.RData"))
+
+
+
+## OFC CING
+# Fit the model
+ofc_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = ofc_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(ofc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(ofc_cing_app_model, file = path(here(), "results", "granger", "granger_1000ms_approach_ofc_cing.RData"))
+
+## MFG CING
+# Fit the model
+mfg_cing_app_model <- brm(
+  formula = avg_granger ~ 1 + (1|subject),
+  data = mfg_cing_app_df,
+  prior = priors,
+  family = gaussian(),
+  iter = 4000,  # More samples to improve ESS
+  warmup = 1000,  # More warmup for better adaptation
+  chains = 4,
+  cores = 4,
+  control = list(adapt_delta = 0.99),  # More precise tuning
+  seed = 1234
+)
+summary(mfg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(mfg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+#save model
+save(mfg_cing_app_model, file = path(here(), "results", "granger_1000ms_approach_mfg_cing.RData"))
+```
+
+```{r open-print-all-models}
+
+ms_1000 <- NULL
+
+## Amyg ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_amyg_cing.RData"))
+# summary
+summary(amyg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['Amyg_Cing'] <- prob_mu_gt_0
+
+## HC ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_hc_cing.RData"))
+# summary
+summary(hc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['HC_Cing'] <- prob_mu_gt_0
+
+## HC ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_hc_amyg.RData"))
+# summary
+summary(hc_amyg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_amyg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['HC_Amyg'] <- prob_mu_gt_0
+
+## MFG ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_amyg_mfg.RData"))
+# summary
+summary(amyg_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['Amyg_MFG'] <- prob_mu_gt_0
+
+## OFC ~ Amyg
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_amyg_ofc.RData"))
+# summary
+summary(amyg_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(amyg_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['Amyg_OFC'] <- prob_mu_gt_0
+
+## MFG ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_mfg_cing.RData"))
+# summary
+summary(mfg_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(mfg_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['MFG_Cing'] <- prob_mu_gt_0
+
+## MFG ~ HC
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_hc_mfg.RData"))
+# summary
+summary(hc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['HC_MFG'] <- prob_mu_gt_0
+
+
+## OFC ~ Cing
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_ofc_cing.RData"))
+# summary
+summary(ofc_cing_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_cing_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['OFC_Cing'] <- prob_mu_gt_0
+
+## OFC ~ MFG
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_ofc_mfg.RData"))
+# summary
+summary(ofc_mfg_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(ofc_mfg_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['OFC_MFG'] <- prob_mu_gt_0
+
+
+## OFC ~ HC
+# load
+load(path(here(), "results", "granger", "granger_1000ms_approach_hc_ofc.RData"))
+# summary
+summary(hc_ofc_app_model)
+# Probability that the overall mean is > 0
+posterior_samples <- posterior_samples(hc_ofc_app_model)
+prob_mu_gt_0 <- mean(posterior_samples$b_Intercept > 0)
+cat("P(Overall mean > 0):", prob_mu_gt_0, "\n")
+ms_1000['HC_OFC'] <- prob_mu_gt_0
+
+
+
+```
+## Combine and Create Table
+
+```{r}
+
+# combine orig, app_100, ms_500, and ms_1000 into a df
+orig_df <- tibble("500ms" = orig_500, "region_pair" = names(orig_500)) 
+app_100_df <- tibble("100ms_app" = ms_100a, "region_pair" = names(ms_100a))
+ms_100_df <- tibble("100ms" = ms_100, "region_pair" = names(ms_100))
+ms_1000_df <- tibble("1000ms" = ms_1000, "region_pair" = names(ms_1000))
+# combine all into one df
+combined_df <- orig_df %>%
+  left_join(app_100_df, by = "region_pair") %>%
+  left_join(ms_100_df, by = "region_pair") %>%
+  left_join(ms_1000_df, by = "region_pair") %>%
+  ## Adjust direction of OFC_MFG to MFG_OFC,
+  mutate(region_pair = if_else(region_pair == "OFC_MFG", "MFG_OFC", region_pair)) %>%
+  mutate(`500ms` = if_else(region_pair == "MFG_OFC", 1- `500ms`, `500ms`)) %>%
+  mutate(`100ms_app` = if_else(region_pair == "MFG_OFC", 1- `100ms_app`, `100ms_app`)) %>%
+  mutate(`100ms` = if_else(region_pair == "MFG_OFC", 1- `100ms`, `100ms`)) %>%
+  mutate(`1000ms` = if_else(region_pair == "MFG_OFC", 1- `1000ms`, `1000ms`)) %>%
+  mutate_at(vars(-region_pair), ~ round(., 3)) %>%
+  select(region_pair, `100ms`, `100ms_app`, `500ms`, `1000ms`) %>%
+  rename(
+    "Region Pair" = region_pair,
+    "100ms" = `100ms`,
+    "100ms (App. Only)" = `100ms_app`,
+    "500ms" = `500ms`,
+    "1000ms" = `1000ms`
+  )
+  
+combined_df %>%
+  arrange(desc(`500ms`)) %>%
+  gt()
+
+```

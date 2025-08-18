@@ -19,13 +19,17 @@ library(scales)
 library(ggthemr)
 library(RColorBrewer)
 library(broom.mixed)
+library(purrr)
+library(readr)
+library(here)
+library(future.apply)
 
 ## hand written functions ##
 source(path(here(), "R", 'mutate_cond.R'))
 source(path(here(), "R", 'create_distance_df.R'))
 source(path(here(), "R", 'clean_behavioral_data.R'))
 source(path(here(), "R", 'compile_ieeg_csv_files.R'))
-source(path(here(), "R", 'run_and_plot_lme_models.R'))
+source(path(here(), "R", 'ccf_functions.R'))
 source(path(here(), "R", 'separate_mfg_sfg.R'))
 
 ## plotting helpers ##
@@ -51,7 +55,9 @@ c25 <- c(
 
 ```
 
-```{r load-data}
+```{r load-theta-files, eval = F}
+
+## only run once, saved version is below
 
 ## get file lists
 all_files <- list.files(path(here(), "data_mount", "remote", "pacman", "preprocessing", "bandpass_theta"))
@@ -101,43 +107,54 @@ all_subs_theta_data <- bind_rows(ofc_theta_data %>% mutate(region = "ofc"),
 
 rm(ofc_theta_data, amyg_theta_data, hc_theta_data, cing_theta_data, mfg_theta_data)
 
+
+
+
+```
+
+```{r load-behave-data, eval = T}
+
 # behavioral data #
 all_subs_g_dist <- read_csv(path(here(), "munge", "all_subs_complete_distance_df.csv"))
 
 all_subs_g_dist <- all_subs_g_dist %>%
   filter(attack_chase_bob == "Bob") 
 
-
-
-```
-
-```{r merge-behave-ieeg-data}
-
 all_subs_g_dist <- all_subs_g_dist %>% 
   select(subject, trial_numeric, trial_time, Direction, reward_groups, last_away, away_choice) %>%
   mutate(trial_time = round(trial_time, 2)) %>% 
   rename(game_time = trial_time)
 
-all_subs_theta_data <- all_subs_theta_data  %>% 
-  rename(trial_time = time, theta = value, trial_numeric = trial) %>%
-  filter(trial_time >= 0) %>%
-  # create game_time which is rounded to the nearest .5
-  mutate(game_time = round(floor(trial_time / 0.05) * 0.05, 2)) %>%
-  mutate(electrode = gsub("_.*", "", electrode))
+```
+
+```{r merge-behave-ieeg-data, eval = T}
+
+# all_subs_theta_data <- all_subs_theta_data  %>% 
+#   rename(trial_time = time, theta = value, trial_numeric = trial) %>%
+#   filter(trial_time >= 0) %>%
+#   # create game_time which is rounded to the nearest .5
+#   mutate(game_time = round(floor(trial_time / 0.05) * 0.05, 2)) %>%
+#   mutate(electrode = gsub("_.*", "", electrode))
+
+# write to csv
+# write_csv(all_subs_theta_data, path(here(), "munge", "all_regions_bandpassed_theta_iti_onset.csv"))
+
+
+# read_csv
+all_subs_theta_data <- read_csv(path(here(), "munge", "all_regions_bandpassed_theta_iti_onset.csv"))
 
 # merge behavior data with ieeg data
 ieeg_behave_df <- full_join(all_subs_theta_data, all_subs_g_dist, by = join_by(subject, trial_numeric, game_time)) %>%
   arrange(electrode) %>%
   distinct()
 
-# write to csv
-# write_csv(all_subs_theta_data, path(here(), "munge", "all_regions_bandpassed_theta_iti_onset.csv"))
+
 
 ```
 
 
 
-```{r prep-data}
+```{r prep-data, eval = T}
 
 # shift to move time, remove data after turn
 onset_lme_df <- ieeg_behave_df %>%
@@ -182,7 +199,7 @@ all_sig_pairs <- read_csv(path(here(), "results", "sig_theta_pairs.csv"))
 
 # Amyg ~ ACC
 
-```{r amyg-acc-prep}
+```{r amyg-acc-prep, eval = F}
 
 # amyg_cing_sig_pairs <- all_sig_pairs %>%
 #   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -207,7 +224,7 @@ write_csv(ccf_amyg_acc_results, path(here(), "results", "ccf_amyg_acc_results.cs
 
 # HC ~ Amygdala
 
-```{r amyg-acc-prep}
+```{r amyg-hc-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -230,7 +247,7 @@ write_csv(ccf_hc_amyg_results, path(here(), "results", "ccf_hc_amyg_results.csv"
 
 # HC ~ ACC
 
-```{r amyg-acc-prep}
+```{r hc-acc-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -254,7 +271,7 @@ write_csv(ccf_hc_cing_results, path(here(), "results", "ccf_hc_cing_results.csv"
 
 # OFC ~ Amyg
 
-```{r ofc-amyg-prep}
+```{r ofc-amyg-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -311,8 +328,10 @@ ofc_acc_df <- onset_lme_df %>%
   filter(region %in% c("ofc", "cing"))
 
 
-ccf_ofc_acc_results <- calculate_overall_ccf(sig_pairs, ofc_acc_df)
-ccf_ofc_acc_null_results <- run_and_save_perms(ofc_acc_df, sig_pairs, "null_ccf_ofc_acc_results.csv", perms_run = 36)
+# ccf_ofc_acc_results <- calculate_overall_ccf(sig_pairs, ofc_acc_df)
+ccf_ofc_acc_null_results <- run_and_save_perms(ofc_acc_df, 
+                                               sig_pairs, 
+                                               all_subs_theta_data, "null_ccf_ofc_acc_results.csv", perms_run = 105)
 
 # save true version
 write_csv(ccf_ofc_acc_results, path(here(), "results", "ccf_ofc_acc_results.csv"))
@@ -323,7 +342,7 @@ write_csv(ccf_ofc_acc_results, path(here(), "results", "ccf_ofc_acc_results.csv"
 
 # OFC ~ MFG
 
-```{r ofc-mfg-prep}
+```{r ofc-mfg-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -349,7 +368,7 @@ write_csv(ccf_ofc_mfg_results, path(here(), "results", "ccf_ofc_mfg_results.csv"
 
 # MFG ~ ACC
 
-```{r ofc-acc-prep, eval = F}
+```{r mfg-acc-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -373,7 +392,7 @@ write_csv(ccf_mfg_cing_results, path(here(), "results", "ccf_mfg_cing_results.cs
 
 # MFG ~ HC
 
-```{r ofc-acc-prep}
+```{r mfg-hc-prep, eval = T}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -396,7 +415,7 @@ write_csv(ccf_mfg_hc_results, path(here(), "results", "ccf_mfg_hc_results.csv"))
 
 # MFG ~ Amyg
 
-```{r ofc-acc-prep}
+```{r mfg-amyg-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -409,10 +428,10 @@ mfg_amyg_df <- onset_lme_df %>%
   filter(region %in% c("mfg", "amyg"))
 
 
-ccf_mfg_amyg_results <- calculate_overall_ccf(sig_pairs, mfg_amyg_df)
+# ccf_mfg_amyg_results <- calculate_overall_ccf(sig_pairs, mfg_amyg_df)
 ccf_mfg_amyg_null_results <- run_and_save_perms(mfg_amyg_df, sig_pairs, "null_ccf_mfg_amyg_results.csv")
 
 # save true version
-write_csv(ccf_mfg_amyg_results, path(here(), "results", "ccf_mfg_amyg_results.csv"))
+# write_csv(ccf_mfg_amyg_results, path(here(), "results", "ccf_mfg_amyg_results.csv"))
 
 ```

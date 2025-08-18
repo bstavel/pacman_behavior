@@ -253,7 +253,7 @@ fit_joint_reward_models <- function(train_long_data, train_cox_df, name){
 fit_joint_threat_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_threat <- lme(distance_to_ghost ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
   
   # survival model #
@@ -274,7 +274,7 @@ fit_joint_threat_models <- function(train_long_data, train_cox_df, name){
 fit_null_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_null <- lme(trial_time ~ 1, data = train_long_data, random = ~1 | trial_numeric, control = control)
   
   # survival model #
@@ -296,7 +296,7 @@ fit_null_models <- function(train_long_data, train_cox_df, name){
 fit_joint_models <- function(train_long_data, train_cox_df, name, burn = 6000, iter = 40000){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_threat <- lme(distance_to_ghost ~ jm_time, data = train_long_data, random = ~jm_time | trial_numeric, control = control)
   lm_reward <- lme(points_remaining ~ jm_time, data = train_long_data, random = ~jm_time | trial_numeric, control = control)
   
@@ -368,7 +368,7 @@ fit_joint_time_theta_models <- function(train_long_data, train_cox_df, name){
 fit_joint_slope_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_theta <- lme(mean_theta ~ jm_time, data = train_long_data, random = ~jm_time | trial_numeric)
   
   # survival model #
@@ -391,7 +391,7 @@ fit_joint_slope_theta_models <- function(train_long_data, train_cox_df, name){
 fit_joint_sin_cos_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_theta <- lme(mean_theta ~ sin_term + cos_term, data = train_long_data, 
                   random = ~sin_term + cos_term| trial_numeric, control = control)
   
@@ -416,7 +416,7 @@ fit_joint_sin_cos_theta_models <- function(train_long_data, train_cox_df, name){
 fit_joint_correl_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   insula_ofc_model <- lme(insula_minus_ofc ~ jm_time, data = train_long_data, 
                           random = ~ jm_time | trial_numeric, control = control)
   amyg_ofc_model <- lme(amyg_minus_ofc ~ jm_time, data = train_long_data, 
@@ -443,7 +443,7 @@ fit_joint_correl_theta_models <- function(train_long_data, train_cox_df, name){
 fit_joint_spline_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_theta <- lme(mean_theta ~ ns(jm_time, df = 2), data = train_long_data, random = ~ns(jm_time, df = 2)| trial_numeric, control = control)
   
   # survival model #
@@ -513,7 +513,7 @@ fit_joint_spline_theta_models <- function(train_long_data, train_cox_df, name){
 fit_joint_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_threat <- lme(distance_to_ghost ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
   lm_reward <- lme(points_remaining ~ trial_time, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
   lm_theta <- lme(mean_elec_theta ~ sin_term + cos_term, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
@@ -537,7 +537,7 @@ fit_joint_theta_models <- function(train_long_data, train_cox_df, name){
 fit_hc_theta_models <- function(train_long_data, train_cox_df, name){
   
   # longitudinal model #
-  control = lmeControl(maxIter = 200000, niterEM = 200000, msMaxIter = 200000)
+  control = lmeControl(maxIter = 200000,  msMaxIter = 200000)
   lm_theta <- lme(mean_elec_theta ~ sin_term + cos_term, data = train_long_data, random = ~trial_time | trial_numeric, control = control)
   
   # survival model #

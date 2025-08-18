@@ -1,172 +1,238 @@
 ### Bayesian Helpers
 
+
+pull_bayesian_model_summaries <- function(model, coef_name){
+  
+  post <- as_draws_df(model)[[coef_name]]
+  
+  # Replace mean=0, sd=2 with your declared prior for this coefficient
+  bf <- bayesfactor_parameters(
+    posterior = post,
+    prior     = distribution_normal(n = 50000, mean = 0, sd = 2),
+    null      = 0
+  )
+  
+  P_plus   <- mean(post > 0)
+  
+  # Grab the model summary
+  model_summary <- summary(model)
+  
+  # Extract row for this coefficient
+  row <- model_summary$fixed[gsub("b_", "", coef_name), ]
+  
+  result <- tibble(
+    mean     = round(row["Estimate"], 2),
+    CrI_2.5  = round(row["l-95% CI"], 2),
+    CrI_97.5 = round(row["u-95% CI"], 2),
+    P_plus   = round(P_plus, 2),
+    BF10     = round(exp(bf$log_BF), 2),
+    ESS_bulk = round(row["Bulk_ESS"], 1),
+    ESS_tail = round(row["Tail_ESS"], 1)
+  )
+  
+  return(result)
+  
+}
+
+
+extract_model_summaries_factor_analysis <- function(cur_model, cur_regions){
+  
+  # Extract posterior samples of fixed effects coefficients
+  posterior_samples <- as_draws_df(cur_model) %>% select(starts_with("b_"))
+  
+  # Create all possible pairs of regions
+  region_pairs <- expand.grid(Region1 = cur_regions, Region2 = cur_regions) %>%
+    filter(Region1 != Region2)
+  
+  # compute intercept
+  intercept <- mean(posterior_samples$b_Intercept)
+  
+  results <- data.frame(
+    Region1 = character(),
+    Region2 = character(),
+    Intercept = numeric(),
+    Mean = numeric(),
+    max_density = numeric(),
+    ci_upper = numeric(),
+    ci_lower = numeric(),
+    P_plus = numeric(),
+    BF10 =numeric(),
+    ESS = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in 1:nrow(region_pairs)) {
+    region1 <- region_pairs$Region1[i]
+    region2 <- region_pairs$Region2[i]
+    
+    # Compute difference samples
+    difference_samples <- compute_difference_samples(region1, region2, cur_regions, posterior_samples)
+    
+    # Compute mean
+    mean_diff <- mean(difference_samples)
+    
+    
+    # Compute mode (max density)
+    density_estimate <- density(difference_samples)
+    mode_diff <- density_estimate$x[which.max(density_estimate$y)]
+    max_dens = max(density_estimate$y)
+    
+    # Compute credible intervals
+    ci_low <- quantile(difference_samples, probs = 0.025)
+    ci_up <- quantile(difference_samples, probs = 0.975)
+    
+    # compute ESS for contrast
+    ess <- ess_bulk(difference_samples)
+    
+    # Compute P+
+    p_plus   <- mean(difference_samples > 0)
+    
+    # Compute density at credible interval bounds
+    density_lower <- approx(density_estimate$x, density_estimate$y, xout = ci_low)$y
+    density_upper <- approx(density_estimate$x, density_estimate$y, xout = ci_up)$y
+    
+    # Add to results
+    results <- rbind(results, data.frame(
+      Region1 = region1,
+      Region2 = region2,
+      Mean = exp(mean_diff),
+      Intercept = exp(intercept),
+      ci_lower = exp(ci_low),
+      ci_upper = exp(ci_up),
+      P_plus = p_plus,
+      ESS = ess,
+      stringsAsFactors = FALSE
+    ))
+  }
+  return(results)
+}
+
+
+
 ## Random Effects
 
-get_subject_elec_res <- function(model, fixed_effect, random_effect){
-  # model: model of interest, from loaded brms object
-  # fixed_effect: fixed effect, as a character, e.g. "time"
-  # random_effect: random effect, as a character, e.g. "key", "electrode" (assumes there is also always "subject)
-
-  # pull random efftcs
+get_subject_elec_te <- function(model, fixed_effect, random_effect){
+  # model: brmsfit
+  # fixed_effect: e.g., "time"
+  # random_effect: e.g., "key" or "electrode" (assumes there is also always "subject")
+  
+  ## --- Pull subject random effects ---
   subject_random_effects <- ranef(model, groups = "subject")
   
-  # Extract posterior samples of random effects
+  # Extract posterior samples of random effects for subjects
   posterior_ranef_subject <- as_draws_df(model) %>%
     select(starts_with("r_subject["))
   
+  # Extract posterior samples of random effects for electrodes
   posterior_ranef_electrode <- as_draws_df(model) %>%
     select(starts_with(paste0("r_subject:", random_effect, "[")))
   
   # Extract posterior samples of the fixed effect
   posterior_fixed <- as_draws_df(model, variable = paste0("b_", fixed_effect))
   
-  ## Pull Subject Level Effects
-  # Get the list of subjects
+  ## --- SUBJECT-LEVEL totals: fixed + subject deviation ---
   subjects <- unique(model$data$subject)
-  
-  # Initialize a list to store subject-specific effect samples
   subject_effects <- list()
   
-  # Loop over each subject to create subject-level effects
   for (subject in subjects) {
-    # Create the variable name for the random effect
-    ranef_var <- paste0("r_subject[", subject, paste0(",", fixed_effect, "]"))
-    
-    # Check if the variable exists in the posterior samples
+    ranef_var <- paste0("r_subject[", subject, ",", fixed_effect, "]")
     if (ranef_var %in% names(posterior_ranef_subject)) {
       ranef_samples <- posterior_ranef_subject[[ranef_var]]
     } else {
       stop(paste("Random effect variable", ranef_var, "not found in posterior samples."))
     }
-    
-    # Combine fixed and random effects
     subject_specific_samples <- posterior_fixed[[paste0("b_", fixed_effect)]] + ranef_samples
-    
-    # Store the samples
     subject_effects[[as.character(subject)]] <- subject_specific_samples
   }
   
-  # Initialize a data frame to store the results
   subject_ci <- data.frame(
     subject = character(),
-    mean = numeric(),
-    lower = numeric(),
-    upper = numeric(),
-    significant = logical(),
+    mean_sub = numeric(),
+    lower_sub = numeric(),
+    upper_sub = numeric(),
+    Pplus_sub = numeric(),
     stringsAsFactors = FALSE
   )
   
-  ## calculate CI around Subject-level effects
   for (subject in names(subject_effects)) {
-    # Get the samples
     samples <- subject_effects[[subject]]
-    
-    # Calculate mean and credible intervals
     mean_effect <- mean(samples)
     ci_lower <- quantile(samples, probs = 0.025)
     ci_upper <- quantile(samples, probs = 0.975)
+    Pplus <- mean(samples > 0)      
     
-    # Determine if CI includes zero
-    significant <- ci_lower > 0 | ci_upper < 0
-    
-    # Add to the data frame
-    subject_ci <- rbind(subject_ci, data.frame(
-      subject = subject,
-      mean_sub = mean_effect,
-      lower_sub = ci_lower,
-      upper_sub = ci_upper,
-      significant_sub = significant,
-      stringsAsFactors = FALSE
-    ))
+    subject_ci <- rbind(
+      subject_ci,
+      data.frame(
+        subject = subject,
+        mean_sub = mean_effect,
+        lower_sub = ci_lower,
+        upper_sub = ci_upper,
+        Pplus_sub = Pplus,                
+        stringsAsFactors = FALSE
+      )
+    )
   }
   
-  ## Electrode Effects
-  # Extract unique combinations of subject and key from the model data
-  electrode_info <- unique(model$data[, c("subject", random_effect)])
+  ## --- ELECTRODE-LEVEL totals: fixed + subject deviation + subject:electrode deviation ---
+  # Use the already-extracted posterior_ranef_electrode and posterior_ranef_subject
+  # Build the list of (subject, electrode) pairs present in the model data
+  pairs <- unique(model$data[, c("subject", random_effect)])
+  names(pairs) <- c("subject", "electrode")
   
-  # Create a unique identifier for electrodes (e.g., subject_key)
-  electrode_info$subject_key <- paste0(electrode_info$subject, "_", electrode_info[[random_effect]])
-  
-  # Initialize a list to store electrode-specific effect samples
-  electrode_effects <- list()
-  
-  # Loop over each electrode
-  for (i in 1:nrow(electrode_info)) {
-    subject <- electrode_info$subject[i]
-    key <- electrode_info[[random_effect]][i]
-    subject_key <- electrode_info$subject_key[i]
-    
-    # Create variable names for random effects
-    ranef_subject_var <- paste0("r_subject[", subject, paste0(",", fixed_effect, "]"))
-    ranef_electrode_var <- gsub(" ", ".", paste0("r_subject:", random_effect, "[", subject_key, paste0(",", fixed_effect, "]")))
-    
-    # Check if variables exist in the posterior samples
-    if (ranef_subject_var %in% names(posterior_ranef_subject)) {
-      ranef_subject_samples <- posterior_ranef_subject[[ranef_subject_var]]
-    } else {
-      stop(paste("Random effect variable", ranef_subject_var, "not found in posterior samples."))
-    }
-    
-    if (ranef_electrode_var %in% names(posterior_ranef_electrode)) {
-      ranef_electrode_samples <- posterior_ranef_electrode[[ranef_electrode_var]]
-    } else {
-      stop(paste("Random effect variable", ranef_electrode_var, "not found in posterior samples."))
-    }
-    
-    # Combine fixed effect, subject random effect, and electrode random effect
-    electrode_specific_samples <- posterior_fixed[[paste0("b_", fixed_effect)]] + ranef_subject_samples + ranef_electrode_samples
-    
-    # Store the samples
-    electrode_effects[[subject_key]] <- electrode_specific_samples
-  }
-  
-  
-  # Initialize a data frame to store the results
-  electrode_ci <-  data.frame(
-    subject_key = character(),
-    subject = character(),
-    mean_key = numeric(),
-    lower_key = numeric(),
-    upper_key = numeric(),
-    significant_key = logical(),
+  electrode_ci <- data.frame(
+    subject   = character(),
+    electrode = character(),
+    mean_ele  = numeric(),
+    lower_ele = numeric(),
+    upper_ele = numeric(),
+    Pplus_ele = numeric(),
     stringsAsFactors = FALSE
   )
   
-  for (subject_key in names(electrode_effects)) {
-    # Get the samples
-    samples <- electrode_effects[[subject_key]]
+  for (i in seq_len(nrow(pairs))) {
+    s <- pairs$subject[i]
+    e <- pairs$electrode[i]
     
-    # Calculate mean and credible intervals
-    mean_effect <- mean(samples)
-    ci_lower <- quantile(samples, probs = 0.025)
-    ci_upper <- quantile(samples, probs = 0.975)
+    # names in draws: r_subject[<s>,<fixed>] and r_subject:<re>[<s>:<e>,<fixed>]
+    re_sub_name <- paste0("r_subject[", s, ",", fixed_effect, "]")
+    re_ele_name <- paste0("r_subject:", random_effect, "[", s, ":", e, ",", fixed_effect, "]")
     
-    # Determine if CI includes zero
-    significant <- ci_lower > 0 | ci_upper < 0
+    if (!re_sub_name %in% names(posterior_ranef_subject)) {
+      stop("Random effect column not found: ", re_sub_name)
+    }
+    # If the subject:electrode slope isn’t present, treat as 0 deviation
+    re_sub_draws <- posterior_ranef_subject[[re_sub_name]]
+    re_ele_draws <- if (re_ele_name %in% names(posterior_ranef_electrode)) {
+      posterior_ranef_electrode[[re_ele_name]]
+    } else {
+      rep(0, length(re_sub_draws))
+    }
     
-    # Extract subject and key from subject_key
-    parts <- strsplit(subject_key, "_")[[1]]
-    subject <- parts[1]
+    total_draws <- posterior_fixed[[paste0("b_", fixed_effect)]] + re_sub_draws + re_ele_draws
     
-    # Add to data frame
-    electrode_ci <- rbind(electrode_ci, data.frame(
-      subject_key = subject_key,
-      subject = subject,
-      mean_key = mean_effect,
-      lower_key = ci_lower,
-      upper_key = ci_upper,
-      significant_key = significant,
-      stringsAsFactors = FALSE
-    ))
+    mean_effect <- mean(total_draws)
+    ci_lower <- quantile(total_draws, probs = 0.025)
+    ci_upper <- quantile(total_draws, probs = 0.975)
+    Pplus <- mean(total_draws > 0)                 
+    
+    electrode_ci <- rbind(
+      electrode_ci,
+      data.frame(
+        subject   = s,
+        electrode = e,
+        mean_ele  = mean_effect,
+        lower_ele = ci_lower,
+        upper_ele = ci_upper,
+        Pplus_ele = Pplus,              
+        stringsAsFactors = FALSE
+      )
+    )
   }
   
-  # bind electrode ci and subject_ci
-  subject_electrode_ci <- full_join(subject_ci, electrode_ci)
-  
-  
-   return(subject_electrode_ci)
-
+  list(subject = subject_ci, electrode = electrode_ci)
 }
+
 
 
 

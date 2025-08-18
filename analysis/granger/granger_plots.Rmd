@@ -108,7 +108,7 @@ granger_all_roi_plot <- granger_sub_plot_df %>%
         strip.text = element_text(family = "Gill Sans", color = "#2D2327", size = 7),
         plot.title = element_text(family = "Gill Sans", color = "#2D2327", size = 8, hjust = 1),
         plot.subtitle = element_text(family = "Gill Sans", color = "#2D2327", size = 7, margin = margin(b = 0)))  +
-  scale_fill_manual(values = c("#DE4A4D", "#DE4A4D", "#FB6087", "#FB6087")) +
+  scale_fill_manual(values = c("#DE4A4D", "#DE4A4D", "#876194", "#876194")) +
   labs(x = "", y = "Net Granger (a.u.)\n") +
   facet_wrap(~region, scale = "free_x", nrow = 1) +
   ylim(-.26, .26)

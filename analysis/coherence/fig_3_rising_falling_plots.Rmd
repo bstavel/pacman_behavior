@@ -87,14 +87,14 @@ c25 <- c(
 ```{r load-model}
 
 # load rising model #
-load(path(here(), "results", "rising_model_brms.RData"))
+load(path(here(), "results", "rising_falling_coherence", "2_rising_model_brms.RData"))
 
 # summary #
 summary(rising_model)
 
 
 # load falling model #
-load(path(here(), "results", "falling_model_brms.RData"))
+load(path(here(), "results", "rising_falling_coherence", "2_falling_model_brms.RData"))
 
 # summary #
 summary(falling_model)
@@ -194,7 +194,7 @@ rising_falling_dist_plot <- posterior_df  %>%
   geom_segment(aes(x = CI_Lower_Avoid, xend = CI_Lower_Avoid, y = 0, yend = -CI_Lower_Density_Avoid), color = "#6390C8",  linewidth = 1) +
   geom_text(aes(x = sig_x, y = Max_Density_Approach), color = "#2D2327", label = "*", size = 10, vjust = 1, show.legend = FALSE, check_overlap = T) +
   geom_text(aes(x = sig_x, y = -Max_Density_Avoid), color = "#2D2327", label = "*", size = 10, vjust = 1, show.legend = FALSE, check_overlap = T) +
-  geom_text(aes(x = .2, y = -6.5), label = "Approach",  color = "#D75356", size = 4.75, vjust = 1, show.legend = FALSE, check_overlap = T) +
+  geom_text(aes(x = .2, y = -8.5), label = "Approach",  color = "#D75356", size = 4.75, vjust = 1, show.legend = FALSE, check_overlap = T) +
   geom_text(aes(x = -.25, y = 10), color = "#6390C8", label = "Avoid", size = 4.75, vjust = 1, show.legend = FALSE, check_overlap = T) +
   theme(panel.background = element_rect(fill = "white"), 
       legend.position = "top",
