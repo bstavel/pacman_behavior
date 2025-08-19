@@ -337,7 +337,7 @@ ofc_hc_df <- onset_lme_df %>%
 
 
 # ccf_ofc_hc_results <- calculate_overall_ccf(sig_pairs, ofc_hc_df)
-ccf_ofc_hc_null_results <- run_and_save_perms(ofc_hc_df, sig_pairs, all_subs_theta_data, "null_ccf_ofc_hc_results.csv"s)
+ccf_ofc_hc_null_results <- run_and_save_perms(ofc_hc_df, sig_pairs, all_subs_theta_data, "null_ccf_ofc_hc_results.csv")
 
 # save true version
 # write_csv(ccf_ofc_hc_results, path(here(), "results", "ccf_ofc_hc_results.csv"))

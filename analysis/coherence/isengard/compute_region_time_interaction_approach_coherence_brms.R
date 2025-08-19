@@ -152,10 +152,10 @@ roi_rising_model <- brm(
   data = imcoh_app_sig_df,
   prior = priors,
   family = gaussian(),
-  iter = 6000,
-  warmup = 3000,
+  iter = 10000,
+  warmup = 5000,
   chains = 4,
-  control = list(adapt_delta = 0.99),
+  control = list(adapt_delta = 0.999),
   seed = 1234
 )
 
