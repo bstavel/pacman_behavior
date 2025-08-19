@@ -31,7 +31,8 @@ source(path(here(), "R", 'clean_behavioral_data.R'))
 source(path(here(), "R", 'compile_ieeg_csv_files.R'))
 source(path(here(), "R", 'ccf_functions.R'))
 source(path(here(), "R", 'separate_mfg_sfg.R'))
-options(future.globals.maxSize = 5 * 1024^3)
+options(future.globals.maxSize = 8 * 1024^3)
+plan(multisession, workers = 2)
 
 ## plotting helpers ##
 ggthemr("light")
@@ -292,31 +293,11 @@ write_csv(ccf_ofc_amyg_results, path(here(), "results", "ccf_ofc_amyg_results.cs
 
 ```
 
-# OFC ~ HC
 
-```{r ofc-hc-prep, eval = F}
-
-sig_pairs <- all_sig_pairs %>%
-  mutate(pair_id = paste0(subject, "_", pairs)) %>%
-  filter(metric == "Imaginary Coherence") %>%
-  filter(roi_pair == "ofc_hc") %>%
-  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
-  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
-
-ofc_hc_df <- onset_lme_df %>%
-  filter(region %in% c("ofc", "hc"))
-
-
-ccf_ofc_hc_results <- calculate_overall_ccf(sig_pairs, ofc_hc_df)
-ccf_ofc_hc_null_results <- run_and_save_perms(ofc_hc_df, sig_pairs, "null_ccf_ofc_hc_results.csv", perms_run = 50)
-
-# save true version
-write_csv(ccf_ofc_hc_results, path(here(), "results", "ccf_ofc_hc_results.csv"))
-```
 
 # OFC ~ ACC
 
-```{r ofc-acc-prep}
+```{r ofc-acc-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%
@@ -332,15 +313,35 @@ ofc_acc_df <- onset_lme_df %>%
 # ccf_ofc_acc_results <- calculate_overall_ccf(sig_pairs, ofc_acc_df)
 ccf_ofc_acc_null_results <- run_and_save_perms(ofc_acc_df, 
                                                sig_pairs, 
-                                               all_subs_theta_data, "null_ccf_ofc_acc_results.csv", perms_run = 105)
+                                               all_subs_theta_data, "null_ccf_ofc_acc_results.csv", perms_run = 110)
 
 # save true version
-write_csv(ccf_ofc_acc_results, path(here(), "results", "ccf_ofc_acc_results.csv"))
+# write_csv(ccf_ofc_acc_results, path(here(), "results", "ccf_ofc_acc_results.csv"))
 
 
 ```
 
+# OFC ~ HC
 
+```{r ofc-hc-prep, eval = T}
+
+sig_pairs <- all_sig_pairs %>%
+  mutate(pair_id = paste0(subject, "_", pairs)) %>%
+  filter(metric == "Imaginary Coherence") %>%
+  filter(roi_pair == "ofc_hc") %>%
+  mutate(pair2 = paste0(subject, "_", gsub(".*_to_", "", pairs))) %>%
+  mutate(pair1 = paste0(subject, "_", gsub("_to_.*", "", pairs)))
+
+ofc_hc_df <- onset_lme_df %>%
+  filter(region %in% c("ofc", "hc"))
+
+
+# ccf_ofc_hc_results <- calculate_overall_ccf(sig_pairs, ofc_hc_df)
+ccf_ofc_hc_null_results <- run_and_save_perms(ofc_hc_df, sig_pairs, all_subs_theta_data, "null_ccf_ofc_hc_results.csv"s)
+
+# save true version
+# write_csv(ccf_ofc_hc_results, path(here(), "results", "ccf_ofc_hc_results.csv"))
+```
 # OFC ~ MFG
 
 ```{r ofc-mfg-prep, eval = F}
@@ -393,7 +394,7 @@ write_csv(ccf_mfg_cing_results, path(here(), "results", "ccf_mfg_cing_results.cs
 
 # MFG ~ HC
 
-```{r mfg-hc-prep, eval = T}
+```{r mfg-hc-prep, eval = F}
 
 sig_pairs <- all_sig_pairs %>%
   mutate(pair_id = paste0(subject, "_", pairs)) %>%

@@ -192,14 +192,14 @@ run_and_save_perms <- function(df, sig_pairs_df, all_time_df, file_name, perms_r
   } 
   
   # parallel plan
-  old_plan <- future::plan(multisession, workers = 5)
+  old_plan <- future::plan(multisession, workers = 2)
   on.exit(future::plan(old_plan), add = TRUE)
   set.seed(123)  # reproducible seeds across workers
   
-  batch_size <- 4L
+  batch_size <- 5
   
-  for (i in seq(1L, length(perms), by = batch_size)) {
-    batch <- perms[i:min(i + batch_size - 1L, length(perms))]
+  for (i in seq(1, length(perms), by = batch_size)) {
+    batch <- perms[i:min(i + batch_size - 1, length(perms))]
     
     message("Running perms: ", paste(batch, collapse = ", "))
     
@@ -221,7 +221,7 @@ run_and_save_perms <- function(df, sig_pairs_df, all_time_df, file_name, perms_r
     # append and (optionally) save
     null_ccf_results <- bind_rows(null_ccf_results, batch_results)
     
-    if (max(batch) %% 5L == 0L) {
+    if (max(batch) %% 5 == 0) {
       write_csv(null_ccf_results, path(here(), "results", "ccf", file_name))
     }
   }
